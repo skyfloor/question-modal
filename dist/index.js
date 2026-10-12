@@ -1,767 +1,797 @@
-//#region src/index.tsx
-var e = "question_modal";
-function t() {
-	return window.QwenPaw?.host || {};
+const Dt = "question-modal", qt = "question_modal";
+function j() {
+  var e;
+  return ((e = window.QwenPaw) == null ? void 0 : e.host) || {};
 }
-function n() {
-	return window.QwenPaw?.chat || null;
+function Ft() {
+  var e;
+  return ((e = window.QwenPaw) == null ? void 0 : e.chat) || null;
 }
-function r() {
-	return t().antd || {};
+function Tt() {
+  return j().antd || {};
 }
-function i() {
-	return t().antdIcons || {};
+function Jt() {
+  return j().antdIcons || {};
 }
-var a = [
-	"FormOutlined",
-	"ProfileOutlined",
-	"CheckSquareOutlined"
-];
-function o(e) {
-	let t = i();
-	for (let n of a) {
-		let r = t[n];
-		if (r) return e.createElement(r, { style: {
-			color: "var(--app-accent, #ff7f16)",
-			fontSize: 15
-		} });
-	}
-	return e.createElement("span", { style: { color: "var(--app-accent, #ff7f16)" } }, "📋");
+const Qt = ["FormOutlined", "ProfileOutlined", "CheckSquareOutlined"];
+function At(e) {
+  const t = Jt();
+  for (const n of Qt) {
+    const a = t[n];
+    if (a)
+      return e.createElement(a, {
+        style: { color: "var(--app-accent, #ff7f16)", fontSize: 15 }
+      });
+  }
+  return e.createElement("span", { style: { color: "var(--app-accent, #ff7f16)" } }, "📋");
 }
-function s() {
-	try {
-		let e = "question-modal-styles";
-		if (document.getElementById(e)) return;
-		let t = document.createElement("style");
-		t.id = e, t.textContent = [
-			".qm-card{",
-			"border:1px solid var(--app-border-strong,rgba(127,127,127,0.45))!important;",
-			"border-radius:12px!important;",
-			"background:var(--app-surface-raised,#fff)!important;",
-			"transition:border-color .16s ease,box-shadow .16s ease}"
-		].join(""), document.head.appendChild(t);
-	} catch {}
+function Vt() {
+  try {
+    const e = "question-modal-styles";
+    if (document.getElementById(e)) return;
+    const t = document.createElement("style");
+    t.id = e, t.textContent = [
+      // Match the composer input: 1px solid --app-border-strong, radius 12,
+      // --app-surface-raised fill (see `.qwenpaw-sender-content` / `.ant-input`).
+      ".qm-card{",
+      "border:1px solid var(--app-border-strong,rgba(127,127,127,0.45))!important;",
+      "border-radius:12px!important;",
+      "background:var(--app-surface-raised,#fff)!important;",
+      "transition:border-color .16s ease,box-shadow .16s ease}"
+    ].join(""), document.head.appendChild(t);
+  } catch {
+  }
 }
-function c(e) {
-	try {
-		let n = t();
-		if (typeof n.getApiUrl == "function") return n.getApiUrl(e);
-	} catch {}
-	return "/api" + e;
+function T(e) {
+  try {
+    const t = j();
+    if (typeof t.getApiUrl == "function") return t.getApiUrl(e);
+  } catch {
+  }
+  return "/api" + e;
 }
-function l() {
-	let e = { "Content-Type": "application/json" };
-	try {
-		let n = t(), r = typeof n.getApiToken == "function" ? n.getApiToken() : "";
-		r && (e.Authorization = "Bearer " + r);
-		let i = typeof n.getSelectedAgentId == "function" ? n.getSelectedAgentId() : "";
-		i && (e["X-Agent-Id"] = i);
-	} catch {}
-	return e;
+function R() {
+  const e = { "Content-Type": "application/json" };
+  try {
+    const t = j(), n = typeof t.getApiToken == "function" ? t.getApiToken() : "";
+    n && (e.Authorization = "Bearer " + n);
+    const a = typeof t.getSelectedAgentId == "function" ? t.getSelectedAgentId() : "";
+    a && (e["X-Agent-Id"] = a);
+  } catch {
+  }
+  return e;
 }
-function u() {
-	try {
-		let e = t();
-		if (typeof e.getCurrentSessionId == "function") return e.getCurrentSessionId() || "";
-	} catch {}
-	return window.currentSessionId || "";
+function N() {
+  try {
+    const e = j();
+    if (typeof e.getCurrentSessionId == "function") return e.getCurrentSessionId() || "";
+  } catch {
+  }
+  return window.currentSessionId || "";
 }
-function d(e, t) {
-	try {
-		let n = r().message;
-		if (n && typeof n[e] == "function") {
-			n[e](t);
-			return;
-		}
-	} catch {}
-	console.log("[question-modal]", e, t);
+function S(e, t) {
+  try {
+    const n = Tt().message;
+    if (n && typeof n[e] == "function") {
+      n[e](t);
+      return;
+    }
+  } catch {
+  }
+  console.log("[question-modal]", e, t);
 }
-var f = "__other__";
-function p(e) {
-	return String(e && typeof e == "object" ? e.value ?? e.label ?? "" : e);
+const I = "__other__";
+function C(e) {
+  return String(e && typeof e == "object" ? e.value ?? e.label ?? "" : e);
 }
-function m(e) {
-	return String(e && typeof e == "object" ? e.label ?? e.value ?? "" : e);
+function O(e) {
+  return String(e && typeof e == "object" ? e.label ?? e.value ?? "" : e);
 }
-function h(e, t) {
-	let n = /* @__PURE__ */ new Set(), r = (e) => {
-		e != null && e !== "" && n.add(String(e));
-	}, i = e.options || [];
-	if (e.type === "multi") (Array.isArray(t.value) ? t.value : []).forEach((e) => {
-		r(e);
-		let n = i.find((t) => p(t) === String(e));
-		n && r(m(n)), String(e) === f && t.other && r(t.other);
-	});
-	else {
-		r(t.value);
-		let e = i.find((e) => p(e) === String(t.value));
-		e && r(m(e)), String(t.value) === f && t.other && r(t.other);
-	}
-	return n;
+function Xt(e, t) {
+  const n = /* @__PURE__ */ new Set(), a = (i) => {
+    i != null && i !== "" && n.add(String(i));
+  }, r = e.options || [];
+  if (e.type === "multi")
+    (Array.isArray(t.value) ? t.value : []).forEach((u) => {
+      a(u);
+      const f = r.find((l) => C(l) === String(u));
+      f && a(O(f)), String(u) === I && t.other && a(t.other);
+    });
+  else {
+    a(t.value);
+    const i = r.find((u) => C(u) === String(t.value));
+    i && a(O(i)), String(t.value) === I && t.other && a(t.other);
+  }
+  return n;
 }
-function g(e, t) {
-	return (Array.isArray(e) ? e : [e]).some((e) => {
-		let n = String(e);
-		if (n.startsWith("=")) return t.has(n.slice(1));
-		if (t.has(n)) return !0;
-		for (let e of Array.from(t)) if (e && (e.indexOf(n) !== -1 || n.indexOf(e) !== -1)) return !0;
-		return !1;
-	});
+function Gt(e, t) {
+  return (Array.isArray(e) ? e : [e]).some((a) => {
+    const r = String(a);
+    if (r.startsWith("=")) return t.has(r.slice(1));
+    if (t.has(r)) return !0;
+    for (const i of Array.from(t))
+      if (i && (i.indexOf(r) !== -1 || r.indexOf(i) !== -1)) return !0;
+    return !1;
+  });
 }
-function _(e, t) {
-	let n = /^q(\d+)$/i.exec(e.trim());
-	if (n) {
-		let e = parseInt(n[1], 10);
-		if (e >= 0 && e < t.length) return e;
-	}
-	return t.findIndex((t) => (t.title || "").trim() === e.trim());
+function Kt(e, t) {
+  const n = /^q(\d+)$/i.exec(e.trim());
+  if (n) {
+    const r = parseInt(n[1], 10);
+    if (r >= 0 && r < t.length) return r;
+  }
+  return t.findIndex((r) => (r.title || "").trim() === e.trim());
 }
-function v(e, t, n) {
-	let r = t[e], i = r && r.showIf;
-	if (!i || typeof i != "object" || !Object.keys(i).length) return !0;
-	for (let e of Object.keys(i)) {
-		let r = _(e, t);
-		if (r < 0) continue;
-		let a = t[r];
-		if (!a) continue;
-		if (a.showIf && !v(r, t, n)) return !1;
-		let o = n[`q${r}`];
-		if (!o || !g(i[e], h(a, o))) return !1;
-	}
-	return !0;
+function Rt(e, t, n) {
+  const a = t[e], r = a && a.showIf;
+  if (!r || typeof r != "object" || !Object.keys(r).length) return !0;
+  for (const i of Object.keys(r)) {
+    const u = Kt(i, t);
+    if (u < 0) continue;
+    const f = t[u];
+    if (!f) continue;
+    if (f.showIf && !Rt(u, t, n)) return !1;
+    const l = n[`q${u}`];
+    if (!l || !Gt(r[i], Xt(f, l))) return !1;
+  }
+  return !0;
 }
-function y(e, t) {
-	let n = [];
-	return e.forEach((r, i) => {
-		v(i, e, t) && n.push(i);
-	}), n;
+function K(e, t) {
+  const n = [];
+  return e.forEach((a, r) => {
+    Rt(r, e, t) && n.push(r);
+  }), n;
 }
-function ee(e) {
-	try {
-		let t = e && e.content || [], n = t[0] && t[0].data && t[0].data.arguments;
-		return n ? typeof n == "string" ? JSON.parse(n) : n : {};
-	} catch {
-		return {};
-	}
+function Yt(e) {
+  try {
+    const t = e && e.content || [], n = t[0] && t[0].data && t[0].data.arguments;
+    return n ? typeof n == "string" ? JSON.parse(n) : n : {};
+  } catch {
+    return {};
+  }
+}
+function Zt(e) {
+  try {
+    const t = e && e.content || [], n = t[0] && t[0].data;
+    return n && n.call_id || "";
+  } catch {
+    return "";
+  }
 }
 function te(e) {
-	try {
-		let t = e && e.content || [], n = t[0] && t[0].data;
-		return n && n.call_id || "";
-	} catch {
-		return "";
-	}
+  try {
+    const t = e && e.content || [], n = t[0] && t[0].data, a = n && n.output;
+    return a ? typeof a == "string" ? a : Array.isArray(a) ? a.map((r) => r && (r.text || r.content) || "").join(`
+`) : String(a) : "";
+  } catch {
+    return "";
+  }
 }
-function ne(e) {
-	try {
-		let t = e && e.content || [], n = t[0] && t[0].data, r = n && n.output;
-		return r ? typeof r == "string" ? r : Array.isArray(r) ? r.map((e) => e && (e.text || e.content) || "").join("\n") : String(r) : "";
-	} catch {
-		return "";
-	}
+async function ee(e, t) {
+  try {
+    const n = new URLSearchParams();
+    e && n.set("tool_call_id", e), t && n.set("session_id", t);
+    const a = await fetch(
+      T("/question-modal/resolve") + "?" + n.toString(),
+      { headers: R() }
+    );
+    if (!a.ok) return null;
+    const r = await a.json();
+    return r && r.found ? r : null;
+  } catch {
+    return null;
+  }
 }
-async function re(e, t) {
-	try {
-		let n = new URLSearchParams();
-		e && n.set("tool_call_id", e), t && n.set("session_id", t);
-		let r = await fetch(c("/question-modal/resolve") + "?" + n.toString(), { headers: l() });
-		if (!r.ok) return null;
-		let i = await r.json();
-		return i && i.found ? i : null;
-	} catch {
-		return null;
-	}
+async function ne(e) {
+  if (!e) return null;
+  try {
+    const t = await fetch(
+      T("/question-modal/result") + "?tool_call_id=" + encodeURIComponent(e),
+      { headers: R() }
+    );
+    if (!t.ok) return null;
+    const n = await t.json();
+    return n && n.found ? n : null;
+  } catch {
+    return null;
+  }
 }
-async function ie(e) {
-	if (!e) return null;
-	try {
-		let t = await fetch(c("/question-modal/result") + "?tool_call_id=" + encodeURIComponent(e), { headers: l() });
-		if (!t.ok) return null;
-		let n = await t.json();
-		return n && n.found ? n : null;
-	} catch {
-		return null;
-	}
+const Y = "qm:v1:reqid:", re = 6e4;
+function A(e) {
+  if (e)
+    try {
+      localStorage.removeItem(Y + e);
+    } catch {
+    }
 }
-var b = "qm:v1:reqid:", ae = 6e4;
-function x(e) {
-	if (e) try {
-		localStorage.removeItem(b + e);
-	} catch {}
+function oe() {
+  try {
+    const e = [];
+    for (let r = 0; r < localStorage.length; r++) {
+      const i = localStorage.key(r);
+      i && i.indexOf(Y) === 0 && e.push(i);
+    }
+    const t = 7 * 24 * 3600 * 1e3, n = [];
+    e.forEach((r) => {
+      let i = null;
+      try {
+        i = JSON.parse(localStorage.getItem(r) || "null");
+      } catch {
+        i = null;
+      }
+      !i || !i.request_id || !i.ts || Date.now() - i.ts > t ? localStorage.removeItem(r) : n.push(r);
+    });
+    const a = 50;
+    if (n.length <= a) return;
+    n.map((r) => ({ k: r, ts: (JSON.parse(localStorage.getItem(r) || "{}") || {}).ts || 0 })).sort((r, i) => r.ts - i.ts).slice(0, n.length - a).forEach((r) => localStorage.removeItem(r.k));
+  } catch {
+  }
 }
-function S() {
-	try {
-		let e = [];
-		for (let t = 0; t < localStorage.length; t++) {
-			let n = localStorage.key(t);
-			n && n.indexOf(b) === 0 && e.push(n);
-		}
-		let t = [];
-		if (e.forEach((e) => {
-			let n = null;
-			try {
-				n = JSON.parse(localStorage.getItem(e) || "null");
-			} catch {
-				n = null;
-			}
-			!n || !n.request_id || !n.ts || Date.now() - n.ts > 6048e5 ? localStorage.removeItem(e) : t.push(e);
-		}), t.length <= 50) return;
-		t.map((e) => ({
-			k: e,
-			ts: (JSON.parse(localStorage.getItem(e) || "{}") || {}).ts || 0
-		})).sort((e, t) => e.ts - t.ts).slice(0, t.length - 50).forEach((e) => localStorage.removeItem(e.k));
-	} catch {}
+function ae(e, t, n) {
+  if (!(!e || !t))
+    try {
+      localStorage.setItem(Y + e, JSON.stringify({
+        request_id: t,
+        session_id: n || "",
+        tool_call_id: e,
+        ts: Date.now()
+      })), oe();
+    } catch {
+    }
 }
-function oe(e, t, n) {
-	if (e && t) try {
-		localStorage.setItem(b + e, JSON.stringify({
-			request_id: t,
-			session_id: n || "",
-			tool_call_id: e,
-			ts: Date.now()
-		})), S();
-	} catch {}
+function It(e) {
+  if (!e) return null;
+  try {
+    const t = localStorage.getItem(Y + e);
+    if (!t) return null;
+    const n = JSON.parse(t);
+    return !n || !n.request_id || n.tool_call_id !== e ? (A(e), null) : n;
+  } catch {
+    return null;
+  }
 }
-function se(e) {
-	if (!e) return null;
-	try {
-		let t = localStorage.getItem(b + e);
-		if (!t) return null;
-		let n = JSON.parse(t);
-		return !n || !n.request_id || n.tool_call_id !== e ? (x(e), null) : n;
-	} catch {
-		return null;
-	}
+async function se(e) {
+  try {
+    const t = await fetch(
+      T("/question-modal/resolve") + "?request_id=" + encodeURIComponent(e),
+      { headers: R() }
+    );
+    if (!t.ok) return { kind: "error" };
+    const n = await t.json();
+    return n && n.found ? { kind: "found", data: n } : { kind: "absent" };
+  } catch {
+    return { kind: "error" };
+  }
 }
-async function ce(e) {
-	try {
-		let t = await fetch(c("/question-modal/resolve") + "?request_id=" + encodeURIComponent(e), { headers: l() });
-		if (!t.ok) return { kind: "error" };
-		let n = await t.json();
-		return n && n.found ? {
-			kind: "found",
-			data: n
-		} : { kind: "absent" };
-	} catch {
-		return { kind: "error" };
-	}
+function ie(e, t, n) {
+  const a = ["【用户提交的问卷答案】"], r = new Set(K(e, t));
+  return e.forEach((i, u) => {
+    if (!r.has(u)) return;
+    const f = t[`q${u}`];
+    if (!f) return;
+    let l = f.value;
+    if (Array.isArray(l))
+      l = l.filter((y) => y !== I).map((y) => {
+        const v = (i.options || []).find((Z) => C(Z) === String(y));
+        return v ? O(v) : y;
+      }).join("、");
+    else {
+      const y = (i.options || []).find((v) => C(v) === String(l));
+      y && (l = O(y)), String(f.value) === I && (l = "");
+    }
+    const z = i.type === "single" ? "单选" : i.type === "multi" ? "多选" : "问答", g = !!String(l || "").trim() || !!String(f.other || "").trim(), $ = f.skipped || !g ? "（用户跳过本题）" : l;
+    let b = `- q${u} [${z}] ${$}`;
+    f.other && !f.skipped && (b += `（其他：${f.other}）`), a.push(b);
+  }), n && a.push(`- 其他意见：${n}`), a.join(`
+`);
 }
-function le(e, t, n) {
-	let r = ["【用户提交的问卷答案】"], i = new Set(y(e, t));
-	return e.forEach((e, n) => {
-		if (!i.has(n)) return;
-		let a = t[`q${n}`];
-		if (!a) return;
-		let o = a.value;
-		if (Array.isArray(o)) o = o.filter((e) => e !== f).map((t) => {
-			let n = (e.options || []).find((e) => p(e) === String(t));
-			return n ? m(n) : t;
-		}).join("、");
-		else {
-			let t = (e.options || []).find((e) => p(e) === String(o));
-			t && (o = m(t)), String(a.value) === f && (o = "");
-		}
-		let s = e.type === "single" ? "单选" : e.type === "multi" ? "多选" : "问答", c = !!String(o || "").trim() || !!String(a.other || "").trim(), l = `- q${n} [${s}] ${a.skipped || !c ? "（用户跳过本题）" : o}`;
-		a.other && !a.skipped && (l += `（其他：${a.other}）`), r.push(l);
-	}), n && r.push(`- 其他意见：${n}`), r.join("\n");
+function ce(e) {
+  return e.map((t, n) => {
+    const a = t.type === "single" ? "单选" : t.type === "multi" ? "多选" : "问答", r = (t.options || []).map(O).join("、");
+    return `${n + 1}. [${a}] ${t.title}${r ? "（" + r + "）" : ""}`;
+  }).join(`
+`);
 }
-function ue(e) {
-	return e.map((e, t) => {
-		let n = e.type === "single" ? "单选" : e.type === "multi" ? "多选" : "问答", r = (e.options || []).map(m).join("、");
-		return `${t + 1}. [${n}] ${e.title}${r ? "（" + r + "）" : ""}`;
-	}).join("\n");
+function le(e) {
+  const t = j().React, n = Tt(), { Input: a, Button: r } = n, i = a.TextArea, u = e.data || {}, f = Yt(u), l = Zt(u), z = te(u), g = f.questions || [], $ = f.title || "问卷", [b, y] = t.useState(!!z), [v, Z] = t.useState(""), [w, B] = t.useState(0), [L, st] = t.useState(() => {
+    const o = {};
+    return g.forEach((s, c) => {
+      o[`q${c}`] = { type: s.type, value: s.type === "multi" ? [] : "", other: "" };
+    }), o;
+  }), [tt, Ct] = t.useState(""), [E, M] = t.useState(!1), [Ot, W] = t.useState(""), [H, U] = t.useState(
+    () => /跳过了本次问卷/.test(z || "")
+  ), [it, ct] = t.useState(!1), [jt, D] = t.useState(!1), et = t.useRef(0);
+  t.useEffect(() => {
+    if (b) return;
+    let o = !0, s = 0, c = 0, d = 0;
+    et.current || (et.current = Date.now());
+    const k = (h) => {
+      !o || !h || !h.request_id || (Z(h.request_id), D(!1), c && (clearTimeout(c), c = 0), d && (clearTimeout(d), d = 0), ae(l, h.request_id, h.session_id || N()));
+    }, X = It(l), G = async () => {
+      if (!X) return !1;
+      const h = await se(X.request_id);
+      if (!o) return !0;
+      if (h.kind === "found") {
+        const q = h.data;
+        return q.tool_call_id && l && q.tool_call_id !== l ? (A(l), !1) : (k(q), !0);
+      }
+      return h.kind === "absent" && A(l), !1;
+    }, Ut = () => {
+      o && (s += 1, c = setTimeout(kt, s < 8 ? 700 : 5e3));
+    }, _t = () => {
+      ee(l, N()).then((h) => {
+        if (o) {
+          if (h) {
+            k(h);
+            return;
+          }
+          ne(l).then((q) => {
+            if (o) {
+              if (q) {
+                q.kind === "skipped" && !q.answers && U(!0), y(!0), A(l);
+                return;
+              }
+              Ut();
+            }
+          });
+        }
+      });
+    }, kt = () => {
+      if (o) {
+        if (!X) {
+          _t();
+          return;
+        }
+        G().then((h) => {
+          !o || h || _t();
+        });
+      }
+    };
+    return d = setTimeout(() => {
+      o && D(!0);
+    }, re), kt(), () => {
+      o = !1, c && clearTimeout(c), d && clearTimeout(d);
+    };
+  }, [b, l]);
+  const zt = async () => {
+    const o = N();
+    M(!0);
+    try {
+      const s = It(l);
+      if (s && o) {
+        const c = await fetch(
+          T("/question-modal/skip"),
+          {
+            method: "POST",
+            headers: R(),
+            body: JSON.stringify({ request_id: s.request_id, session_id: o })
+          }
+        );
+        if (!c.ok) throw new Error((await c.json().catch(() => ({}))).detail || "HTTP " + c.status);
+        A(l), U(!0), W("用户跳过了本次问卷。"), y(!0), D(!1), S("info", "已释放本次问卷，会话可继续");
+      } else if (o) {
+        const c = await fetch(
+          T("/question-modal/cancel-session") + "?session_id=" + encodeURIComponent(o),
+          { method: "POST", headers: R() }
+        );
+        if (!c.ok) throw new Error("HTTP " + c.status);
+        U(!0), W("已释放本会话的问卷阻塞（同时释放本会话其他未答问卷）。"), y(!0), D(!1), S("info", "已释放本会话的问卷，会话可继续");
+      } else
+        throw new Error("拿不到当前会话 id");
+    } catch (s) {
+      S("error", "释放失败: " + (s && s.message ? s.message : s));
+    } finally {
+      M(!1);
+    }
+  }, lt = K(g, L), P = lt.length, _ = w >= P, x = _ ? -1 : lt[w], m = x >= 0 ? g[x] : null, ut = `q${x}`, p = x >= 0 && L[ut] || { type: m && m.type || "text", value: m && m.type === "multi" ? [] : "", other: "" }, F = (o) => st((s) => {
+    const c = { ...o, skipped: !1 }, d = { ...s, [ut]: c }, k = K(g, d);
+    return g.forEach((X, G) => {
+      k.indexOf(G) === -1 && delete d[`q${G}`];
+    }), d;
+  });
+  t.useEffect(() => {
+    w > P && B(P);
+  }, [P, w]);
+  const dt = async (o, s) => {
+    M(!0);
+    try {
+      const c = await fetch(T(o), {
+        method: "POST",
+        headers: R(),
+        body: JSON.stringify(s)
+      });
+      if (!c.ok) {
+        const d = await c.json().catch(() => ({}));
+        throw new Error(d && d.detail || "HTTP " + c.status);
+      }
+    } finally {
+      M(!1);
+    }
+  }, ft = async () => {
+    if (!v) {
+      S("warning", "问卷尚未就绪，请稍候");
+      return;
+    }
+    try {
+      await dt("/question-modal/answer", {
+        request_id: v,
+        session_id: N(),
+        answers: L,
+        other: tt
+      }), S("success", "✓ 已提交答案"), A(l), W(ie(g, L, tt)), y(!0);
+    } catch (o) {
+      S("error", "提交失败: " + o.message);
+    }
+  }, $t = () => {
+    x < 0 || (st((o) => {
+      const s = { ...o };
+      s[`q${x}`] = {
+        type: (o[`q${x}`] || {}).type || m && m.type || "text",
+        value: ((o[`q${x}`] || {}).type || m && m.type) === "multi" ? [] : "",
+        other: "",
+        skipped: !0
+      };
+      const c = K(g, s);
+      return g.forEach((d, k) => {
+        c.indexOf(k) === -1 && delete s[`q${k}`];
+      }), s;
+    }), B((o) => o + 1));
+  }, Pt = async () => {
+    if (!v) {
+      S("warning", "问卷尚未就绪，请稍候");
+      return;
+    }
+    try {
+      await dt("/question-modal/skip", {
+        request_id: v,
+        session_id: N()
+      }), S("info", "已跳过问卷"), A(l), U(!0), W("用户跳过了本次问卷。"), y(!0);
+    } catch (o) {
+      S("error", "跳过失败: " + o.message);
+    }
+  }, nt = {
+    background: "var(--app-surface-raised, #fff)",
+    border: "1px solid var(--app-border, rgba(127,127,127,0.25))",
+    borderRadius: 12,
+    boxShadow: "var(--app-shadow-sm, 0 2px 8px rgba(0,0,0,0.08))",
+    padding: "16px 20px",
+    marginBottom: 8,
+    color: "var(--app-text, inherit)",
+    fontSize: 13
+  }, pt = {
+    marginBottom: 14,
+    paddingBottom: 12,
+    borderBottom: "1px solid var(--app-border-subtle, rgba(127,127,127,0.15))",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between"
+  }, mt = { flex: 1, display: "flex", alignItems: "center", gap: 8 }, rt = { fontSize: 14, fontWeight: 600, color: "var(--app-text, inherit)" }, ht = {
+    background: "var(--app-accent-soft, rgba(255,127,22,0.14))",
+    borderRadius: 14,
+    padding: "2px 10px",
+    fontSize: 12,
+    fontWeight: 600,
+    color: "var(--app-accent-text, var(--app-accent, #ff7f16))",
+    fontFamily: "SF Mono,Monaco,Consolas,monospace",
+    flex: "none"
+  }, Nt = { display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }, ot = {
+    fontSize: 12,
+    color: "var(--app-text-tertiary, inherit)",
+    fontWeight: 500
+  }, Bt = { display: "flex", flexDirection: "column", gap: 8 }, yt = {
+    display: "flex",
+    gap: 8,
+    justifyContent: "flex-end",
+    alignItems: "center",
+    paddingTop: 8,
+    borderTop: "1px solid var(--app-border-subtle, rgba(127,127,127,0.15))"
+  }, J = {
+    minWidth: 88,
+    height: 36,
+    fontSize: 13,
+    fontWeight: 500,
+    borderRadius: 8,
+    padding: "0 20px",
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    cursor: "pointer"
+  }, gt = {
+    ...J,
+    background: "transparent",
+    border: "1.5px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+    color: "var(--app-text-secondary, inherit)",
+    boxShadow: "none"
+  }, Lt = {
+    ...J,
+    border: "none",
+    background: "linear-gradient(135deg, var(--app-accent, #ff7f16) 0%, var(--app-accent-active, #d96a10) 100%)",
+    color: "var(--app-text-inverse, #fff)",
+    boxShadow: "0 2px 8px var(--app-accent-ring, rgba(255,127,22,0.2))"
+  }, bt = {
+    ...J,
+    width: "100%",
+    justifyContent: "flex-start",
+    minWidth: 0,
+    borderRadius: 8,
+    fontSize: 13,
+    padding: "6px 12px",
+    background: "var(--app-surface-subtle, rgba(127,127,127,0.05))",
+    border: "1px solid var(--app-border-subtle, rgba(127,127,127,0.18))",
+    color: "var(--app-text-secondary, inherit)",
+    // Prose-style options (a whole sentence) must wrap, not truncate.
+    whiteSpace: "normal",
+    textAlign: "left",
+    lineHeight: 1.45,
+    height: "auto",
+    minHeight: 32,
+    alignItems: "center"
+  }, Mt = {
+    // Restored to the original look (user asked for options to stay as-is).
+    ...bt,
+    border: "1.5px solid var(--app-accent, #ff7f16)",
+    color: "var(--app-accent, #ff7f16)",
+    background: "var(--app-accent-soft, rgba(255,127,22,0.08))"
+  }, Wt = { height: 32, fontSize: 13, borderRadius: 8 }, vt = { fontSize: 13, borderRadius: 8, lineHeight: 1.5 }, St = (o) => {
+    const s = C(o);
+    return p.type === "multi" ? Array.isArray(p.value) && p.value.indexOf(s) !== -1 : p.value === s;
+  }, xt = St(I), wt = (o) => {
+    if (b || E) return;
+    const s = C(o);
+    if (p.type === "multi") {
+      const c = Array.isArray(p.value) ? p.value.slice() : [], d = c.indexOf(s);
+      d === -1 ? c.push(s) : c.splice(d, 1), F({ ...p, value: c, other: c.indexOf(I) !== -1 ? p.other : "" });
+    } else
+      F({ ...p, value: s });
+  }, Et = (o, s, c, d) => t.createElement("button", {
+    key: d,
+    type: "button",
+    disabled: b || E,
+    style: s ? Mt : bt,
+    onClick: c
+  }, (s ? "✓ " : "") + o);
+  if (b)
+    return H && !it ? t.createElement(
+      "div",
+      {
+        style: {
+          ...nt,
+          padding: "8px 14px",
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 8
+        },
+        className: "qm-card",
+        "data-qm-card": "true"
+      },
+      t.createElement("span", {
+        style: { color: "var(--app-text-tertiary, inherit)", fontSize: 12 }
+      }, "›"),
+      t.createElement(
+        "span",
+        { style: { fontSize: 13, fontWeight: 500 } },
+        "✓ 已跳过问卷"
+      ),
+      t.createElement(
+        "span",
+        { style: { ...rt, flex: 1, opacity: 0.75 } },
+        $
+      ),
+      t.createElement("button", {
+        type: "button",
+        style: {
+          ...gt,
+          minWidth: 0,
+          height: 26,
+          padding: "0 10px",
+          fontSize: 12
+        },
+        onClick: () => ct(!0)
+      }, "展开")
+    ) : t.createElement(
+      "div",
+      { style: nt, className: "qm-card", "data-qm-card": "true" },
+      t.createElement(
+        "div",
+        { style: { ...pt, marginBottom: 8, paddingBottom: 8 } },
+        t.createElement(
+          "div",
+          { style: mt },
+          At(t),
+          t.createElement("span", { style: rt }, $)
+        ),
+        t.createElement(
+          "span",
+          { style: { ...ht, color: "var(--app-success-text, #389e0d)" } },
+          H ? "已跳过" : "已完成"
+        )
+      ),
+      t.createElement("pre", {
+        style: {
+          margin: 0,
+          padding: "10px 12px",
+          whiteSpace: "pre-wrap",
+          wordBreak: "break-word",
+          fontSize: 12,
+          lineHeight: 1.6,
+          background: "var(--app-surface-subtle, rgba(127,127,127,0.05))",
+          border: "1px solid var(--app-border-subtle, rgba(127,127,127,0.18))",
+          borderRadius: 6,
+          color: "var(--app-text-secondary, inherit)",
+          fontFamily: "SF Mono,Monaco,Consolas,monospace"
+        }
+      }, H ? `已跳过本次问卷。
+
+` + ce(g) : Ot || z),
+      H && it ? t.createElement(
+        "div",
+        { style: yt },
+        t.createElement("button", {
+          type: "button",
+          style: gt,
+          onClick: () => ct(!1)
+        }, "收起")
+      ) : null
+    );
+  let Q = null;
+  if (_)
+    Q = t.createElement(
+      "div",
+      null,
+      t.createElement("div", { style: ot }, "其他意见（可选）"),
+      t.createElement(i, {
+        rows: 2,
+        placeholder: "补充意见（可选）",
+        value: tt,
+        style: vt,
+        onChange: (o) => Ct(o.target.value)
+      })
+    );
+  else if (m && m.type === "text")
+    Q = t.createElement(
+      "div",
+      null,
+      t.createElement("div", { style: { ...ot, fontSize: 13, color: "var(--app-text, inherit)" } }, m.title),
+      t.createElement(i, {
+        rows: 2,
+        placeholder: "请输入...",
+        value: typeof p.value == "string" ? p.value : "",
+        style: vt,
+        onChange: (o) => F({ ...p, value: o.target.value, other: "" })
+      })
+    );
+  else if (m) {
+    const o = (m.options || []).map((s, c) => Et(O(s), St(s), () => wt(s), "o" + c));
+    o.push(Et("其他", xt, () => wt(I), "other")), xt && o.push(t.createElement(a, {
+      key: "oi",
+      placeholder: "请填写",
+      value: p.other,
+      style: { ...Wt, marginTop: 2 },
+      onChange: (s) => F({ ...p, other: s.target.value })
+    })), Q = t.createElement(
+      "div",
+      null,
+      t.createElement("div", { style: { ...ot, fontSize: 13, color: "var(--app-text, inherit)" } }, m.title),
+      t.createElement("div", { style: { ...Bt, marginTop: 8 } }, o)
+    );
+  }
+  const at = P + 1, Ht = _ ? at + "/" + at : w + 1 + "/" + at, V = {
+    ...J,
+    minWidth: 0,
+    height: 32,
+    padding: "0 14px",
+    fontSize: 12,
+    background: "transparent",
+    border: "1.5px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+    color: "var(--app-text-secondary, inherit)",
+    boxShadow: "none"
+  };
+  return t.createElement(
+    "div",
+    { style: nt, className: "qm-card", "data-qm-card": "true" },
+    t.createElement(
+      "div",
+      { style: pt },
+      t.createElement(
+        "div",
+        { style: mt },
+        At(t),
+        t.createElement("span", { style: rt }, $)
+      ),
+      t.createElement("span", { style: ht }, Ht)
+    ),
+    t.createElement("div", { style: Nt }, Q),
+    // ── self-rescue banner: cannot obtain this survey's request_id ──
+    jt && !b ? t.createElement(
+      "div",
+      {
+        style: {
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+          margin: "0 0 12px",
+          padding: "10px 12px",
+          borderRadius: 8,
+          background: "var(--app-warning-soft, rgba(250,173,20,0.12))",
+          border: "1px solid var(--app-warning-border, rgba(250,173,20,0.45))",
+          fontSize: 12,
+          lineHeight: 1.5,
+          color: "var(--app-text-secondary, inherit)"
+        }
+      },
+      t.createElement(
+        "span",
+        { style: { flex: 1, minWidth: 180 } },
+        "⚠️ 无法连接问卷服务（已持续 " + Math.max(1, Math.round((Date.now() - (et.current || Date.now())) / 1e3)) + " 秒）。问卷阻塞着整个会话，此时发新消息会报「A task is already running」。"
+      ),
+      t.createElement("button", {
+        type: "button",
+        disabled: E,
+        style: {
+          ...V,
+          height: 28,
+          padding: "0 12px",
+          borderColor: "var(--app-warning-border, rgba(250,173,20,0.6))"
+        },
+        onClick: zt,
+        title: "释放本次问卷的阻塞，让会话恢复可用"
+      }, "释放本次问卷")
+    ) : null,
+    t.createElement(
+      "div",
+      { style: yt },
+      t.createElement("button", {
+        type: "button",
+        disabled: w === 0 || E,
+        style: { ...V, marginRight: "auto", opacity: w === 0 ? 0.5 : 1 },
+        onClick: () => B((o) => o - 1)
+      }, "上一步"),
+      // Skip one question: advances without answering, survey stays open.
+      // On the 其他意见 page there is no question left, so this becomes
+      // "skip and submit" (the remaining answers are sent as-is).
+      t.createElement("button", {
+        type: "button",
+        disabled: E,
+        style: V,
+        onClick: _ ? ft : $t
+      }, _ ? "跳过并提交" : "跳过本题"),
+      // Skip the whole survey: resolves the tool call and collapses the card.
+      t.createElement("button", {
+        type: "button",
+        disabled: E,
+        style: V,
+        onClick: Pt
+      }, "跳过问卷"),
+      t.createElement("button", {
+        type: "button",
+        disabled: E,
+        style: Lt,
+        onClick: () => {
+          _ ? ft() : B((o) => o + 1);
+        }
+      }, _ ? "提交" : "下一步")
+    )
+  );
 }
-function C(e) {
-	let n = t().React, { Input: i, Button: a } = r(), s = i.TextArea, h = e.data || {}, g = ee(h), _ = te(h), v = ne(h), b = g.questions || [], S = g.title || "问卷", [C, w] = n.useState(!!v), [T, de] = n.useState(""), [E, D] = n.useState(0), [O, fe] = n.useState(() => {
-		let e = {};
-		return b.forEach((t, n) => {
-			e[`q${n}`] = {
-				type: t.type,
-				value: t.type === "multi" ? [] : "",
-				other: ""
-			};
-		}), e;
-	}), [k, pe] = n.useState(""), [A, j] = n.useState(!1), [me, M] = n.useState(""), [N, P] = n.useState(() => /跳过了本次问卷/.test(v || "")), [he, ge] = n.useState(!1), [_e, F] = n.useState(!1), ve = n.useRef(0);
-	n.useEffect(() => {
-		if (C) return;
-		let e = !0, t = 0, n = 0, r = 0;
-		ve.current ||= Date.now();
-		let i = (t) => {
-			e && t && t.request_id && (de(t.request_id), F(!1), n &&= (clearTimeout(n), 0), r &&= (clearTimeout(r), 0), oe(_, t.request_id, t.session_id || u()));
-		}, a = se(_), o = async () => {
-			if (!a) return !1;
-			let t = await ce(a.request_id);
-			if (!e) return !0;
-			if (t.kind === "found") {
-				let e = t.data;
-				return e.tool_call_id && _ && e.tool_call_id !== _ ? (x(_), !1) : (i(e), !0);
-			}
-			return t.kind === "absent" && x(_), !1;
-		}, s = () => {
-			e && (t += 1, n = setTimeout(l, t < 8 ? 700 : 5e3));
-		}, c = () => {
-			re(_, u()).then((t) => {
-				if (e) {
-					if (t) {
-						i(t);
-						return;
-					}
-					ie(_).then((t) => {
-						if (e) {
-							if (t) {
-								t.kind === "skipped" && !t.answers && P(!0), w(!0), x(_);
-								return;
-							}
-							s();
-						}
-					});
-				}
-			});
-		}, l = () => {
-			if (e) {
-				if (!a) {
-					c();
-					return;
-				}
-				o().then((t) => {
-					e && !t && c();
-				});
-			}
-		};
-		return r = setTimeout(() => {
-			e && F(!0);
-		}, ae), l(), () => {
-			e = !1, n && clearTimeout(n), r && clearTimeout(r);
-		};
-	}, [C, _]);
-	let ye = async () => {
-		let e = u();
-		j(!0);
-		try {
-			let t = se(_);
-			if (t && e) {
-				let n = await fetch(c("/question-modal/skip"), {
-					method: "POST",
-					headers: l(),
-					body: JSON.stringify({
-						request_id: t.request_id,
-						session_id: e
-					})
-				});
-				if (!n.ok) throw Error((await n.json().catch(() => ({}))).detail || "HTTP " + n.status);
-				x(_), P(!0), M("用户跳过了本次问卷。"), w(!0), F(!1), d("info", "已释放本次问卷，会话可继续");
-			} else if (e) {
-				let t = await fetch(c("/question-modal/cancel-session") + "?session_id=" + encodeURIComponent(e), {
-					method: "POST",
-					headers: l()
-				});
-				if (!t.ok) throw Error("HTTP " + t.status);
-				P(!0), M("已释放本会话的问卷阻塞（同时释放本会话其他未答问卷）。"), w(!0), F(!1), d("info", "已释放本会话的问卷，会话可继续");
-			} else throw Error("拿不到当前会话 id");
-		} catch (e) {
-			d("error", "释放失败: " + (e && e.message ? e.message : e));
-		} finally {
-			j(!1);
-		}
-	}, I = y(b, O), L = I.length, R = E >= L, z = R ? -1 : I[E], B = z >= 0 ? b[z] : null, be = `q${z}`, V = z >= 0 && O[be] || {
-		type: B && B.type || "text",
-		value: B && B.type === "multi" ? [] : "",
-		other: ""
-	}, H = (e) => fe((t) => {
-		let n = {
-			...e,
-			skipped: !1
-		}, r = {
-			...t,
-			[be]: n
-		}, i = y(b, r);
-		return b.forEach((e, t) => {
-			i.indexOf(t) === -1 && delete r[`q${t}`];
-		}), r;
-	});
-	n.useEffect(() => {
-		E > L && D(L);
-	}, [L, E]);
-	let U = async (e, t) => {
-		j(!0);
-		try {
-			let n = await fetch(c(e), {
-				method: "POST",
-				headers: l(),
-				body: JSON.stringify(t)
-			});
-			if (!n.ok) {
-				let e = await n.json().catch(() => ({}));
-				throw Error(e && e.detail || "HTTP " + n.status);
-			}
-		} finally {
-			j(!1);
-		}
-	}, W = async () => {
-		if (!T) {
-			d("warning", "问卷尚未就绪，请稍候");
-			return;
-		}
-		try {
-			await U("/question-modal/answer", {
-				request_id: T,
-				session_id: u(),
-				answers: O,
-				other: k
-			}), d("success", "✓ 已提交答案"), x(_), M(le(b, O, k)), w(!0);
-		} catch (e) {
-			d("error", "提交失败: " + e.message);
-		}
-	}, xe = () => {
-		z < 0 || (fe((e) => {
-			let t = { ...e };
-			t[`q${z}`] = {
-				type: (e[`q${z}`] || {}).type || B && B.type || "text",
-				value: ((e[`q${z}`] || {}).type || B && B.type) === "multi" ? [] : "",
-				other: "",
-				skipped: !0
-			};
-			let n = y(b, t);
-			return b.forEach((e, r) => {
-				n.indexOf(r) === -1 && delete t[`q${r}`];
-			}), t;
-		}), D((e) => e + 1));
-	}, Se = async () => {
-		if (!T) {
-			d("warning", "问卷尚未就绪，请稍候");
-			return;
-		}
-		try {
-			await U("/question-modal/skip", {
-				request_id: T,
-				session_id: u()
-			}), d("info", "已跳过问卷"), x(_), P(!0), M("用户跳过了本次问卷。"), w(!0);
-		} catch (e) {
-			d("error", "跳过失败: " + e.message);
-		}
-	}, G = {
-		background: "var(--app-surface-raised, #fff)",
-		border: "1px solid var(--app-border, rgba(127,127,127,0.25))",
-		borderRadius: 12,
-		boxShadow: "var(--app-shadow-sm, 0 2px 8px rgba(0,0,0,0.08))",
-		padding: "16px 20px",
-		marginBottom: 8,
-		color: "var(--app-text, inherit)",
-		fontSize: 13
-	}, K = {
-		marginBottom: 14,
-		paddingBottom: 12,
-		borderBottom: "1px solid var(--app-border-subtle, rgba(127,127,127,0.15))",
-		display: "flex",
-		alignItems: "center",
-		justifyContent: "space-between"
-	}, q = {
-		flex: 1,
-		display: "flex",
-		alignItems: "center",
-		gap: 8
-	}, J = {
-		fontSize: 14,
-		fontWeight: 600,
-		color: "var(--app-text, inherit)"
-	}, Ce = {
-		background: "var(--app-accent-soft, rgba(255,127,22,0.14))",
-		borderRadius: 14,
-		padding: "2px 10px",
-		fontSize: 12,
-		fontWeight: 600,
-		color: "var(--app-accent-text, var(--app-accent, #ff7f16))",
-		fontFamily: "SF Mono,Monaco,Consolas,monospace",
-		flex: "none"
-	}, we = {
-		display: "flex",
-		flexDirection: "column",
-		gap: 8,
-		marginBottom: 14
-	}, Y = {
-		fontSize: 12,
-		color: "var(--app-text-tertiary, inherit)",
-		fontWeight: 500
-	}, Te = {
-		display: "flex",
-		flexDirection: "column",
-		gap: 8
-	}, Ee = {
-		display: "flex",
-		gap: 8,
-		justifyContent: "flex-end",
-		alignItems: "center",
-		paddingTop: 8,
-		borderTop: "1px solid var(--app-border-subtle, rgba(127,127,127,0.15))"
-	}, X = {
-		minWidth: 88,
-		height: 36,
-		fontSize: 13,
-		fontWeight: 500,
-		borderRadius: 8,
-		padding: "0 20px",
-		display: "inline-flex",
-		alignItems: "center",
-		justifyContent: "center",
-		gap: 4,
-		cursor: "pointer"
-	}, De = {
-		...X,
-		background: "transparent",
-		border: "1.5px solid var(--app-border-strong, rgba(127,127,127,0.45))",
-		color: "var(--app-text-secondary, inherit)",
-		boxShadow: "none"
-	}, Oe = {
-		...X,
-		border: "none",
-		background: "linear-gradient(135deg, var(--app-accent, #ff7f16) 0%, var(--app-accent-active, #d96a10) 100%)",
-		color: "var(--app-text-inverse, #fff)",
-		boxShadow: "0 2px 8px var(--app-accent-ring, rgba(255,127,22,0.2))"
-	}, ke = {
-		...X,
-		width: "100%",
-		justifyContent: "flex-start",
-		minWidth: 0,
-		borderRadius: 8,
-		fontSize: 13,
-		padding: "6px 12px",
-		background: "var(--app-surface-subtle, rgba(127,127,127,0.05))",
-		border: "1px solid var(--app-border-subtle, rgba(127,127,127,0.18))",
-		color: "var(--app-text-secondary, inherit)",
-		whiteSpace: "normal",
-		textAlign: "left",
-		lineHeight: 1.45,
-		height: "auto",
-		minHeight: 32,
-		alignItems: "center"
-	}, Ae = {
-		...ke,
-		border: "1.5px solid var(--app-accent, #ff7f16)",
-		color: "var(--app-accent, #ff7f16)",
-		background: "var(--app-accent-soft, rgba(255,127,22,0.08))"
-	}, je = {
-		height: 32,
-		fontSize: 13,
-		borderRadius: 8
-	}, Me = {
-		fontSize: 13,
-		borderRadius: 8,
-		lineHeight: 1.5
-	}, Ne = (e) => {
-		let t = p(e);
-		return V.type === "multi" ? Array.isArray(V.value) && V.value.indexOf(t) !== -1 : V.value === t;
-	}, Pe = Ne(f), Fe = (e) => {
-		if (C || A) return;
-		let t = p(e);
-		if (V.type === "multi") {
-			let e = Array.isArray(V.value) ? V.value.slice() : [], n = e.indexOf(t);
-			n === -1 ? e.push(t) : e.splice(n, 1), H({
-				...V,
-				value: e,
-				other: e.indexOf(f) === -1 ? "" : V.other
-			});
-		} else H({
-			...V,
-			value: t
-		});
-	}, Ie = (e, t, r, i) => n.createElement("button", {
-		key: i,
-		type: "button",
-		disabled: C || A,
-		style: t ? Ae : ke,
-		onClick: r
-	}, (t ? "✓ " : "") + e);
-	if (C) return N && !he ? n.createElement("div", {
-		style: {
-			...G,
-			padding: "8px 14px",
-			marginBottom: 8,
-			display: "flex",
-			alignItems: "center",
-			gap: 8
-		},
-		className: "qm-card",
-		"data-qm-card": "true"
-	}, n.createElement("span", { style: {
-		color: "var(--app-text-tertiary, inherit)",
-		fontSize: 12
-	} }, "›"), n.createElement("span", { style: {
-		fontSize: 13,
-		fontWeight: 500
-	} }, "✓ 已跳过问卷"), n.createElement("span", { style: {
-		...J,
-		flex: 1,
-		opacity: .75
-	} }, S), n.createElement("button", {
-		type: "button",
-		style: {
-			...De,
-			minWidth: 0,
-			height: 26,
-			padding: "0 10px",
-			fontSize: 12
-		},
-		onClick: () => ge(!0)
-	}, "展开")) : n.createElement("div", {
-		style: G,
-		className: "qm-card",
-		"data-qm-card": "true"
-	}, n.createElement("div", { style: {
-		...K,
-		marginBottom: 8,
-		paddingBottom: 8
-	} }, n.createElement("div", { style: q }, o(n), n.createElement("span", { style: J }, S)), n.createElement("span", { style: {
-		...Ce,
-		color: "var(--app-success-text, #389e0d)"
-	} }, N ? "已跳过" : "已完成")), n.createElement("pre", { style: {
-		margin: 0,
-		padding: "10px 12px",
-		whiteSpace: "pre-wrap",
-		wordBreak: "break-word",
-		fontSize: 12,
-		lineHeight: 1.6,
-		background: "var(--app-surface-subtle, rgba(127,127,127,0.05))",
-		border: "1px solid var(--app-border-subtle, rgba(127,127,127,0.18))",
-		borderRadius: 6,
-		color: "var(--app-text-secondary, inherit)",
-		fontFamily: "SF Mono,Monaco,Consolas,monospace"
-	} }, N ? "已跳过本次问卷。\n\n" + ue(b) : me || v), N && he ? n.createElement("div", { style: Ee }, n.createElement("button", {
-		type: "button",
-		style: De,
-		onClick: () => ge(!1)
-	}, "收起")) : null);
-	let Z = null;
-	if (R) Z = n.createElement("div", null, n.createElement("div", { style: Y }, "其他意见（可选）"), n.createElement(s, {
-		rows: 2,
-		placeholder: "补充意见（可选）",
-		value: k,
-		style: Me,
-		onChange: (e) => pe(e.target.value)
-	}));
-	else if (B && B.type === "text") Z = n.createElement("div", null, n.createElement("div", { style: {
-		...Y,
-		fontSize: 13,
-		color: "var(--app-text, inherit)"
-	} }, B.title), n.createElement(s, {
-		rows: 2,
-		placeholder: "请输入...",
-		value: typeof V.value == "string" ? V.value : "",
-		style: Me,
-		onChange: (e) => H({
-			...V,
-			value: e.target.value,
-			other: ""
-		})
-	}));
-	else if (B) {
-		let e = (B.options || []).map((e, t) => Ie(m(e), Ne(e), () => Fe(e), "o" + t));
-		e.push(Ie("其他", Pe, () => Fe(f), "other")), Pe && e.push(n.createElement(i, {
-			key: "oi",
-			placeholder: "请填写",
-			value: V.other,
-			style: {
-				...je,
-				marginTop: 2
-			},
-			onChange: (e) => H({
-				...V,
-				other: e.target.value
-			})
-		})), Z = n.createElement("div", null, n.createElement("div", { style: {
-			...Y,
-			fontSize: 13,
-			color: "var(--app-text, inherit)"
-		} }, B.title), n.createElement("div", { style: {
-			...Te,
-			marginTop: 8
-		} }, e));
-	}
-	let Q = L + 1, Le = R ? Q + "/" + Q : E + 1 + "/" + Q, $ = {
-		...X,
-		minWidth: 0,
-		height: 32,
-		padding: "0 14px",
-		fontSize: 12,
-		background: "transparent",
-		border: "1.5px solid var(--app-border-strong, rgba(127,127,127,0.45))",
-		color: "var(--app-text-secondary, inherit)",
-		boxShadow: "none"
-	};
-	return n.createElement("div", {
-		style: G,
-		className: "qm-card",
-		"data-qm-card": "true"
-	}, n.createElement("div", { style: K }, n.createElement("div", { style: q }, o(n), n.createElement("span", { style: J }, S)), n.createElement("span", { style: Ce }, Le)), n.createElement("div", { style: we }, Z), _e && !C ? n.createElement("div", { style: {
-		display: "flex",
-		alignItems: "center",
-		gap: 10,
-		flexWrap: "wrap",
-		margin: "0 0 12px",
-		padding: "10px 12px",
-		borderRadius: 8,
-		background: "var(--app-warning-soft, rgba(250,173,20,0.12))",
-		border: "1px solid var(--app-warning-border, rgba(250,173,20,0.45))",
-		fontSize: 12,
-		lineHeight: 1.5,
-		color: "var(--app-text-secondary, inherit)"
-	} }, n.createElement("span", { style: {
-		flex: 1,
-		minWidth: 180
-	} }, "⚠️ 无法连接问卷服务（已持续 " + Math.max(1, Math.round((Date.now() - (ve.current || Date.now())) / 1e3)) + " 秒）。问卷阻塞着整个会话，此时发新消息会报「A task is already running」。"), n.createElement("button", {
-		type: "button",
-		disabled: A,
-		style: {
-			...$,
-			height: 28,
-			padding: "0 12px",
-			borderColor: "var(--app-warning-border, rgba(250,173,20,0.6))"
-		},
-		onClick: ye,
-		title: "释放本次问卷的阻塞，让会话恢复可用"
-	}, "释放本次问卷")) : null, n.createElement("div", { style: Ee }, n.createElement("button", {
-		type: "button",
-		disabled: E === 0 || A,
-		style: {
-			...$,
-			marginRight: "auto",
-			opacity: E === 0 ? .5 : 1
-		},
-		onClick: () => D((e) => e - 1)
-	}, "上一步"), n.createElement("button", {
-		type: "button",
-		disabled: A,
-		style: $,
-		onClick: R ? W : xe
-	}, R ? "跳过并提交" : "跳过本题"), n.createElement("button", {
-		type: "button",
-		disabled: A,
-		style: $,
-		onClick: Se
-	}, "跳过问卷"), n.createElement("button", {
-		type: "button",
-		disabled: A,
-		style: Oe,
-		onClick: () => {
-			R ? W() : D((e) => e + 1);
-		}
-	}, R ? "提交" : "下一步")));
-}
-function w() {
-	let t = n();
-	if (!t || typeof t.toolRender != "function") return !1;
-	try {
-		return s(), t.toolRender("question-modal", e, C), console.log("[question-modal] registered via chat.toolRender for", e), !0;
-	} catch (e) {
-		return console.error("[question-modal] toolRender failed:", e), !1;
-	}
+function ue() {
+  const e = Ft();
+  if (!e || typeof e.toolRender != "function") return !1;
+  try {
+    return Vt(), e.toolRender(Dt, qt, le), console.log("[question-modal] registered via chat.toolRender for", qt), !0;
+  } catch (t) {
+    return console.error("[question-modal] toolRender failed:", t), !1;
+  }
 }
 (function e(t) {
-	if (!w()) {
-		if (t > 40) {
-			console.warn("[question-modal] chat.toolRender never available");
-			return;
-		}
-		setTimeout(() => e(t + 1), 500);
-	}
-})(0), console.log("[question-modal] frontend loaded (v5 — native toolRender, approval styling)");
-//#endregion
+  if (!ue()) {
+    if (t > 40) {
+      console.warn("[question-modal] chat.toolRender never available");
+      return;
+    }
+    setTimeout(() => e(t + 1), 500);
+  }
+})(0);
+console.log("[question-modal] frontend loaded (v5 — native toolRender, approval styling)");
