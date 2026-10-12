@@ -1,22 +1,22 @@
-const Dt = "question-modal", qt = "question_modal";
-function j() {
+const Kt = "question-modal", Rt = "question_modal";
+function z() {
   var e;
   return ((e = window.QwenPaw) == null ? void 0 : e.host) || {};
 }
-function Ft() {
+function Yt() {
   var e;
   return ((e = window.QwenPaw) == null ? void 0 : e.chat) || null;
 }
-function Tt() {
-  return j().antd || {};
+function $t() {
+  return z().antd || {};
 }
-function Jt() {
-  return j().antdIcons || {};
+function Zt() {
+  return z().antdIcons || {};
 }
-const Qt = ["FormOutlined", "ProfileOutlined", "CheckSquareOutlined"];
-function At(e) {
-  const t = Jt();
-  for (const n of Qt) {
+const te = ["FormOutlined", "ProfileOutlined", "CheckSquareOutlined"];
+function Tt(e) {
+  const t = Zt();
+  for (const n of te) {
     const a = t[n];
     if (a)
       return e.createElement(a, {
@@ -25,7 +25,7 @@ function At(e) {
   }
   return e.createElement("span", { style: { color: "var(--app-accent, #ff7f16)" } }, "📋");
 }
-function Vt() {
+function ee() {
   try {
     const e = "question-modal-styles";
     if (document.getElementById(e)) return;
@@ -42,18 +42,18 @@ function Vt() {
   } catch {
   }
 }
-function T(e) {
+function C(e) {
   try {
-    const t = j();
+    const t = z();
     if (typeof t.getApiUrl == "function") return t.getApiUrl(e);
   } catch {
   }
   return "/api" + e;
 }
-function R() {
+function O() {
   const e = { "Content-Type": "application/json" };
   try {
-    const t = j(), n = typeof t.getApiToken == "function" ? t.getApiToken() : "";
+    const t = z(), n = typeof t.getApiToken == "function" ? t.getApiToken() : "";
     n && (e.Authorization = "Bearer " + n);
     const a = typeof t.getSelectedAgentId == "function" ? t.getSelectedAgentId() : "";
     a && (e["X-Agent-Id"] = a);
@@ -61,9 +61,9 @@ function R() {
   }
   return e;
 }
-function N() {
+function L() {
   try {
-    const e = j();
+    const e = z();
     if (typeof e.getCurrentSessionId == "function") return e.getCurrentSessionId() || "";
   } catch {
   }
@@ -71,7 +71,7 @@ function N() {
 }
 function S(e, t) {
   try {
-    const n = Tt().message;
+    const n = $t().message;
     if (n && typeof n[e] == "function") {
       n[e](t);
       return;
@@ -80,41 +80,41 @@ function S(e, t) {
   }
   console.log("[question-modal]", e, t);
 }
-const I = "__other__";
-function C(e) {
+const T = "__other__";
+function $(e) {
   return String(e && typeof e == "object" ? e.value ?? e.label ?? "" : e);
 }
-function O(e) {
+function j(e) {
   return String(e && typeof e == "object" ? e.label ?? e.value ?? "" : e);
 }
-function Xt(e, t) {
-  const n = /* @__PURE__ */ new Set(), a = (i) => {
-    i != null && i !== "" && n.add(String(i));
+function ne(e, t) {
+  const n = /* @__PURE__ */ new Set(), a = (s) => {
+    s != null && s !== "" && n.add(String(s));
   }, r = e.options || [];
   if (e.type === "multi")
-    (Array.isArray(t.value) ? t.value : []).forEach((u) => {
-      a(u);
-      const f = r.find((l) => C(l) === String(u));
-      f && a(O(f)), String(u) === I && t.other && a(t.other);
+    (Array.isArray(t.value) ? t.value : []).forEach((d) => {
+      a(d);
+      const u = r.find((c) => $(c) === String(d));
+      u && a(j(u)), String(d) === T && t.other && a(t.other);
     });
   else {
     a(t.value);
-    const i = r.find((u) => C(u) === String(t.value));
-    i && a(O(i)), String(t.value) === I && t.other && a(t.other);
+    const s = r.find((d) => $(d) === String(t.value));
+    s && a(j(s)), String(t.value) === T && t.other && a(t.other);
   }
   return n;
 }
-function Gt(e, t) {
+function re(e, t) {
   return (Array.isArray(e) ? e : [e]).some((a) => {
     const r = String(a);
     if (r.startsWith("=")) return t.has(r.slice(1));
     if (t.has(r)) return !0;
-    for (const i of Array.from(t))
-      if (i && (i.indexOf(r) !== -1 || r.indexOf(i) !== -1)) return !0;
+    for (const s of Array.from(t))
+      if (s && (s.indexOf(r) !== -1 || r.indexOf(s) !== -1)) return !0;
     return !1;
   });
 }
-function Kt(e, t) {
+function jt(e, t) {
   const n = /^q(\d+)$/i.exec(e.trim());
   if (n) {
     const r = parseInt(n[1], 10);
@@ -122,27 +122,27 @@ function Kt(e, t) {
   }
   return t.findIndex((r) => (r.title || "").trim() === e.trim());
 }
-function Rt(e, t, n) {
+function zt(e, t, n) {
   const a = t[e], r = a && a.showIf;
   if (!r || typeof r != "object" || !Object.keys(r).length) return !0;
-  for (const i of Object.keys(r)) {
-    const u = Kt(i, t);
-    if (u < 0) continue;
-    const f = t[u];
-    if (!f) continue;
-    if (f.showIf && !Rt(u, t, n)) return !1;
-    const l = n[`q${u}`];
-    if (!l || !Gt(r[i], Xt(f, l))) return !1;
+  for (const s of Object.keys(r)) {
+    const d = jt(s, t);
+    if (d < 0) continue;
+    const u = t[d];
+    if (!u) continue;
+    if (u.showIf && !zt(d, t, n)) return !1;
+    const c = n[`q${d}`];
+    if (!c || !re(r[s], ne(u, c))) return !1;
   }
   return !0;
 }
-function K(e, t) {
+function Z(e, t) {
   const n = [];
   return e.forEach((a, r) => {
-    Rt(r, e, t) && n.push(r);
+    zt(r, e, t) && n.push(r);
   }), n;
 }
-function Yt(e) {
+function oe(e) {
   try {
     const t = e && e.content || [], n = t[0] && t[0].data && t[0].data.arguments;
     return n ? typeof n == "string" ? JSON.parse(n) : n : {};
@@ -150,7 +150,7 @@ function Yt(e) {
     return {};
   }
 }
-function Zt(e) {
+function ae(e) {
   try {
     const t = e && e.content || [], n = t[0] && t[0].data;
     return n && n.call_id || "";
@@ -158,7 +158,7 @@ function Zt(e) {
     return "";
   }
 }
-function te(e) {
+function se(e) {
   try {
     const t = e && e.content || [], n = t[0] && t[0].data, a = n && n.output;
     return a ? typeof a == "string" ? a : Array.isArray(a) ? a.map((r) => r && (r.text || r.content) || "").join(`
@@ -167,13 +167,32 @@ function te(e) {
     return "";
   }
 }
-async function ee(e, t) {
+function ie(e) {
+  return e ? /\[scroll folded\]/.test(e) : !1;
+}
+function ce(e, t) {
+  if (!t) return "";
+  if (t.kind === "skipped" && !t.answers)
+    return `已跳过本次问卷。
+
+` + ct(e);
+  const n = t && t.answers || {}, a = ["【用户提交的问卷答案】"];
+  return Object.keys(n).forEach((r) => {
+    const s = n[r];
+    if (!s || typeof s != "object") return;
+    const d = jt(r, e), u = d >= 0 ? e[d] : null, c = u ? u.type === "single" ? "单选" : u.type === "multi" ? "多选" : "问答" : "问答", w = u ? u.title : r;
+    let p = s.value;
+    Array.isArray(p) && (p = p.join("、")), s.other && (p = (p ? p + "、" : "") + s.other), s.skipped ? a.push(`- ${r} [${c}] ${w}（用户跳过本题）`) : a.push(`- ${r} [${c}] ${w}：${p === "" || p == null ? "（空）" : p}`);
+  }), t.other && a.push("", `其他意见：${t.other}`), a.join(`
+`);
+}
+async function le(e, t) {
   try {
     const n = new URLSearchParams();
     e && n.set("tool_call_id", e), t && n.set("session_id", t);
     const a = await fetch(
-      T("/question-modal/resolve") + "?" + n.toString(),
-      { headers: R() }
+      C("/question-modal/resolve") + "?" + n.toString(),
+      { headers: O() }
     );
     if (!a.ok) return null;
     const r = await a.json();
@@ -182,12 +201,12 @@ async function ee(e, t) {
     return null;
   }
 }
-async function ne(e) {
+async function Ct(e) {
   if (!e) return null;
   try {
     const t = await fetch(
-      T("/question-modal/result") + "?tool_call_id=" + encodeURIComponent(e),
-      { headers: R() }
+      C("/question-modal/result") + "?tool_call_id=" + encodeURIComponent(e),
+      { headers: O() }
     );
     if (!t.ok) return null;
     const n = await t.json();
@@ -196,65 +215,65 @@ async function ne(e) {
     return null;
   }
 }
-const Y = "qm:v1:reqid:", re = 6e4;
-function A(e) {
+const tt = "qm:v1:reqid:", ue = 6e4;
+function R(e) {
   if (e)
     try {
-      localStorage.removeItem(Y + e);
+      localStorage.removeItem(tt + e);
     } catch {
     }
 }
-function oe() {
+function de() {
   try {
     const e = [];
     for (let r = 0; r < localStorage.length; r++) {
-      const i = localStorage.key(r);
-      i && i.indexOf(Y) === 0 && e.push(i);
+      const s = localStorage.key(r);
+      s && s.indexOf(tt) === 0 && e.push(s);
     }
     const t = 7 * 24 * 3600 * 1e3, n = [];
     e.forEach((r) => {
-      let i = null;
+      let s = null;
       try {
-        i = JSON.parse(localStorage.getItem(r) || "null");
+        s = JSON.parse(localStorage.getItem(r) || "null");
       } catch {
-        i = null;
+        s = null;
       }
-      !i || !i.request_id || !i.ts || Date.now() - i.ts > t ? localStorage.removeItem(r) : n.push(r);
+      !s || !s.request_id || !s.ts || Date.now() - s.ts > t ? localStorage.removeItem(r) : n.push(r);
     });
     const a = 50;
     if (n.length <= a) return;
-    n.map((r) => ({ k: r, ts: (JSON.parse(localStorage.getItem(r) || "{}") || {}).ts || 0 })).sort((r, i) => r.ts - i.ts).slice(0, n.length - a).forEach((r) => localStorage.removeItem(r.k));
+    n.map((r) => ({ k: r, ts: (JSON.parse(localStorage.getItem(r) || "{}") || {}).ts || 0 })).sort((r, s) => r.ts - s.ts).slice(0, n.length - a).forEach((r) => localStorage.removeItem(r.k));
   } catch {
   }
 }
-function ae(e, t, n) {
+function fe(e, t, n) {
   if (!(!e || !t))
     try {
-      localStorage.setItem(Y + e, JSON.stringify({
+      localStorage.setItem(tt + e, JSON.stringify({
         request_id: t,
         session_id: n || "",
         tool_call_id: e,
         ts: Date.now()
-      })), oe();
+      })), de();
     } catch {
     }
 }
-function It(e) {
+function Ot(e) {
   if (!e) return null;
   try {
-    const t = localStorage.getItem(Y + e);
+    const t = localStorage.getItem(tt + e);
     if (!t) return null;
     const n = JSON.parse(t);
-    return !n || !n.request_id || n.tool_call_id !== e ? (A(e), null) : n;
+    return !n || !n.request_id || n.tool_call_id !== e ? (R(e), null) : n;
   } catch {
     return null;
   }
 }
-async function se(e) {
+async function pe(e) {
   try {
     const t = await fetch(
-      T("/question-modal/resolve") + "?request_id=" + encodeURIComponent(e),
-      { headers: R() }
+      C("/question-modal/resolve") + "?request_id=" + encodeURIComponent(e),
+      { headers: O() }
     );
     if (!t.ok) return { kind: "error" };
     const n = await t.json();
@@ -263,193 +282,201 @@ async function se(e) {
     return { kind: "error" };
   }
 }
-function ie(e, t, n) {
-  const a = ["【用户提交的问卷答案】"], r = new Set(K(e, t));
-  return e.forEach((i, u) => {
-    if (!r.has(u)) return;
-    const f = t[`q${u}`];
-    if (!f) return;
-    let l = f.value;
-    if (Array.isArray(l))
-      l = l.filter((y) => y !== I).map((y) => {
-        const v = (i.options || []).find((Z) => C(Z) === String(y));
-        return v ? O(v) : y;
+function he(e, t, n) {
+  const a = ["【用户提交的问卷答案】"], r = new Set(Z(e, t));
+  return e.forEach((s, d) => {
+    if (!r.has(d)) return;
+    const u = t[`q${d}`];
+    if (!u) return;
+    let c = u.value;
+    if (Array.isArray(c))
+      c = c.filter((b) => b !== T).map((b) => {
+        const v = (s.options || []).find((E) => $(E) === String(b));
+        return v ? j(v) : b;
       }).join("、");
     else {
-      const y = (i.options || []).find((v) => C(v) === String(l));
-      y && (l = O(y)), String(f.value) === I && (l = "");
+      const b = (s.options || []).find((v) => $(v) === String(c));
+      b && (c = j(b)), String(u.value) === T && (c = "");
     }
-    const z = i.type === "single" ? "单选" : i.type === "multi" ? "多选" : "问答", g = !!String(l || "").trim() || !!String(f.other || "").trim(), $ = f.skipped || !g ? "（用户跳过本题）" : l;
-    let b = `- q${u} [${z}] ${$}`;
-    f.other && !f.skipped && (b += `（其他：${f.other}）`), a.push(b);
+    const w = s.type === "single" ? "单选" : s.type === "multi" ? "多选" : "问答", p = !!String(c || "").trim() || !!String(u.other || "").trim(), P = u.skipped || !p ? "（用户跳过本题）" : c;
+    let y = `- q${d} [${w}] ${P}`;
+    u.other && !u.skipped && (y += `（其他：${u.other}）`), a.push(y);
   }), n && a.push(`- 其他意见：${n}`), a.join(`
 `);
 }
-function ce(e) {
+function ct(e) {
   return e.map((t, n) => {
-    const a = t.type === "single" ? "单选" : t.type === "multi" ? "多选" : "问答", r = (t.options || []).map(O).join("、");
+    const a = t.type === "single" ? "单选" : t.type === "multi" ? "多选" : "问答", r = (t.options || []).map(j).join("、");
     return `${n + 1}. [${a}] ${t.title}${r ? "（" + r + "）" : ""}`;
   }).join(`
 `);
 }
-function le(e) {
-  const t = j().React, n = Tt(), { Input: a, Button: r } = n, i = a.TextArea, u = e.data || {}, f = Yt(u), l = Zt(u), z = te(u), g = f.questions || [], $ = f.title || "问卷", [b, y] = t.useState(!!z), [v, Z] = t.useState(""), [w, B] = t.useState(0), [L, st] = t.useState(() => {
+function ye(e) {
+  const t = z().React, n = $t(), { Input: a, Button: r } = n, s = a.TextArea, d = e.data || {}, u = oe(d), c = ae(d), w = se(d), p = ie(w), P = p ? "" : w, y = u.questions || [], b = u.title || "问卷", [v, E] = t.useState(!!P || p), [et, Pt] = t.useState(""), [M, Nt] = t.useState(""), [_, W] = t.useState(0), [H, lt] = t.useState(() => {
     const o = {};
-    return g.forEach((s, c) => {
-      o[`q${c}`] = { type: s.type, value: s.type === "multi" ? [] : "", other: "" };
+    return y.forEach((i, l) => {
+      o[`q${l}`] = { type: i.type, value: i.type === "multi" ? [] : "", other: "" };
     }), o;
-  }), [tt, Ct] = t.useState(""), [E, M] = t.useState(!1), [Ot, W] = t.useState(""), [H, U] = t.useState(
-    () => /跳过了本次问卷/.test(z || "")
-  ), [it, ct] = t.useState(!1), [jt, D] = t.useState(!1), et = t.useRef(0);
+  }), [nt, Bt] = t.useState(""), [k, U] = t.useState(!1), [Lt, D] = t.useState(""), [F, N] = t.useState(
+    () => /跳过了本次问卷/.test(P || "")
+  ), [ut, dt] = t.useState(!1), [Mt, J] = t.useState(!1), rt = t.useRef(0);
   t.useEffect(() => {
-    if (b) return;
-    let o = !0, s = 0, c = 0, d = 0;
-    et.current || (et.current = Date.now());
-    const k = (h) => {
-      !o || !h || !h.request_id || (Z(h.request_id), D(!1), c && (clearTimeout(c), c = 0), d && (clearTimeout(d), d = 0), ae(l, h.request_id, h.session_id || N()));
-    }, X = It(l), G = async () => {
-      if (!X) return !1;
-      const h = await se(X.request_id);
+    if (!p || et) return;
+    let o = !0;
+    return Ct(c).then((i) => {
+      !o || !i || (i.kind === "skipped" && !i.answers && N(!0), Pt(ce(y, i)));
+    }), () => {
+      o = !1;
+    };
+  }, [p, c, et]), t.useEffect(() => {
+    if (v) return;
+    let o = !0, i = 0, l = 0, f = 0;
+    rt.current || (rt.current = Date.now());
+    const A = (m) => {
+      !o || !m || !m.request_id || (Nt(m.request_id), J(!1), l && (clearTimeout(l), l = 0), f && (clearTimeout(f), f = 0), fe(c, m.request_id, m.session_id || L()));
+    }, K = Ot(c), Y = async () => {
+      if (!K) return !1;
+      const m = await pe(K.request_id);
       if (!o) return !0;
-      if (h.kind === "found") {
-        const q = h.data;
-        return q.tool_call_id && l && q.tool_call_id !== l ? (A(l), !1) : (k(q), !0);
+      if (m.kind === "found") {
+        const I = m.data;
+        return I.tool_call_id && c && I.tool_call_id !== c ? (R(c), !1) : (A(I), !0);
       }
-      return h.kind === "absent" && A(l), !1;
-    }, Ut = () => {
-      o && (s += 1, c = setTimeout(kt, s < 8 ? 700 : 5e3));
-    }, _t = () => {
-      ee(l, N()).then((h) => {
+      return m.kind === "absent" && R(c), !1;
+    }, Gt = () => {
+      o && (i += 1, l = setTimeout(It, i < 8 ? 700 : 5e3));
+    }, At = () => {
+      le(c, L()).then((m) => {
         if (o) {
-          if (h) {
-            k(h);
+          if (m) {
+            A(m);
             return;
           }
-          ne(l).then((q) => {
+          Ct(c).then((I) => {
             if (o) {
-              if (q) {
-                q.kind === "skipped" && !q.answers && U(!0), y(!0), A(l);
+              if (I) {
+                I.kind === "skipped" && !I.answers && N(!0), E(!0), R(c);
                 return;
               }
-              Ut();
+              Gt();
             }
           });
         }
       });
-    }, kt = () => {
+    }, It = () => {
       if (o) {
-        if (!X) {
-          _t();
+        if (!K) {
+          At();
           return;
         }
-        G().then((h) => {
-          !o || h || _t();
+        Y().then((m) => {
+          !o || m || At();
         });
       }
     };
-    return d = setTimeout(() => {
-      o && D(!0);
-    }, re), kt(), () => {
-      o = !1, c && clearTimeout(c), d && clearTimeout(d);
+    return f = setTimeout(() => {
+      o && J(!0);
+    }, ue), It(), () => {
+      o = !1, l && clearTimeout(l), f && clearTimeout(f);
     };
-  }, [b, l]);
-  const zt = async () => {
-    const o = N();
-    M(!0);
+  }, [v, c]);
+  const Wt = async () => {
+    const o = L();
+    U(!0);
     try {
-      const s = It(l);
-      if (s && o) {
-        const c = await fetch(
-          T("/question-modal/skip"),
+      const i = Ot(c);
+      if (i && o) {
+        const l = await fetch(
+          C("/question-modal/skip"),
           {
             method: "POST",
-            headers: R(),
-            body: JSON.stringify({ request_id: s.request_id, session_id: o })
+            headers: O(),
+            body: JSON.stringify({ request_id: i.request_id, session_id: o })
           }
         );
-        if (!c.ok) throw new Error((await c.json().catch(() => ({}))).detail || "HTTP " + c.status);
-        A(l), U(!0), W("用户跳过了本次问卷。"), y(!0), D(!1), S("info", "已释放本次问卷，会话可继续");
+        if (!l.ok) throw new Error((await l.json().catch(() => ({}))).detail || "HTTP " + l.status);
+        R(c), N(!0), D("用户跳过了本次问卷。"), E(!0), J(!1), S("info", "已释放本次问卷，会话可继续");
       } else if (o) {
-        const c = await fetch(
-          T("/question-modal/cancel-session") + "?session_id=" + encodeURIComponent(o),
-          { method: "POST", headers: R() }
+        const l = await fetch(
+          C("/question-modal/cancel-session") + "?session_id=" + encodeURIComponent(o),
+          { method: "POST", headers: O() }
         );
-        if (!c.ok) throw new Error("HTTP " + c.status);
-        U(!0), W("已释放本会话的问卷阻塞（同时释放本会话其他未答问卷）。"), y(!0), D(!1), S("info", "已释放本会话的问卷，会话可继续");
+        if (!l.ok) throw new Error("HTTP " + l.status);
+        N(!0), D("已释放本会话的问卷阻塞（同时释放本会话其他未答问卷）。"), E(!0), J(!1), S("info", "已释放本会话的问卷，会话可继续");
       } else
         throw new Error("拿不到当前会话 id");
-    } catch (s) {
-      S("error", "释放失败: " + (s && s.message ? s.message : s));
+    } catch (i) {
+      S("error", "释放失败: " + (i && i.message ? i.message : i));
     } finally {
-      M(!1);
+      U(!1);
     }
-  }, lt = K(g, L), P = lt.length, _ = w >= P, x = _ ? -1 : lt[w], m = x >= 0 ? g[x] : null, ut = `q${x}`, p = x >= 0 && L[ut] || { type: m && m.type || "text", value: m && m.type === "multi" ? [] : "", other: "" }, F = (o) => st((s) => {
-    const c = { ...o, skipped: !1 }, d = { ...s, [ut]: c }, k = K(g, d);
-    return g.forEach((X, G) => {
-      k.indexOf(G) === -1 && delete d[`q${G}`];
-    }), d;
+  }, ft = Z(y, H), B = ft.length, q = _ >= B, x = q ? -1 : ft[_], g = x >= 0 ? y[x] : null, pt = `q${x}`, h = x >= 0 && H[pt] || { type: g && g.type || "text", value: g && g.type === "multi" ? [] : "", other: "" }, Q = (o) => lt((i) => {
+    const l = { ...o, skipped: !1 }, f = { ...i, [pt]: l }, A = Z(y, f);
+    return y.forEach((K, Y) => {
+      A.indexOf(Y) === -1 && delete f[`q${Y}`];
+    }), f;
   });
   t.useEffect(() => {
-    w > P && B(P);
-  }, [P, w]);
-  const dt = async (o, s) => {
-    M(!0);
+    _ > B && W(B);
+  }, [B, _]);
+  const ht = async (o, i) => {
+    U(!0);
     try {
-      const c = await fetch(T(o), {
+      const l = await fetch(C(o), {
         method: "POST",
-        headers: R(),
-        body: JSON.stringify(s)
+        headers: O(),
+        body: JSON.stringify(i)
       });
-      if (!c.ok) {
-        const d = await c.json().catch(() => ({}));
-        throw new Error(d && d.detail || "HTTP " + c.status);
+      if (!l.ok) {
+        const f = await l.json().catch(() => ({}));
+        throw new Error(f && f.detail || "HTTP " + l.status);
       }
     } finally {
-      M(!1);
+      U(!1);
     }
-  }, ft = async () => {
-    if (!v) {
+  }, yt = async () => {
+    if (!M) {
       S("warning", "问卷尚未就绪，请稍候");
       return;
     }
     try {
-      await dt("/question-modal/answer", {
-        request_id: v,
-        session_id: N(),
-        answers: L,
-        other: tt
-      }), S("success", "✓ 已提交答案"), A(l), W(ie(g, L, tt)), y(!0);
+      await ht("/question-modal/answer", {
+        request_id: M,
+        session_id: L(),
+        answers: H,
+        other: nt
+      }), S("success", "✓ 已提交答案"), R(c), D(he(y, H, nt)), E(!0);
     } catch (o) {
       S("error", "提交失败: " + o.message);
     }
-  }, $t = () => {
-    x < 0 || (st((o) => {
-      const s = { ...o };
-      s[`q${x}`] = {
-        type: (o[`q${x}`] || {}).type || m && m.type || "text",
-        value: ((o[`q${x}`] || {}).type || m && m.type) === "multi" ? [] : "",
+  }, Ht = () => {
+    x < 0 || (lt((o) => {
+      const i = { ...o };
+      i[`q${x}`] = {
+        type: (o[`q${x}`] || {}).type || g && g.type || "text",
+        value: ((o[`q${x}`] || {}).type || g && g.type) === "multi" ? [] : "",
         other: "",
         skipped: !0
       };
-      const c = K(g, s);
-      return g.forEach((d, k) => {
-        c.indexOf(k) === -1 && delete s[`q${k}`];
-      }), s;
-    }), B((o) => o + 1));
-  }, Pt = async () => {
-    if (!v) {
+      const l = Z(y, i);
+      return y.forEach((f, A) => {
+        l.indexOf(A) === -1 && delete i[`q${A}`];
+      }), i;
+    }), W((o) => o + 1));
+  }, Ut = async () => {
+    if (!M) {
       S("warning", "问卷尚未就绪，请稍候");
       return;
     }
     try {
-      await dt("/question-modal/skip", {
-        request_id: v,
-        session_id: N()
-      }), S("info", "已跳过问卷"), A(l), U(!0), W("用户跳过了本次问卷。"), y(!0);
+      await ht("/question-modal/skip", {
+        request_id: M,
+        session_id: L()
+      }), S("info", "已跳过问卷"), R(c), N(!0), D("用户跳过了本次问卷。"), E(!0);
     } catch (o) {
       S("error", "跳过失败: " + o.message);
     }
-  }, nt = {
+  }, ot = {
     background: "var(--app-surface-raised, #fff)",
     border: "1px solid var(--app-border, rgba(127,127,127,0.25))",
     borderRadius: 12,
@@ -458,14 +485,14 @@ function le(e) {
     marginBottom: 8,
     color: "var(--app-text, inherit)",
     fontSize: 13
-  }, pt = {
+  }, gt = {
     marginBottom: 14,
     paddingBottom: 12,
     borderBottom: "1px solid var(--app-border-subtle, rgba(127,127,127,0.15))",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between"
-  }, mt = { flex: 1, display: "flex", alignItems: "center", gap: 8 }, rt = { fontSize: 14, fontWeight: 600, color: "var(--app-text, inherit)" }, ht = {
+  }, mt = { flex: 1, display: "flex", alignItems: "center", gap: 8 }, at = { fontSize: 14, fontWeight: 600, color: "var(--app-text, inherit)" }, bt = {
     background: "var(--app-accent-soft, rgba(255,127,22,0.14))",
     borderRadius: 14,
     padding: "2px 10px",
@@ -474,18 +501,18 @@ function le(e) {
     color: "var(--app-accent-text, var(--app-accent, #ff7f16))",
     fontFamily: "SF Mono,Monaco,Consolas,monospace",
     flex: "none"
-  }, Nt = { display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }, ot = {
+  }, Dt = { display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }, st = {
     fontSize: 12,
     color: "var(--app-text-tertiary, inherit)",
     fontWeight: 500
-  }, Bt = { display: "flex", flexDirection: "column", gap: 8 }, yt = {
+  }, Ft = { display: "flex", flexDirection: "column", gap: 8 }, vt = {
     display: "flex",
     gap: 8,
     justifyContent: "flex-end",
     alignItems: "center",
     paddingTop: 8,
     borderTop: "1px solid var(--app-border-subtle, rgba(127,127,127,0.15))"
-  }, J = {
+  }, V = {
     minWidth: 88,
     height: 36,
     fontSize: 13,
@@ -497,20 +524,20 @@ function le(e) {
     justifyContent: "center",
     gap: 4,
     cursor: "pointer"
-  }, gt = {
-    ...J,
+  }, St = {
+    ...V,
     background: "transparent",
     border: "1.5px solid var(--app-border-strong, rgba(127,127,127,0.45))",
     color: "var(--app-text-secondary, inherit)",
     boxShadow: "none"
-  }, Lt = {
-    ...J,
+  }, Jt = {
+    ...V,
     border: "none",
     background: "linear-gradient(135deg, var(--app-accent, #ff7f16) 0%, var(--app-accent-active, #d96a10) 100%)",
     color: "var(--app-text-inverse, #fff)",
     boxShadow: "0 2px 8px var(--app-accent-ring, rgba(255,127,22,0.2))"
-  }, bt = {
-    ...J,
+  }, xt = {
+    ...V,
     width: "100%",
     justifyContent: "flex-start",
     minWidth: 0,
@@ -527,36 +554,36 @@ function le(e) {
     height: "auto",
     minHeight: 32,
     alignItems: "center"
-  }, Mt = {
+  }, Qt = {
     // Restored to the original look (user asked for options to stay as-is).
-    ...bt,
+    ...xt,
     border: "1.5px solid var(--app-accent, #ff7f16)",
     color: "var(--app-accent, #ff7f16)",
     background: "var(--app-accent-soft, rgba(255,127,22,0.08))"
-  }, Wt = { height: 32, fontSize: 13, borderRadius: 8 }, vt = { fontSize: 13, borderRadius: 8, lineHeight: 1.5 }, St = (o) => {
-    const s = C(o);
-    return p.type === "multi" ? Array.isArray(p.value) && p.value.indexOf(s) !== -1 : p.value === s;
-  }, xt = St(I), wt = (o) => {
-    if (b || E) return;
-    const s = C(o);
-    if (p.type === "multi") {
-      const c = Array.isArray(p.value) ? p.value.slice() : [], d = c.indexOf(s);
-      d === -1 ? c.push(s) : c.splice(d, 1), F({ ...p, value: c, other: c.indexOf(I) !== -1 ? p.other : "" });
+  }, Vt = { height: 32, fontSize: 13, borderRadius: 8 }, wt = { fontSize: 13, borderRadius: 8, lineHeight: 1.5 }, Et = (o) => {
+    const i = $(o);
+    return h.type === "multi" ? Array.isArray(h.value) && h.value.indexOf(i) !== -1 : h.value === i;
+  }, _t = Et(T), kt = (o) => {
+    if (v || k) return;
+    const i = $(o);
+    if (h.type === "multi") {
+      const l = Array.isArray(h.value) ? h.value.slice() : [], f = l.indexOf(i);
+      f === -1 ? l.push(i) : l.splice(f, 1), Q({ ...h, value: l, other: l.indexOf(T) !== -1 ? h.other : "" });
     } else
-      F({ ...p, value: s });
-  }, Et = (o, s, c, d) => t.createElement("button", {
-    key: d,
+      Q({ ...h, value: i });
+  }, qt = (o, i, l, f) => t.createElement("button", {
+    key: f,
     type: "button",
-    disabled: b || E,
-    style: s ? Mt : bt,
-    onClick: c
-  }, (s ? "✓ " : "") + o);
-  if (b)
-    return H && !it ? t.createElement(
+    disabled: v || k,
+    style: i ? Qt : xt,
+    onClick: l
+  }, (i ? "✓ " : "") + o);
+  if (v)
+    return F && !ut ? t.createElement(
       "div",
       {
         style: {
-          ...nt,
+          ...ot,
           padding: "8px 14px",
           marginBottom: 8,
           display: "flex",
@@ -576,36 +603,36 @@ function le(e) {
       ),
       t.createElement(
         "span",
-        { style: { ...rt, flex: 1, opacity: 0.75 } },
-        $
+        { style: { ...at, flex: 1, opacity: 0.75 } },
+        b
       ),
       t.createElement("button", {
         type: "button",
         style: {
-          ...gt,
+          ...St,
           minWidth: 0,
           height: 26,
           padding: "0 10px",
           fontSize: 12
         },
-        onClick: () => ct(!0)
+        onClick: () => dt(!0)
       }, "展开")
     ) : t.createElement(
       "div",
-      { style: nt, className: "qm-card", "data-qm-card": "true" },
+      { style: ot, className: "qm-card", "data-qm-card": "true" },
       t.createElement(
         "div",
-        { style: { ...pt, marginBottom: 8, paddingBottom: 8 } },
+        { style: { ...gt, marginBottom: 8, paddingBottom: 8 } },
         t.createElement(
           "div",
           { style: mt },
-          At(t),
-          t.createElement("span", { style: rt }, $)
+          Tt(t),
+          t.createElement("span", { style: at }, b)
         ),
         t.createElement(
           "span",
-          { style: { ...ht, color: "var(--app-success-text, #389e0d)" } },
-          H ? "已跳过" : "已完成"
+          { style: { ...bt, color: "var(--app-success-text, #389e0d)" } },
+          F ? "已跳过" : "已完成"
         )
       ),
       t.createElement("pre", {
@@ -622,63 +649,66 @@ function le(e) {
           color: "var(--app-text-secondary, inherit)",
           fontFamily: "SF Mono,Monaco,Consolas,monospace"
         }
-      }, H ? `已跳过本次问卷。
+      }, F ? `已跳过本次问卷。
 
-` + ce(g) : Ot || z),
-      H && it ? t.createElement(
+` + ct(y) : Lt || et || P || `本条问卷的回答已不在插件缓存中（插件可能已重启）。
+完整内容可在会话记录/历史中查看。
+
+` + ct(y)),
+      F && ut ? t.createElement(
         "div",
-        { style: yt },
+        { style: vt },
         t.createElement("button", {
           type: "button",
-          style: gt,
-          onClick: () => ct(!1)
+          style: St,
+          onClick: () => dt(!1)
         }, "收起")
       ) : null
     );
-  let Q = null;
-  if (_)
-    Q = t.createElement(
+  let X = null;
+  if (q)
+    X = t.createElement(
       "div",
       null,
-      t.createElement("div", { style: ot }, "其他意见（可选）"),
-      t.createElement(i, {
+      t.createElement("div", { style: st }, "其他意见（可选）"),
+      t.createElement(s, {
         rows: 2,
         placeholder: "补充意见（可选）",
-        value: tt,
-        style: vt,
-        onChange: (o) => Ct(o.target.value)
+        value: nt,
+        style: wt,
+        onChange: (o) => Bt(o.target.value)
       })
     );
-  else if (m && m.type === "text")
-    Q = t.createElement(
+  else if (g && g.type === "text")
+    X = t.createElement(
       "div",
       null,
-      t.createElement("div", { style: { ...ot, fontSize: 13, color: "var(--app-text, inherit)" } }, m.title),
-      t.createElement(i, {
+      t.createElement("div", { style: { ...st, fontSize: 13, color: "var(--app-text, inherit)" } }, g.title),
+      t.createElement(s, {
         rows: 2,
         placeholder: "请输入...",
-        value: typeof p.value == "string" ? p.value : "",
-        style: vt,
-        onChange: (o) => F({ ...p, value: o.target.value, other: "" })
+        value: typeof h.value == "string" ? h.value : "",
+        style: wt,
+        onChange: (o) => Q({ ...h, value: o.target.value, other: "" })
       })
     );
-  else if (m) {
-    const o = (m.options || []).map((s, c) => Et(O(s), St(s), () => wt(s), "o" + c));
-    o.push(Et("其他", xt, () => wt(I), "other")), xt && o.push(t.createElement(a, {
+  else if (g) {
+    const o = (g.options || []).map((i, l) => qt(j(i), Et(i), () => kt(i), "o" + l));
+    o.push(qt("其他", _t, () => kt(T), "other")), _t && o.push(t.createElement(a, {
       key: "oi",
       placeholder: "请填写",
-      value: p.other,
-      style: { ...Wt, marginTop: 2 },
-      onChange: (s) => F({ ...p, other: s.target.value })
-    })), Q = t.createElement(
+      value: h.other,
+      style: { ...Vt, marginTop: 2 },
+      onChange: (i) => Q({ ...h, other: i.target.value })
+    })), X = t.createElement(
       "div",
       null,
-      t.createElement("div", { style: { ...ot, fontSize: 13, color: "var(--app-text, inherit)" } }, m.title),
-      t.createElement("div", { style: { ...Bt, marginTop: 8 } }, o)
+      t.createElement("div", { style: { ...st, fontSize: 13, color: "var(--app-text, inherit)" } }, g.title),
+      t.createElement("div", { style: { ...Ft, marginTop: 8 } }, o)
     );
   }
-  const at = P + 1, Ht = _ ? at + "/" + at : w + 1 + "/" + at, V = {
-    ...J,
+  const it = B + 1, Xt = q ? it + "/" + it : _ + 1 + "/" + it, G = {
+    ...V,
     minWidth: 0,
     height: 32,
     padding: "0 14px",
@@ -690,21 +720,21 @@ function le(e) {
   };
   return t.createElement(
     "div",
-    { style: nt, className: "qm-card", "data-qm-card": "true" },
+    { style: ot, className: "qm-card", "data-qm-card": "true" },
     t.createElement(
       "div",
-      { style: pt },
+      { style: gt },
       t.createElement(
         "div",
         { style: mt },
-        At(t),
-        t.createElement("span", { style: rt }, $)
+        Tt(t),
+        t.createElement("span", { style: at }, b)
       ),
-      t.createElement("span", { style: ht }, Ht)
+      t.createElement("span", { style: bt }, Xt)
     ),
-    t.createElement("div", { style: Nt }, Q),
+    t.createElement("div", { style: Dt }, X),
     // ── self-rescue banner: cannot obtain this survey's request_id ──
-    jt && !b ? t.createElement(
+    Mt && !v ? t.createElement(
       "div",
       {
         style: {
@@ -725,68 +755,68 @@ function le(e) {
       t.createElement(
         "span",
         { style: { flex: 1, minWidth: 180 } },
-        "⚠️ 无法连接问卷服务（已持续 " + Math.max(1, Math.round((Date.now() - (et.current || Date.now())) / 1e3)) + " 秒）。问卷阻塞着整个会话，此时发新消息会报「A task is already running」。"
+        "⚠️ 无法连接问卷服务（已持续 " + Math.max(1, Math.round((Date.now() - (rt.current || Date.now())) / 1e3)) + " 秒）。问卷阻塞着整个会话，此时发新消息会报「A task is already running」。"
       ),
       t.createElement("button", {
         type: "button",
-        disabled: E,
+        disabled: k,
         style: {
-          ...V,
+          ...G,
           height: 28,
           padding: "0 12px",
           borderColor: "var(--app-warning-border, rgba(250,173,20,0.6))"
         },
-        onClick: zt,
+        onClick: Wt,
         title: "释放本次问卷的阻塞，让会话恢复可用"
       }, "释放本次问卷")
     ) : null,
     t.createElement(
       "div",
-      { style: yt },
+      { style: vt },
       t.createElement("button", {
         type: "button",
-        disabled: w === 0 || E,
-        style: { ...V, marginRight: "auto", opacity: w === 0 ? 0.5 : 1 },
-        onClick: () => B((o) => o - 1)
+        disabled: _ === 0 || k,
+        style: { ...G, marginRight: "auto", opacity: _ === 0 ? 0.5 : 1 },
+        onClick: () => W((o) => o - 1)
       }, "上一步"),
       // Skip one question: advances without answering, survey stays open.
       // On the 其他意见 page there is no question left, so this becomes
       // "skip and submit" (the remaining answers are sent as-is).
       t.createElement("button", {
         type: "button",
-        disabled: E,
-        style: V,
-        onClick: _ ? ft : $t
-      }, _ ? "跳过并提交" : "跳过本题"),
+        disabled: k,
+        style: G,
+        onClick: q ? yt : Ht
+      }, q ? "跳过并提交" : "跳过本题"),
       // Skip the whole survey: resolves the tool call and collapses the card.
       t.createElement("button", {
         type: "button",
-        disabled: E,
-        style: V,
-        onClick: Pt
+        disabled: k,
+        style: G,
+        onClick: Ut
       }, "跳过问卷"),
       t.createElement("button", {
         type: "button",
-        disabled: E,
-        style: Lt,
+        disabled: k,
+        style: Jt,
         onClick: () => {
-          _ ? ft() : B((o) => o + 1);
+          q ? yt() : W((o) => o + 1);
         }
-      }, _ ? "提交" : "下一步")
+      }, q ? "提交" : "下一步")
     )
   );
 }
-function ue() {
-  const e = Ft();
+function ge() {
+  const e = Yt();
   if (!e || typeof e.toolRender != "function") return !1;
   try {
-    return Vt(), e.toolRender(Dt, qt, le), console.log("[question-modal] registered via chat.toolRender for", qt), !0;
+    return ee(), e.toolRender(Kt, Rt, ye), console.log("[question-modal] registered via chat.toolRender for", Rt), !0;
   } catch (t) {
     return console.error("[question-modal] toolRender failed:", t), !1;
   }
 }
 (function e(t) {
-  if (!ue()) {
+  if (!ge()) {
     if (t > 40) {
       console.warn("[question-modal] chat.toolRender never available");
       return;

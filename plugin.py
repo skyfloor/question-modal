@@ -53,8 +53,43 @@ _TYPE_LABELS = {"single": "单选", "multi": "多选", "text": "问答"}
 # Keyed by tool_call_id (fallback: request_id).  A card re-rendered after
 # a page reload can ask "was my question already answered?" and show the
 # result instead of the form again.  Bounded by a simple size guard.
+#
+# Persisted to disk: the host folds old tool results into a pointer stub
+# once a session grows, so a history card's inline answer disappears.  The
+# card then relies on this lookup — which would itself be lost on a plugin
+# restart if the cache were memory-only.  The file lives next to the plugin
+# and is written atomically (tmp + replace).
 _RESULTS: dict[str, dict] = {}
 _RESULTS_MAX = 300
+_RESULTS_FILE = _PLUGIN_DIR / "answered_results.json"
+
+
+def _persist_results() -> None:
+    """Write the results cache to disk (atomic; failures are non-fatal)."""
+    try:
+        tmp = _RESULTS_FILE.parent / (_RESULTS_FILE.name + ".tmp")
+        tmp.write_text(
+            json.dumps(_RESULTS, ensure_ascii=False), encoding="utf-8",
+        )
+        tmp.replace(_RESULTS_FILE)
+    except Exception:  # noqa: BLE001 - never break a submission over caching
+        logger.warning("question_modal: could not persist results cache",
+                       exc_info=True)
+
+
+def _load_results() -> None:
+    """Restore the results cache from disk on import."""
+    try:
+        if not _RESULTS_FILE.exists():
+            return
+        data = json.loads(_RESULTS_FILE.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            _RESULTS.update(data)
+            logger.info("question_modal: restored %d cached answers",
+                        len(_RESULTS))
+    except Exception:  # noqa: BLE001
+        logger.warning("question_modal: could not restore results cache",
+                       exc_info=True)
 
 
 def _remember_result(key: str, kind: str, payload: dict) -> None:
@@ -66,6 +101,10 @@ def _remember_result(key: str, kind: str, payload: dict) -> None:
             : len(_RESULTS) - _RESULTS_MAX
         ]:
             _RESULTS.pop(k, None)
+    _persist_results()
+
+
+_load_results()
 
 
 def _register_question(request_id: str, session_id: str, questions: list) -> None:
