@@ -1,71 +1,119 @@
 # Question Modal 问卷弹窗
 
-A blocking in-chat survey tool for [QwenPaw](https://github.com/agentscope-ai/QwenPaw) agents.
+给 [QwenPaw](https://github.com/agentscope-ai/QwenPaw) 智能体用的**对话内阻塞式问卷**工具。
 
-When an agent needs you to **choose between options, confirm a scope, or unblock a decision**,
-it calls the `question_modal` tool. Instead of listing "A / B / C" as plain text and waiting for
-you to type an answer, the agent renders a **clickable multi-page question card right inside the
-conversation**, pauses, and continues reasoning with your structured answers.
+当智能体需要你**在方案间做选择、确认范围、或拍板一个阻断项**时，它会调用 `question_modal` 工具。
+不再把「甲 / 乙 / 丙」写成正文段落等你手打回复，而是**在对话里直接渲染出一张可点选的多页问卷卡**，
+暂停等待，拿到你的结构化答案后继续推理。
 
-## What it does
+## 一句话价值
 
-- Tool: `question_modal(questions, title?)` — blocks until the user submits or skips.
-- Question types: `single` (radio), `multi` (checkbox list, answers returned as an array), `text` (free input).
-- Every choice question carries an extra "Other" free-text box; the last page has a global
-  "additional comments" field.
-- **Conditional questions** via `showIf` — a question only appears when an earlier answer matches,
-  e.g. `{"q0": ["Option B"]}`. Multi-key conditions are AND; multi-value lists are OR.
-- Navigation counts and page progress adapt to the visible question set; hidden answers are
-  dropped from the result.
-- Answer recovery: the card resolves itself by `tool_call_id`, so refreshed pages and stale
-  requests cannot bind to the wrong survey; local handles are persisted so a blocked session can
-  always rescue itself.
+**把「选择题」从打字变成点选。** 纯文字选项无法点选、容易漏答、格式易被模型写歪；问卷卡把选项变成按钮，
+一次问清、结构回传、无需复述。
 
-## Result format
+## 功能点
+
+### 题型
+
+| 类型 | 说明 |
+| --- | --- |
+| `single` | 单选（点选即替换） |
+| `multi` | 多选，**回传为数组**；二选一场景请用 `single` |
+| `text` | 自由问答输入 |
+
+- 每道选择题都自带一个**「其他」文本框**，可填自定义答案。
+- 问卷最后一页有独立的**「其他意见」**输入框，与题目同级。
+
+### 条件题（`showIf`）
+
+后一题依赖前一题答案时，用 `showIf` 做动态联动——选中前置选项后该题才出现：
+
+```json
+{"q0": ["用 pm 设计器做表单"]}
+```
+
+- 键可写序号（`q0`/`q1`）或题目原文；值支持字符串或数组。
+- 数组内多值 = **OR**（任一命中即显示）；多个键 = **AND**（全部成立才显示）。
+- 前置加 `=` 表示精确匹配（默认是宽松包含匹配）。
+- 未被选中的分支会自动跳过：**进度分母 = 可见题数**，跳过的不计入，隐藏题的答案不会回传。
+
+### 跳过语义（三档，互不混淆）
+
+| 操作 | 行为 |
+| --- | --- |
+| **跳过本题** | 纯本地标记，不发后端；回传里显式记录 `（用户跳过本题）`，继续答下一题 |
+| **跳过问卷** | 收起成一行摘要「✓ 已跳过问卷」，可展开；整体返回 `{"skipped": true}` |
+| **取消** | 前端自救出口，解开阻塞、释放会话 |
+
+### 答不丢、错不错配
+
+- 每张卡片按 `tool_call_id` 精确解析归属，**刷新页面或陈旧请求不会绑错问卷**。
+- 请求句柄持久化到 `localStorage`，另有心跳自愈 + 自救出口，卡住时可解开。
+- 结果缓存与服务端 pending 均长寿（GC 时限 365 天），**过夜问卷次日提交不会 404**。
+
+### 原生渲染
+
+走宿主官方 `chat.toolRender(pluginId, "question_modal", Component)` 通道——问卷卡渲染在
+**宿主审批卡的同一区域**，延迟≈0，刷新后仍在。视觉上逐项对齐宿主的审批卡规范
+（卡片边框 / 圆角 / 主题色 / 选项高亮 / 按钮规格）。
+
+## 回传格式
 
 ```json
 {
   "answers": {
-    "q0": {"type": "single", "value": "Option A", "other": "", "skipped": false},
-    "q1": {"type": "multi", "value": ["X", "Y"], "other": "", "skipped": false}
+    "q0": {"type": "single", "value": "选项 A", "other": "", "skipped": false},
+    "q1": {"type": "multi",  "value": ["X", "Y"], "other": "", "skipped": false},
+    "q2": {"type": "text",   "value": "自由输入", "other": ""}
   },
   "other": "",
   "skipped": false
 }
 ```
 
-Skipping the whole survey returns `{"skipped": true}`. Skipping one question keeps the survey
-running and marks that entry explicitly.
+- 跳过整份问卷：`{"skipped": true}`
+- 跳过某一题：该题带 `skipped: true`，问卷继续。
 
-## Requirements
+## 亮点
 
-- QwenPaw `>= 2.0.0, < 2.3.0` (verified on 2.2.x).
-- No third-party Python or npm dependencies at runtime.
+1. **交互有效性**：正文罗列「甲/乙/丙」用户点不了，模型还常把多选写成单选题。问卷卡把选择变成点选，回传结构化数据——这是与「文字选项」的本质区别。
+2. **条件题联动**：`showIf` 让问卷像真表单一样分支，进度分母自动跟随可见题数，隐藏答案不污染回传。
+3. **多选可回传数组**：一道题勾多项，结果直接是数组，模型不会再把它拆成多道「是/否」。
+4. **抗刷新、抗错配**：按 `tool_call_id` 解析 + 本地句柄持久化 + 心跳自愈，刷新、网络抖动、陈旧请求都不会绑错或丢失。
+5. **可自救**：阻塞期间会话会锁死（宿主机机制），因此内置「释放/取消」出口，避免永久卡住。
+6. **原生外观**：用宿主官方扩展点注册，位置与样式对齐宿主的审批卡，不是浮层补丁。
+7. **零运行依赖**：不需要任何第三方 Python 或 npm 包。
+8. **对模型的行为引导内置**：工具描述内含「何时该用、multi 何时用、showIf 何时用」的场景说明——实测有场景说明的字段会被模型自主正确使用。
 
-## Install
+## 环境要求
 
-Console → Plugins → Install, or:
+- QwenPaw `>= 2.0.0, < 2.3.0`（已在 2.2.x 验证）
+- 运行期无第三方 Python / npm 依赖
+
+## 安装
+
+控制台 → 插件 → 安装，或：
 
 ```bash
 qwenpaw plugin install question-modal-1.0.0.zip
 ```
 
-The plugin hot-loads; **hard-refresh the browser (Ctrl+Shift+R) after installing**, because the
-front-end bundle is injected at page load, not at install time.
+插件支持**热加载**。**安装后请硬刷新浏览器（Ctrl+Shift+R）**——前端 bundle 在页面加载时注入，
+已打开的页面不会自动重新加载新渲染器。
 
-Note: after (re)installing, the tool entry is created in each agent's config **disabled** by the
-host. Enable `question_modal` for the agents that should use it (Settings → Tools, or
-`agent.json → tools.builtin_tools.question_modal.enabled`).
+⚠️ 注意：安装（或重装）后，宿主会在每个智能体配置里**以「禁用」状态**创建该工具条目。
+请为需要使用它的智能体手动启用 `question_modal`
+（设置 → 工具，或 `agent.json → tools.builtin_tools.question_modal.enabled`）。
 
-## Behavior guidance
+## 行为引导
 
-The tool description tells the model when to use it. If an agent still lists text options instead
-of opening a survey, add a note to that agent's `SOUL.md`, e.g.:
+工具描述会告诉模型何时使用。若某个智能体仍用文字罗列选项而不弹问卷，
+可在该智能体的 `SOUL.md` 里补一句：
 
-> When you need the user to make a choice, call `question_modal` instead of enumerating options
-> in the reply body — plain-text options cannot be clicked.
+> 当你需要用户做选择、二选一/多选一、裁定阻断项、确认范围时，必须调用 `question_modal` 工具以问卷形式收集答案，
+> 禁止在回复正文里罗列选项后停下等待手打回复——纯文字选项用户无法点选，属于无效交互。
 
-## License
+## 许可
 
-Apache License 2.0. This plugin is derived from `ask-user-plugin` by Levodoubt (MIT); see the
-attribution section in [LICENSE](LICENSE).
+Apache License 2.0。本插件衍生自 Levodoubt 的 `ask-user-plugin`（MIT 授权）；
+上游署名与 MIT 原文见 [LICENSE](LICENSE) 附录。
