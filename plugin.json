@@ -1,0 +1,32 @@
+{
+  "id": "question-modal",
+  "name": "Question Modal 问卷弹窗",
+  "version": "1.0.0",
+  "type": "tool",
+  "description": "Blocking in-chat surveys for agents: pop up a multi-page question card (single / multi choice, free text, conditional showIf questions) inside the conversation and wait for the user's answer, so decisions get made by clicking instead of typing. 中文：在对话中向用户弹出可点选的多页问卷（单选/多选/问答/条件题），阻塞等待作答后继续推理，替代正文罗列文字选项的无效交互。",
+  "author": "skyfloor",
+  "entry": {
+    "backend": "plugin.py",
+    "frontend": "dist/index.js"
+  },
+  "dependencies": [],
+  "qwenpaw_version": {
+    "min": "2.0.0",
+    "max": "2.3.0"
+  },
+  "meta": {
+    "tools": [
+      {
+        "name": "question_modal",
+        "description": "向用户弹出一个多页问卷并等待回答，用于需要用户做选择、裁定或澄清的场景。**当你要让用户在几个方案间二选一/多选一，或需要用户确认范围、拍板阻断项时，应调用本工具，而不是在回复正文里罗列选项。**参数：questions (问题列表), title (标题,可选)。问题类型：single(单选), multi(多选), text(问答)。**一道题允许勾选多个答案时用 multi（回传为数组），二选一走 single；不要为了多选而把它拆成多道是/否单选题。**所有选择题均含'其他'文本框；问卷末页有独立'其他意见'框。支持条件题：任选题可加 showIf（如 {\"q0\":[\"选项B\"]}），用户选中前置选项后该题自动出现，实现基于前题答案的动态联动。",
+        "icon": "❓",
+        "config_fields": []
+      }
+    ]
+  },
+  "license": "Apache-2.0",
+  "description_i18n": {
+    "zh-CN": "在对话中向用户弹出可点选的多页问卷（单选/多选/问答/条件题），阻塞等待作答后继续推理，替代正文罗列文字选项的无效交互。",
+    "en-US": "Blocking in-chat surveys: pop up a clickable multi-page question card (single/multi choice, free text, conditional showIf) and wait for the answer before continuing reasoning."
+  }
+}

@@ -1,0 +1,620 @@
+# -*- coding: utf-8 -*-
+"""Ask-User Plugin — Backend entry point, adapted for QwenPaw 2.x.
+
+Upstream (MIT, levodoubt/ask-user-plugin) targeted QwenPaw 1.1.5 and
+intercepted ``QwenPawAgent._acting()`` via monkey-patch.  That method no
+longer exists: in agentscope 2.0 / QwenPaw 2.x the single funnel is
+``Agent._execute_tool_call`` and the *official* interception point is the
+``on_acting`` middleware hook (see ``qwenpaw/agents/react_agent.py`` and
+``agentscope/agent/_agent.py``).
+
+Adaptation summary
+------------------
+===========================================  ==========================================
+Upstream (1.1.5)                             This port (2.x)
+===========================================  ==========================================
+monkey-patch ``QwenPawAgent._acting``        ``api.register_middleware`` → ``on_acting``
+``setattr(qwenpaw.agents.tools, ...)``       ``api.register_tool(question_modal)``
+``await self.print(msg, True)``              (removed — no ``Agent.print`` in 2.x)
+return ``None``                              ``yield ToolResponse(...)`` (short-circuit)
+``self.memory.add(...)``                     (handled by the agent's context funnel)
+===========================================  ==========================================
+
+The blocking semantics are preserved: the tool call's coroutine awaits an
+``asyncio.Future`` until the user submits/skips through the REST API.
+Because the plugin never registers a per-tool timeout hook and the global
+coordinator default is ``None``, the wait is unbounded — matching the
+original "no timeout" contract.
+"""
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import os
+import time
+from pathlib import Path
+from typing import Any, AsyncGenerator, Callable
+
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel, Field
+
+from qwenpaw.plugins.api import PluginApi
+
+from .question_service import get_question_service
+
+logger = logging.getLogger(__name__)
+
+_PLUGIN_DIR = Path(__file__).parent.resolve()
+
+_TYPE_LABELS = {"single": "单选", "multi": "多选", "text": "问答"}
+
+# ── Answered-results cache ─────────────────────────────────────────
+# Keyed by tool_call_id (fallback: request_id).  A card re-rendered after
+# a page reload can ask "was my question already answered?" and show the
+# result instead of the form again.  Bounded by a simple size guard.
+_RESULTS: dict[str, dict] = {}
+_RESULTS_MAX = 300
+
+
+def _remember_result(key: str, kind: str, payload: dict) -> None:
+    if not key:
+        return
+    _RESULTS[key] = {"kind": kind, "at": time.time(), **payload}
+    if len(_RESULTS) > _RESULTS_MAX:
+        for k in sorted(_RESULTS, key=lambda x: _RESULTS[x]["at"])[
+            : len(_RESULTS) - _RESULTS_MAX
+        ]:
+            _RESULTS.pop(k, None)
+
+
+def _register_question(request_id: str, session_id: str, questions: list) -> None:
+    """No-op kept for symmetry/clarity (pending lives in QuestionService)."""
+    return None
+
+
+# Upper bound on how long a tool call may block waiting for the user.
+# 0 = wait forever, which is the DEFAULT and the intended contract:
+# question_modal is a *blocking* interaction, so an auto-skip would silently
+# discard a decision the user meant to make.  Reopening a session the next
+# day to find the question "timed out" is far worse than the agent still
+# waiting for the answer.  Set QWENPAW_QUESTION_MODAL_TIMEOUT_SECS to a positive
+# value only if you genuinely want an auto-skip guard for unattended use.
+_DEFAULT_TIMEOUT_SECS = 0.0
+
+
+def _resolve_timeout_secs() -> float:
+    """Timeout for the blocking wait; overridable via env var."""
+    raw = os.environ.get("QWENPAW_QUESTION_MODAL_TIMEOUT_SECS", "")
+    if raw.strip() == "":
+        return _DEFAULT_TIMEOUT_SECS
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        logger.warning(
+            "invalid QWENPAW_QUESTION_MODAL_TIMEOUT_SECS=%r; using default", raw,
+        )
+        return _DEFAULT_TIMEOUT_SECS
+
+
+# ══════════════════════════════════════════════════════════════════════
+# REST API schemas
+# ══════════════════════════════════════════════════════════════════════
+
+class AnswerRequest(BaseModel):
+    request_id: str = Field(..., description="Question request ID")
+    session_id: str = Field("", description="Session ID")
+    answers: dict = Field(default_factory=dict, description="Question answers")
+    other: str = Field("", description="Final 'other' field")
+
+
+class SkipRequest(BaseModel):
+    request_id: str = Field(..., description="Question request ID")
+    session_id: str = Field("", description="Session ID")
+
+
+class AnswerResponse(BaseModel):
+    ok: bool
+    message: str
+    request_id: str
+
+
+def build_router() -> APIRouter:
+    """Build the plugin's REST router (mounted under /api/question-modal)."""
+    router = APIRouter()
+
+    @router.get("/resolve")
+    async def resolve_pending(
+        session_id: str = Query(default=""),
+        tool_call_id: str = Query(default=""),
+        request_id: str = Query(default=""),
+    ):
+        """Resolve a question's request_id by tool_call_id (preferred) or
+        by session (first pending).  The frontend uses this so its own card
+        addresses exactly the right pending record even when older question_modal
+        cards linger in the same chat history."""
+        svc = get_question_service()
+        pq = None
+        if tool_call_id:
+            pq = await svc.get_by_tool_call(tool_call_id)
+        if pq is None and request_id:
+            pq = await svc.get_request(request_id)
+        if pq is None and session_id:
+            items = await svc.list_pending(session_id)
+            pq = items[0] if items else None
+        if pq is None:
+            return {"ok": True, "found": False}
+        return {
+            "ok": True,
+            "found": True,
+            "request_id": pq.request_id,
+            "session_id": pq.session_id,
+            "title": pq.title,
+            "questions": pq.questions,
+            "tool_call_id": pq.tool_call_id,
+            "status": pq.status,
+        }
+
+    @router.get("/result")
+    async def get_result(
+        tool_call_id: str = Query(default=""),
+        request_id: str = Query(default=""),
+    ):
+        """Return a previously submitted/skipped answer (by tool_call_id).
+
+        Lets a card that is re-rendered after a page reload show its result
+        instead of offering the form again."""
+        key = tool_call_id or request_id
+        if not key:
+            return {"ok": True, "found": False}
+        item = _RESULTS.get(key)
+        if not item:
+            return {"ok": True, "found": False}
+        return {"ok": True, "found": True, **item}
+
+    @router.post("/answer", response_model=AnswerResponse)
+    async def submit_answer(body: AnswerRequest):
+        """Submit answers to a pending question."""
+        svc = get_question_service()
+        pq = await svc.get_request(body.request_id)
+        if pq is None:
+            raise HTTPException(status_code=404, detail="Question not found")
+        if pq.session_id and body.session_id and pq.session_id != body.session_id:
+            raise HTTPException(status_code=403, detail="Session mismatch")
+
+        await svc.submit_answer(body.request_id, body.answers, body.other)
+        _remember_result(
+            pq.tool_call_id or pq.request_id, "answered",
+            {"request_id": pq.request_id, "answers": body.answers,
+             "other": body.other},
+        )
+        return AnswerResponse(
+            ok=True,
+            message=f"Question {body.request_id[:8]} answered",
+            request_id=body.request_id,
+        )
+
+    @router.post("/skip", response_model=AnswerResponse)
+    async def skip_question(body: SkipRequest):
+        """Skip a pending question."""
+        svc = get_question_service()
+        pq = await svc.get_request(body.request_id)
+        if pq is None:
+            raise HTTPException(status_code=404, detail="Question not found")
+        if pq.session_id and body.session_id and pq.session_id != body.session_id:
+            raise HTTPException(status_code=403, detail="Session mismatch")
+
+        await svc.skip(body.request_id)
+        _remember_result(
+            pq.tool_call_id or pq.request_id, "skipped",
+            {"request_id": pq.request_id},
+        )
+        return AnswerResponse(
+            ok=True,
+            message=f"Question {body.request_id[:8]} skipped",
+            request_id=body.request_id,
+        )
+
+    @router.get("/pending")
+    async def get_pending(session_id: str = Query(default="")):
+        """Return all pending questions, optionally filtered by session."""
+        svc = get_question_service()
+        items = []
+        for pq in await svc.list_pending(session_id):
+            items.append({
+                "request_id": pq.request_id,
+                "session_id": pq.session_id,
+                "agent_id": pq.agent_id,
+                "title": pq.title,
+                "questions": pq.questions,
+                "question_count": len(pq.questions),
+                "status": pq.status,
+            })
+        return {"ok": True, "count": len(items), "items": items}
+
+    @router.get("/details")
+    async def get_details(request_id: str = Query(...)):
+        """Return full details for a pending question by request ID."""
+        svc = get_question_service()
+        pq = await svc.get_request(request_id)
+        if pq is None:
+            raise HTTPException(status_code=404, detail="Question not found")
+        return {
+            "ok": True,
+            "request_id": pq.request_id,
+            "session_id": pq.session_id,
+            "agent_id": pq.agent_id,
+            "title": pq.title,
+            "questions": pq.questions,
+            "question_count": len(pq.questions),
+            "status": pq.status,
+        }
+
+    @router.post("/cancel-session")
+    async def cancel_session(session_id: str = Query(...)):
+        """Cancel every pending question of a session (e.g. on interrupt)."""
+        svc = get_question_service()
+        count = await svc.cancel_all_by_session(session_id)
+        return {"ok": True, "cancelled": count}
+
+    return router
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Helpers
+# ══════════════════════════════════════════════════════════════════════
+
+def _parse_tool_input(tool_call: Any) -> dict:
+    """Return the tool call's input as a dict.
+
+    agentscope 2.x stores ``ToolCallBlock.input`` as a JSON **string**
+    (validated by pydantic), so a plain ``getattr(..., "input")`` is not
+    enough — it must be decoded.
+
+    Some models (notably DeepSeek-V4-Flash) append trailing garbage after
+    an otherwise valid JSON object.  Strict ``json.loads`` rejects that
+    with "Extra data", which used to surface as a bogus "questions 不能为空"
+    failure.  The host already recovers such payloads via ``raw_decode``
+    (see ``qwenpaw/agents/utils/tool_message_utils.py``), so mirror that
+    behaviour here instead of giving up.
+    """
+    raw = getattr(tool_call, "input", None)
+    if isinstance(raw, dict):
+        return dict(raw)
+    if isinstance(raw, str) and raw.strip():
+        try:
+            parsed = json.loads(raw)
+        except (ValueError, TypeError):
+            # Recover the leading valid object (tolerates trailing garbage).
+            try:
+                start = json.decoder.WHITESPACE.match(raw, 0).end()
+                parsed, _ = json.JSONDecoder().raw_decode(raw, start)
+            except (ValueError, TypeError):
+                logger.warning(
+                    "question_modal: input is not valid JSON: %r", raw[:200],
+                )
+                return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _format_answer_for_llm(answer: dict) -> str:
+    """Render the user's answer as readable text plus the raw JSON.
+
+    The raw JSON is kept because the upstream contract promises it; the
+    readable block makes the model's life much easier.
+    """
+    if answer.get("skipped"):
+        return "用户跳过了本次问卷。\n" + json.dumps(
+            {"skipped": True}, ensure_ascii=False,
+        )
+
+    answers = answer.get("answers") or {}
+    lines: list[str] = ["【用户提交的问卷答案】"]
+    for key, item in answers.items():
+        if not isinstance(item, dict):
+            continue
+        q_type = item.get("type", "text")
+        value = item.get("value", "")
+        other = item.get("other", "") or ""
+        display = value
+        if isinstance(value, list):
+            display = "、".join(str(v) for v in value)
+        if other:
+            display = f"{display}（其他：{other}）" if display else other
+        # Per-question skip: the user stepped past this one without answering.
+        # Keep the line so the model knows the question was *seen and skipped*,
+        # rather than silently missing from the answer set.
+        if item.get("skipped") or not str(display).strip():
+            display = "（用户跳过本题）"
+        lines.append(f"- {key} [{_TYPE_LABELS.get(q_type, q_type)}] {display}")
+
+    final_other = answer.get("other") or ""
+    if final_other:
+        lines.append(f"- 其他意见：{final_other}")
+
+    lines.append("")
+    lines.append(json.dumps(answer, ensure_ascii=False))
+    return "\n".join(lines)
+
+
+def _build_summary(title: str, questions: list[dict]) -> str:
+    """Human-readable question summary (shown in the tool-call bubble)."""
+    lines = [f"❓ **{title or '问卷'}**"]
+    for i, q in enumerate(questions):
+        q_type = q.get("type", "text")
+        q_title = q.get("title", f"Q{i + 1}")
+        label = _TYPE_LABELS.get(q_type, q_type)
+        options = q.get("options") or []
+        suffix = f"（{'、'.join(options)}）" if options else ""
+        lines.append(f"{i + 1}. [{label}] {q_title}{suffix}")
+    return "\n".join(lines)
+
+
+async def _notify_bubble_removed_doc() -> None:  # pragma: no cover
+    """Placeholder kept only to document a deliberate REMOVAL.
+
+    The upstream plugin pushed ``question_modal_question:<id>`` into the host's
+    ``console_push_store``.  That store feeds the host's own top-right
+    notification bubble, whose only affordance is "close" — and closing it
+    does NOT resolve this pending question, so the agent stayed blocked
+    forever.  The helper was deleted on purpose; the frontend discovers
+    questions by polling ``/api/question-modal/pending`` instead.
+    """
+    return None
+
+# ══════════════════════════════════════════════════════════════════════
+# System-prompt guidance (plugin-owned, self-contained)
+#
+# The tool description alone was not enough: models kept writing plain-text
+# option lists ("甲/乙/丙") instead of calling the tool.  This section is
+# contributed by the plugin itself through the host's official
+# ``register_prompt_section`` hook — it depends on NO skill file, and it
+# appears / disappears together with the plugin.
+# ══════════════════════════════════════════════════════════════════════
+
+_PROMPT_SECTION = """## question_modal 工具（交互式选项）
+
+当你需要用户做**选择、裁定或澄清**时，使用 `question_modal` 工具以问卷形式收集答案，
+**不要**在回复正文里罗列选项后等待用户手打回复。
+
+- 适用场景：二选一/多选一、方案取舍、范围确认、需要用户拍板的阻断项、需要补充说明。
+- 用法：把每个选项放进 `questions[].options`；需要用户自由输入时用 `type: "text"`。
+- 条件题：后一题依赖前一题答案时加 `showIf`（如 `{"q0": ["选项B"]}`），
+  该题会在用户选中前置选项后自动出现，无需另发一轮。
+- 选择题会自动附带「其他」输入框；问卷末页有独立的「其他意见」框。
+- 判定标准：若你正准备写「甲/乙/丙」「A 还是 B」这类让用户二选一的内容，
+  就应该改用 `question_modal` —— 纯文字选项用户无法点选，是无效的交互。
+- 用户可跳过；若长时间未作答会自动跳过，你应基于已有信息继续推进。
+
+示例：
+
+    question_modal(
+      title="需求确认",
+      questions=[
+        {"type": "single", "title": "你要的是哪种实现方式？",
+         "options": ["1:1 复刻这份 HTML", "用 pm 设计器做表单"]},
+        {"type": "single", "title": "打印页面要新建能力还是先不做？",
+         "options": ["新建能力（走需求分析流程）", "先不做"],
+         "showIf": {"q0": ["用 pm 设计器做表单"]}},
+        {"type": "text", "title": "其他补充说明"}
+      ]
+    )"""
+
+
+def _prompt_provider(agent: Any) -> str:  # noqa: ARG001
+    """Return the guidance text; the host calls this once per request."""
+    return _PROMPT_SECTION
+
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Middleware (the 2.x replacement for the old _acting monkey-patch)
+# ══════════════════════════════════════════════════════════════════════
+
+def _import_agentscope():
+    """Import the agentscope primitives used by the middleware."""
+    from agentscope.middleware import MiddlewareBase
+    from agentscope.tool import ToolResponse
+
+    return MiddlewareBase, ToolResponse
+
+
+_MiddlewareBase, _ToolResponse = _import_agentscope()
+
+
+class QuestionModalMiddleware(_MiddlewareBase):
+    """Intercept ``question_modal`` tool calls and block until the user answers.
+
+    Every other tool is passed straight through to ``next_handler``.
+    """
+
+    async def on_acting(
+        self,
+        agent: Any,
+        input_kwargs: dict[str, Any],
+        next_handler: Callable[..., AsyncGenerator[Any, None]],
+    ) -> AsyncGenerator[Any, None]:
+        tool_call = input_kwargs.get("tool_call")
+        name = getattr(tool_call, "name", None)
+
+        if name != "question_modal":
+            async for item in next_handler():
+                yield item
+            return
+
+        params = _parse_tool_input(tool_call)
+        questions: list[dict] = params.get("questions") or []
+        title: str = params.get("title") or "请回答以下问题"
+
+        if not isinstance(questions, list) or not questions:
+            yield _ToolResponse(
+                content=[{
+                    "type": "text",
+                    "text": "question_modal 调用失败：questions 不能为空。",
+                }],
+            )
+            return
+
+        request_context = getattr(agent, "_request_context", None) or {}
+        session_id = str(request_context.get("session_id", "") or "")
+        agent_id = str(request_context.get("agent_id", "") or "")
+        user_id = str(request_context.get("user_id", "") or "")
+        channel = str(request_context.get("channel", "") or "")
+
+        svc = get_question_service()
+        pending = await svc.create(
+            session_id=session_id,
+            agent_id=agent_id,
+            user_id=user_id,
+            channel=channel,
+            title=title,
+            questions=questions,
+            tool_call_id=str(getattr(tool_call, "id", "") or ""),
+        )
+
+        # Remember the question list too, so a reloaded card can address the
+        # right pending record by tool_call_id instead of guessing.
+        _register_question(pending.request_id, session_id, questions)
+
+        # NOTE: do **not** push into the host's console_push_store here.
+        # That store feeds the host's own top-right notification bubble,
+        # which has a single "close" affordance and — crucially — closing
+        # it does NOT resolve this pending question.  Doing so produced a
+        # dead-end bubble and left the agent blocked forever.  The frontend
+        # panel discovers the question by polling /api/question-modal/pending.
+
+        summary = _build_summary(title, questions)
+        logger.info(
+            "question_modal intercepted: request=%s session=%s questions=%d",
+            pending.request_id[:8], session_id[:8] or "-", len(questions),
+        )
+
+        try:
+            timeout = _resolve_timeout_secs()
+            if timeout > 0:
+                answer = await asyncio.wait_for(
+                    asyncio.shield(pending.future), timeout=timeout,
+                )
+            else:
+                answer = await pending.future
+        except asyncio.TimeoutError:
+            # Never leave the agent blocked forever: resolve as skipped
+            # and tell the model explicitly so it can carry on.
+            try:
+                await asyncio.shield(svc.skip(pending.request_id))
+            except Exception:  # noqa: BLE001
+                logger.debug("skip on timeout failed", exc_info=True)
+            logger.warning(
+                "question_modal timed out after %.0fs (request=%s) — "
+                "auto-skipped so the agent can continue",
+                timeout, pending.request_id[:8],
+            )
+            yield _ToolResponse(content=[{
+                "type": "text",
+                "text": (
+                    f"{summary}\n\n"
+                    f"【用户未在 {timeout:.0f} 秒内作答，问卷已自动跳过】\n"
+                    '{"skipped": true, "reason": "timeout"}\n'
+                    "请不要再等待，直接基于已有信息继续推进；"
+                    "如确有必要，可稍后再次调用 question_modal。"
+                ),
+            }])
+            return
+        except asyncio.CancelledError:
+            # Request interrupted (user pressed stop) — clean the pending
+            # entry so it never resolves the REST path later.
+            try:
+                await asyncio.shield(svc.skip(pending.request_id))
+            except Exception:  # noqa: BLE001
+                logger.debug("skip on cancel failed", exc_info=True)
+            raise
+        finally:
+            if pending.future is not None and not pending.future.done():
+                pending.future.cancel()
+
+        text = f"{summary}\n\n{_format_answer_for_llm(answer or {})}"
+        yield _ToolResponse(content=[{"type": "text", "text": text}])
+
+
+def _middleware_factory(ctx: Any, agent_config: Any) -> Any:
+    """Return the middleware instance for every request."""
+    try:
+        agent_id = getattr(ctx, "agent_id", None) or "-"
+        logger.info(
+            "question-modal middleware assembled (agent=%s)", agent_id,
+        )
+        return QuestionModalMiddleware()
+    except Exception:  # noqa: BLE001
+        logger.exception("question-modal middleware factory failed")
+        return None
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Plugin registration
+# ══════════════════════════════════════════════════════════════════════
+
+class QuestionModalPlugin:
+    """Ask-User plugin (QwenPaw 2.x port)."""
+
+    def register(self, api: PluginApi) -> None:
+        logger.info("Registering question-modal plugin (2.x port)...")
+
+        # ── 1. Tool: declare question_modal so the LLM can discover it ──
+        try:
+            from .tools import question_modal as question_modal_func
+
+            api.register_tool(
+                tool_name="question_modal",
+                tool_func=question_modal_func,
+                description=(
+                    "向用户弹出一个多页问卷并等待回答，用于需要用户做选择、裁定或澄清的场景。"
+                    "**当你要让用户在几个方案间二选一/多选一，或需要用户确认范围、拍板阻断项时，"
+                    "应调用本工具，而不是在回复正文里罗列选项。** "
+                    "参数：questions (问题列表), title (标题,可选)。"
+                    "问题类型：single(单选), multi(多选), text(问答)。"
+                    "所有选择题含'其他'文本。问卷末页有独立'其他意见'框。"
+                    "支持条件题：任选题可加 showIf（如 {\"q0\":[\"选B后出现\"]}），"
+                    "实现基于前题答案的动态联动。"
+                ),
+                icon="❓",
+                enabled=False,
+                tool_type="internal",
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("failed to register question_modal tool")
+
+        # ── 2. Middleware: the real interception + blocking logic ──
+        try:
+            api.register_middleware(_middleware_factory, priority=100)
+        except Exception:  # noqa: BLE001
+            logger.exception("failed to register question-modal middleware")
+
+        # ── 3. REST API for the frontend modal ──
+        try:
+            api.register_http_router(
+                build_router(),
+                prefix="/question-modal",
+                tags=["question-modal"],
+            )
+        except Exception:  # noqa: BLE001
+            logger.exception("failed to register question-modal HTTP router")
+
+        # ── 4. System-prompt guidance: tell the model WHEN to use the tool ──
+        # Self-contained (no skill dependency).  The tool description alone
+        # did not prevent models from writing plain-text option lists.
+        try:
+            api.register_prompt_section(
+                name="question-modal-usage",
+                after="workspace",
+                provider=_prompt_provider,
+                priority=100,
+            )
+            logger.info("✓ question-modal prompt section registered")
+        except Exception:  # noqa: BLE001
+            logger.exception("failed to register question-modal prompt section")
+
+        logger.info("✓ question-modal plugin registered")
+
+
+plugin = QuestionModalPlugin()
