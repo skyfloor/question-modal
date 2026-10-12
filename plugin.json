@@ -1,7 +1,7 @@
 {
   "id": "question-modal",
   "name": "Question Modal 问卷弹窗",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "type": "tool",
   "description": "Blocking in-chat surveys for agents: pop up a multi-page question card (single / multi choice, free text, conditional showIf questions) inside the conversation and wait for the user's answer, so decisions get made by clicking instead of typing. 中文：在对话中向用户弹出可点选的多页问卷（单选/多选/问答/条件题），阻塞等待作答后继续推理，替代正文罗列文字选项的无效交互。",
   "author": "skyfloor",
