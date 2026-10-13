@@ -1,7 +1,7 @@
 {
   "id": "question-modal",
   "name": "Question Modal 问卷弹窗",
-  "version": "1.3.0",
+  "version": "1.3.4",
   "type": "tool",
   "description": "在对话中向用户弹出可点选的多页问卷（单选/多选/问答/条件题），支持在「其他」项添加附件；阻塞等待作答后继续推理，替代正文罗列文字选项的无效交互。",
   "author": "skyfloor",

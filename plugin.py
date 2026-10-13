@@ -161,6 +161,10 @@ class AnswerResponse(BaseModel):
     ok: bool
     message: str
     request_id: str
+    # True when the record existed but had been restored after a plugin
+    # reload (its agent turn is gone).  The card treats this as "survey over"
+    # and closes itself instead of retrying forever.
+    orphan: bool = False
 
 
 def build_router() -> APIRouter:
@@ -188,11 +192,29 @@ def build_router() -> APIRouter:
             pq = items[0] if items else None
         if pq is None:
             return {"ok": True, "found": False}
+        # An orphan record means the plugin was reloaded while this survey was
+        # open: the agent is no longer waiting, so the card must not keep
+        # offering a form that can never be submitted.
+        if pq.orphan:
+            return {
+                "ok": True,
+                "found": False,
+                "orphan": True,
+                "request_id": pq.request_id,
+                "session_id": pq.session_id,
+                "agent_id": pq.agent_id,
+                "tool_call_id": pq.tool_call_id,
+                "title": pq.title,
+            }
         return {
             "ok": True,
             "found": True,
             "request_id": pq.request_id,
             "session_id": pq.session_id,
+            # The frontend has no host API for either of these, so echo them
+            # back: the card caches them and uses them for the X-Agent-Id
+            # header and for session-scoped releases.
+            "agent_id": pq.agent_id,
             "title": pq.title,
             "questions": pq.questions,
             "tool_call_id": pq.tool_call_id,
@@ -226,9 +248,47 @@ def build_router() -> APIRouter:
         if pq.session_id and body.session_id and pq.session_id != body.session_id:
             raise HTTPException(status_code=403, detail="Session mismatch")
 
-        await svc.submit_answer(
+        if pq.orphan:
+            # The plugin was reloaded while this survey was open, so its agent
+            # turn is gone.  Acknowledge so the card can converge and stop
+            # answering「问卷尚未就绪」, but do not claim a Future was resolved.
+            svc.forget(pq.request_id)
+            _remember_result(
+                pq.tool_call_id or pq.request_id, "orphan",
+                {"request_id": pq.request_id, "answers": body.answers,
+                 "other": body.other, "attachments": body.attachments},
+            )
+            return AnswerResponse(
+                ok=True,
+                message=f"Question {body.request_id[:8]} no longer active "
+                        "(问卷服务已重启，本次问卷已失效)",
+                request_id=body.request_id,
+                orphan=True,
+            )
+
+        resolved = await svc.submit_answer(
             body.request_id, body.answers, body.other, body.attachments,
         )
+        if resolved is None:
+            # The record existed but had NO live Future — its agent is not
+            # parked on anything we can wake (cross-generation reload, already
+            # finished, or cancelled).  Saying "answered" here would be a lie:
+            # the card would show「✓ 已完成」while the chat kept answering
+            # 409.  Answer as orphan so the card reports the truth and keeps
+            # its manual release available.
+            svc.forget(body.request_id)
+            _remember_result(
+                pq.tool_call_id or pq.request_id, "orphan",
+                {"request_id": pq.request_id, "answers": body.answers,
+                 "other": body.other, "attachments": body.attachments},
+            )
+            return AnswerResponse(
+                ok=True,
+                message=f"Question {body.request_id[:8]} no longer active "
+                        "(没有正在等待的 agent 调用，本次问卷已失效)",
+                request_id=body.request_id,
+                orphan=True,
+            )
         _remember_result(
             pq.tool_call_id or pq.request_id, "answered",
             {"request_id": pq.request_id, "answers": body.answers,
@@ -250,7 +310,36 @@ def build_router() -> APIRouter:
         if pq.session_id and body.session_id and pq.session_id != body.session_id:
             raise HTTPException(status_code=403, detail="Session mismatch")
 
-        await svc.skip(body.request_id)
+        if pq.orphan:
+            svc.forget(pq.request_id)
+            _remember_result(
+                pq.tool_call_id or pq.request_id, "orphan",
+                {"request_id": pq.request_id},
+            )
+            return AnswerResponse(
+                ok=True,
+                message=f"Question {body.request_id[:8]} no longer active "
+                        "(问卷服务已重启，本次问卷已失效)",
+                request_id=body.request_id,
+                orphan=True,
+            )
+
+        resolved = await svc.skip(body.request_id)
+        if resolved is None:
+            # Same reasoning as /answer: no live Future means nothing was
+            # unparked, so do NOT let the card claim「✓ 已跳过」.
+            svc.forget(body.request_id)
+            _remember_result(
+                pq.tool_call_id or pq.request_id, "orphan",
+                {"request_id": pq.request_id},
+            )
+            return AnswerResponse(
+                ok=True,
+                message=f"Question {body.request_id[:8]} no longer active "
+                        "(没有正在等待的 agent 调用，本次问卷已失效)",
+                request_id=body.request_id,
+                orphan=True,
+            )
         _remember_result(
             pq.tool_call_id or pq.request_id, "skipped",
             {"request_id": pq.request_id},
@@ -698,6 +787,30 @@ class QuestionModalPlugin:
             logger.info("✓ question-modal prompt section registered")
         except Exception:  # noqa: BLE001
             logger.exception("failed to register question-modal prompt section")
+
+        # ── 5. Shutdown hook: never leave an agent parked ──
+        #
+        # Unloading / hot-reloading this plugin destroys the REST routes that
+        # would resolve a pending survey, so every parked Future becomes
+        # unresolvable.  The host then keeps the old agent instance alive
+        # ("Tasks are still active for old instance …") and every new message
+        # in those chats answers「A task is already running」— forever.
+        # Resolving them as skipped on the way out keeps the chat usable.
+        try:
+            async def _on_shutdown() -> None:
+                try:
+                    n = await get_question_service().release_all("plugin_unloaded")
+                    if n:
+                        logger.info(
+                            "question-modal shutdown released %d blocked question(s)", n,
+                        )
+                except Exception:  # noqa: BLE001
+                    logger.exception("question-modal shutdown release failed")
+
+            api.register_shutdown_hook("question-modal_release_pending", _on_shutdown)
+            logger.info("✓ question-modal shutdown hook registered")
+        except Exception:  # noqa: BLE001
+            logger.exception("failed to register question-modal shutdown hook")
 
         logger.info("✓ question-modal plugin registered")
 
