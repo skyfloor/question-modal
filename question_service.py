@@ -115,6 +115,7 @@ class QuestionService:
 
     async def submit_answer(
         self, request_id: str, answers: dict, other: str = "",
+        attachments: list | None = None,
     ) -> PendingQuestion | None:
         """Resolve a pending question with the user's answers."""
         async with self._lock:
@@ -128,6 +129,10 @@ class QuestionService:
         result = {
             "answers": answers,
             "other": other,
+            # Files attached to the final「其他意见」box.  Must ride along in
+            # the Future result, otherwise the model never sees them (the
+            # per-question ones live inside `answers` and survive either way).
+            "attachments": attachments or [],
             "skipped": False,
         }
         if pq.future and not pq.future.done():

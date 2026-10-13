@@ -145,6 +145,11 @@ class AnswerRequest(BaseModel):
     session_id: str = Field("", description="Session ID")
     answers: dict = Field(default_factory=dict, description="Question answers")
     other: str = Field("", description="Final 'other' field")
+    # Files the user attached to the final「其他意见」box.  Each entry is what
+    # the host's own upload endpoint returned: {url, file_name, size}.  Kept
+    # as a loose list so an older/newer frontend never fails validation.
+    attachments: list = Field(default_factory=list,
+                              description="Files attached to the final 'other' box")
 
 
 class SkipRequest(BaseModel):
@@ -221,11 +226,13 @@ def build_router() -> APIRouter:
         if pq.session_id and body.session_id and pq.session_id != body.session_id:
             raise HTTPException(status_code=403, detail="Session mismatch")
 
-        await svc.submit_answer(body.request_id, body.answers, body.other)
+        await svc.submit_answer(
+            body.request_id, body.answers, body.other, body.attachments,
+        )
         _remember_result(
             pq.tool_call_id or pq.request_id, "answered",
             {"request_id": pq.request_id, "answers": body.answers,
-             "other": body.other},
+             "other": body.other, "attachments": body.attachments},
         )
         return AnswerResponse(
             ok=True,
@@ -337,6 +344,28 @@ def _parse_tool_input(tool_call: Any) -> dict:
     return {}
 
 
+def _fmt_attachments(items: Any) -> str:
+    """Render an attachment list as「名（大小）」, tolerant of odd shapes."""
+    if not isinstance(items, list) or not items:
+        return ""
+    names: list[str] = []
+    for it in items:
+        if isinstance(it, dict):
+            name = str(it.get("file_name") or it.get("name") or "文件")
+            size = it.get("size")
+        else:
+            name, size = str(it), None
+        if isinstance(size, (int, float)) and size > 0:
+            mb = size / (1024 * 1024)
+            size_s = f"{size} B" if size < 1024 else (
+                f"{size / 1024:.1f} KB" if size < 1024 * 1024 else f"{mb:.1f} MB"
+            )
+            names.append(f"{name}（{size_s}）")
+        else:
+            names.append(name)
+    return "、".join(names)
+
+
 def _format_answer_for_llm(answer: dict) -> str:
     """Render the user's answer as readable text plus the raw JSON.
 
@@ -361,6 +390,10 @@ def _format_answer_for_llm(answer: dict) -> str:
             display = "、".join(str(v) for v in value)
         if other:
             display = f"{display}（其他：{other}）" if display else other
+        # Files the user attached under this question's「其他」box.
+        att_s = _fmt_attachments(item.get("attachments"))
+        if att_s:
+            display = f"{display}（附件：{att_s}）" if display else f"（附件：{att_s}）"
         # Per-question skip: the user stepped past this one without answering.
         # Keep the line so the model knows the question was *seen and skipped*,
         # rather than silently missing from the answer set.
@@ -371,6 +404,10 @@ def _format_answer_for_llm(answer: dict) -> str:
     final_other = answer.get("other") or ""
     if final_other:
         lines.append(f"- 其他意见：{final_other}")
+
+    final_att = _fmt_attachments(answer.get("attachments"))
+    if final_att:
+        lines.append(f"- 其他意见附件：{final_att}")
 
     lines.append("")
     lines.append(json.dumps(answer, ensure_ascii=False))
@@ -424,7 +461,7 @@ _PROMPT_SECTION = """## question_modal 工具（交互式选项）
 - 选择题会自动附带「其他」输入框；问卷末页有独立的「其他意见」框。
 - 判定标准：若你正准备写「甲/乙/丙」「A 还是 B」这类让用户二选一的内容，
   就应该改用 `question_modal` —— 纯文字选项用户无法点选，是无效的交互。
-- 用户可跳过；若长时间未作答会自动跳过，你应基于已有信息继续推进。
+- 用户可跳过本题或整份问卷；跳过或超时后不要再等待，直接基于已有信息继续推进。
 
 示例：
 
@@ -607,14 +644,23 @@ class QuestionModalPlugin:
                 tool_name="question_modal",
                 tool_func=question_modal_func,
                 description=(
-                    "向用户弹出一个多页问卷并等待回答，用于需要用户做选择、裁定或澄清的场景。"
-                    "**当你要让用户在几个方案间二选一/多选一，或需要用户确认范围、拍板阻断项时，"
-                    "应调用本工具，而不是在回复正文里罗列选项。** "
+                    "向用户弹出一个多页问卷并等待回答。"
+                    "**硬性规则：任何需要用户在若干候选项之间做选择、裁定或确认的场景，"
+                    "都必须调用本工具；严禁在回复正文里用编号列表、「甲/乙/丙」「A 还是 B」、"
+                    "表格或问句罗列选项让用户手打回复——纯文字选项用户无法点选，属无效交互。**"
+                    "判定口诀：若你正准备输出「1. … 2. … 3. …」让用户挑一条，"
+                    "或以「是否…？」「要不要…？」「要继续还是暂停？」结尾等待用户回答，"
+                    "就该改用 question_modal。"
                     "参数：questions (问题列表), title (标题,可选)。"
                     "问题类型：single(单选), multi(多选), text(问答)。"
-                    "所有选择题含'其他'文本。问卷末页有独立'其他意见'框。"
-                    "支持条件题：任选题可加 showIf（如 {\"q0\":[\"选B后出现\"]}），"
-                    "实现基于前题答案的动态联动。"
+                    "**一道题允许勾选多个答案时用 multi（回传为数组），二选一走 single；"
+                    "不要为了多选而把它拆成多道是/否单选题。**"
+                    "所有选择题均含'其他'文本框，其下可添加附件；"
+                    "问卷末页有独立'其他意见'框（同样支持添加附件）。"
+                    "支持条件题：任选题可加 showIf（如 {\"q0\":[\"选项B\"]}），"
+                    "用户选中前置选项后该题自动出现，实现基于前题答案的动态联动。"
+                    "用户可以跳过本题或整份问卷；跳过或超时后不要再等待，"
+                    "基于已有信息继续推进。"
                 ),
                 icon="❓",
                 enabled=False,
