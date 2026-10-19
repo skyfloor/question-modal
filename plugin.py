@@ -33,21 +33,57 @@ import json
 import logging
 import os
 import time
+import uuid
 from pathlib import Path
-from typing import Any, AsyncGenerator, Callable
+from typing import Any, AsyncGenerator, Callable, Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from qwenpaw.plugins.api import PluginApi
 
 from .question_service import get_question_service
+from . import analysis as _analysis
 
 logger = logging.getLogger(__name__)
 
 _PLUGIN_DIR = Path(__file__).parent.resolve()
 
 _TYPE_LABELS = {"single": "单选", "multi": "多选", "text": "问答"}
+
+# ── Running analyses ───────────────────────────────────────────────
+# Keyed by tool_call_id (fallback: request_id) → asyncio.Task.  Lets the card's
+#「终止分析」button actually stop a six-step run instead of just hiding it: the
+# task is cancelled, which propagates into the in-flight model call.  Entries
+# remove themselves in the route's finally block.
+_ANALYSIS_TASKS: dict[str, asyncio.Task] = {}
+
+
+def _analysis_key(tool_call_id: str, request_id: str) -> str:
+    return tool_call_id or request_id or ""
+
+
+def _task_key(key: str, question_index: Optional[int] = None) -> str:
+    """Registry key for a running analysis.
+
+    Per-question runs get their own slot (``<card key>#q<index>``) so switching
+    questions does not make an in-flight run unfindable, while the card can
+    still locate the run of the question it is currently showing.
+    """
+    if question_index is None:
+        return key
+    return f"{key}#q{int(question_index)}"
+
+
+def _cancel_analysis(key: str) -> bool:
+    """Cancel a running analysis.  Returns True when something was stopped."""
+    task = _ANALYSIS_TASKS.get(key)
+    if task is None or task.done():
+        _ANALYSIS_TASKS.pop(key, None)
+        return False
+    task.cancel()
+    return True
 
 # ── Answered-results cache ─────────────────────────────────────────
 # Keyed by tool_call_id (fallback: request_id).  A card re-rendered after
@@ -62,6 +98,129 @@ _TYPE_LABELS = {"single": "单选", "multi": "多选", "text": "问答"}
 _RESULTS: dict[str, dict] = {}
 _RESULTS_MAX = 300
 _RESULTS_FILE = _PLUGIN_DIR / "answered_results.json"
+
+
+# ══════════════════════════════════════════════════════════════════════
+# Capsule preferences (B3) — disk is the single source of truth
+# ══════════════════════════════════════════════════════════════════════
+#
+# Why a file and not localStorage: the card keyed its prefs by tool_call_id,
+# and every question_modal call gets a brand-new one, so the model selection
+# looked "reset" on each survey.  A per-install JSON file makes the choice
+# survive reloads, travel across browsers and stay identical for every card.
+#
+# Only whitelisted keys are persisted, so the file cannot grow unbounded nor
+# be used to stash arbitrary payloads.
+_PREFS_FILE = _PLUGIN_DIR / "analysis_prefs.json"
+_PREFS_DEFAULTS: dict[str, Any] = {
+    "mode": "manual",
+    "model_id": "",
+    "with_context": False,
+    "parallel": False,
+}
+
+
+def _load_prefs() -> dict:
+    """Read the persisted prefs, falling back to the defaults."""
+    try:
+        if _PREFS_FILE.is_file():
+            data = json.loads(_PREFS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                out = dict(_PREFS_DEFAULTS)
+                for k in _PREFS_DEFAULTS:
+                    if k in data:
+                        out[k] = data[k]
+                return out
+    except Exception:  # noqa: BLE001 — a broken prefs file must not break a survey
+        logger.warning("question_modal: could not read prefs", exc_info=True)
+    return dict(_PREFS_DEFAULTS)
+
+
+def _save_prefs(patch: dict) -> dict:
+    """Merge a whitelisted patch into the prefs file (atomic write)."""
+    cur = _load_prefs()
+    # `recommend` is the third driving mode: consume the recommendation the
+    # model attached while authoring the question, without any model call.
+    if patch.get("mode") in ("ai", "recommend", "manual"):
+        cur["mode"] = patch["mode"]
+    if isinstance(patch.get("model_id"), str):
+        cur["model_id"] = patch["model_id"][:200]
+    for flag in ("with_context", "parallel"):
+        if isinstance(patch.get(flag), bool):
+            cur[flag] = patch[flag]
+    cur["updated_at"] = time.time()
+    try:
+        tmp = _PREFS_FILE.parent / (_PREFS_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(cur, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(_PREFS_FILE)
+    except Exception:  # noqa: BLE001 — the card keeps a localStorage mirror
+        logger.warning("question_modal: could not persist prefs", exc_info=True)
+    return cur
+
+
+# ── Analysis prompt templates (REQ-001/003/005/006) ────────────────────
+#
+# Built-in templates ship in code (from ``analysis.BUILTIN_TEMPLATES``); the
+# user may EDIT them but not DELETE them.  Custom templates are persisted in
+# ``templates.json`` and merged on top, so the library is GLOBAL (one shared
+# store across every card — REQ-005); only the *selection* of which template a
+# card uses is per-card (REQ-002, stored in the card state on the client).
+_TEMPLATES_FILE = _PLUGIN_DIR / "templates.json"
+
+
+def _load_custom_templates() -> list[dict]:
+    """Read the custom (non-builtin) templates persisted on disk."""
+    try:
+        if _TEMPLATES_FILE.is_file():
+            data = json.loads(_TEMPLATES_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("items"), list):
+                return [t for t in data["items"] if isinstance(t, dict)]
+    except Exception:  # noqa: BLE001 — a broken file must not break analysis
+        logger.warning("question_modal: could not read templates", exc_info=True)
+    return []
+
+
+def _save_custom_templates(items: list[dict]) -> None:
+    """Persist the custom templates (atomic write)."""
+    payload = {"schema_version": 1, "updated_at": time.time(), "items": items}
+    try:
+        tmp = _TEMPLATES_FILE.parent / (_TEMPLATES_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(_TEMPLATES_FILE)
+    except Exception:  # noqa: BLE001
+        logger.warning("question_modal: could not persist templates", exc_info=True)
+
+
+def _sanitize_template(t: dict) -> dict:
+    """Keep only the fields a template owns, with bounded sizes."""
+    return {
+        "id": str(t.get("id") or "")[:120],
+        "name": str(t.get("name") or "")[:120],
+        "system": str(t.get("system") or "")[:20000],
+        "user": str(t.get("user") or "")[:20000],
+        "builtin": bool(t.get("builtin")),
+    }
+
+
+def _all_templates() -> list[dict]:
+    """Built-ins first, custom appended; a custom with a builtin id overrides it."""
+    builtins = [_sanitize_template(t) for t in _analysis.BUILTIN_TEMPLATES]
+    customs = [_sanitize_template(t) for t in _load_custom_templates()]
+    merged: list[dict] = []
+    by_id: dict[str, int] = {}
+    for t in builtins:
+        by_id[t["id"]] = len(merged)
+        merged.append(t)
+    for t in customs:
+        # A stored copy of a builtin (edited) overrides the shipped default,
+        # exactly like prompt-forge's "builtin as base, custom on top".
+        t["builtin"] = t["id"] in by_id or t.get("builtin", False)
+        if t["id"] in by_id:
+            merged[by_id[t["id"]]] = t
+        else:
+            by_id[t["id"]] = len(merged)
+            merged.append(t)
+    return merged
 
 
 def _persist_results() -> None:
@@ -112,6 +271,47 @@ def _register_question(request_id: str, session_id: str, questions: list) -> Non
     return None
 
 
+def _build_per_question(questions: list, answers: dict) -> list:
+    """Pair each question with the answer the user gave (decision record)."""
+    out: list[dict] = []
+    for i, q in enumerate(questions or []):
+        key = f"q{i}"
+        a = answers.get(key) if isinstance(answers, dict) else None
+        if isinstance(a, dict):
+            value = a.get("value")
+            other = a.get("other") or ""
+            skipped = bool(a.get("skipped"))
+        else:
+            value, other, skipped = a, "", False
+        if isinstance(value, list):
+            value = "、".join(str(v) for v in value)
+        if other:
+            value = (str(value) + "、" + other) if value else other
+        out.append({
+            "index": i,
+            "title": (q or {}).get("title") or f"问题 {i + 1}",
+            "type": (q or {}).get("type"),
+            "answer": "" if skipped else (value or ""),
+            "skipped": skipped,
+        })
+    return out
+
+
+async def _history_db_path(request: Any) -> str:
+    """Locate the agent's ``history.db`` for session-context reads.
+
+    The path is per-workspace (``<workspace_dir>/history.db``).  Every failure
+    is swallowed: analysis must still run without session context.
+    """
+    try:
+        from qwenpaw.app.agent_context import get_agent_for_request
+        workspace = await get_agent_for_request(request)
+        path = getattr(workspace, "workspace_dir", None)
+        return str(Path(path) / "history.db") if path else ""
+    except Exception:  # noqa: BLE001
+        return ""
+
+
 # Upper bound on how long a tool call may block waiting for the user.
 # 0 = wait forever, which is the DEFAULT and the intended contract:
 # question_modal is a *blocking* interaction, so an auto-skip would silently
@@ -155,6 +355,72 @@ class AnswerRequest(BaseModel):
 class SkipRequest(BaseModel):
     request_id: str = Field(..., description="Question request ID")
     session_id: str = Field("", description="Session ID")
+
+
+class AnalyzeRequest(BaseModel):
+    """Request body for the AI analysis endpoint.
+
+    Everything except ``request_id`` is optional: the card may send the
+    question list directly (so a card whose pending record is already gone can
+    still be analysed) or rely on the backend's pending record.
+    """
+    request_id: str = Field("", description="Question request ID")
+    tool_call_id: str = Field("", description="Tool call ID")
+    session_id: str = Field("", description="Session ID")
+    agent_id: str = Field("", description="Agent ID")
+    title: str = Field("", description="Survey title")
+    questions: list = Field(default_factory=list, description="Question list")
+    model_id: str = Field("", description="Capsule model, '<provider>:<model>'")
+    mode: str = Field("manual", description="'auto' | 'manual'")
+    with_context: bool = Field(
+        False, description="Include previous decision + session history",
+    )
+    parallel: bool = Field(
+        False, description="Run per-question calls in parallel (false = serial)",
+    )
+    # Per-question analysis (REQ-004): when set, only this question is analysed.
+    question_index: Optional[int] = Field(
+        None, description="Analyse only this question (per-question analysis)",
+    )
+    # The survey's current answers, used to build the baseline context from the
+    # questions answered before `question_index` (REQ-005).
+    answers: dict = Field(
+        default_factory=dict, description="Answers so far, keyed q0/q1/...",
+    )
+    # Which prompt template to analyse with (REQ-001/002).  Empty → built-in
+    # default, so an older card keeps its exact previous behaviour.
+    template_id: str = Field("", description="Prompt template id")
+
+
+class TemplateBody(BaseModel):
+    """A prompt template (create/update).  ``id`` empty → the server assigns one."""
+    id: str = Field("", description="Template id (empty = create new)")
+    name: str = Field("", description="Display name")
+    system: str = Field("", description="System prompt (must keep the JSON contract)")
+    user: str = Field("", description="Per-question user-prompt assembly template")
+
+
+class CancelAnalysisRequest(BaseModel):
+    """Identifies the analysis to stop (tool_call_id preferred)."""
+    tool_call_id: str = Field("", description="Tool call ID")
+    request_id: str = Field("", description="Question request ID")
+    # Optional: narrow the cancellation to one question's run.  Switching
+    # questions quickly can leave an earlier per-question run in flight, so the
+    # card targets its current question precisely.
+    question_index: Optional[int] = Field(
+        None, description="Cancel only this question's analysis",
+    )
+
+
+class PrefsRequest(BaseModel):
+    """Capsule preference patch — every field optional, unknown keys ignored.
+
+    Kept deliberately loose so an older/newer card never fails validation.
+    """
+    mode: Optional[str] = Field(None, description="'ai' | 'recommend' | 'manual'")
+    model_id: Optional[str] = Field(None, description="'<provider>:<model>'")
+    with_context: Optional[bool] = Field(None)
+    parallel: Optional[bool] = Field(None)
 
 
 class AnswerResponse(BaseModel):
@@ -294,6 +560,25 @@ def build_router() -> APIRouter:
             {"request_id": pq.request_id, "answers": body.answers,
              "other": body.other, "attachments": body.attachments},
         )
+        # Record the decision (questionnaire level, with per-question results)
+        # so the next survey can be analysed "with context".
+        try:
+            _analysis.record_decision({
+                "session_id": pq.session_id,
+                "agent_id": pq.agent_id,
+                "request_id": pq.request_id,
+                "tool_call_id": pq.tool_call_id,
+                "title": pq.title,
+                "source": "user",
+                "per_question": _build_per_question(pq.questions, body.answers),
+                "final_answers": {
+                    k: (v.get("value") if isinstance(v, dict) else v)
+                    for k, v in (body.answers or {}).items()
+                },
+                "other": body.other,
+            })
+        except Exception:  # noqa: BLE001 - never fail a submission over this
+            logger.warning("question_modal: record_decision failed", exc_info=True)
         return AnswerResponse(
             ok=True,
             message=f"Question {body.request_id[:8]} answered",
@@ -391,6 +676,227 @@ def build_router() -> APIRouter:
         svc = get_question_service()
         count = await svc.cancel_all_by_session(session_id)
         return {"ok": True, "cancelled": count}
+
+    # ── AI analysis (optionally automated) ──────────────────────────────
+    #
+    # The card can hand this survey to a model: it picks a "capsule" model,
+    # flips to AI automation, and the survey is analysed as soon as it opens.
+    # Model access reuses the host factory — the same channel prompt-forge
+    # ships in production.
+
+    @router.post("/analyze")
+    async def analyze(body: AnalyzeRequest, request: Request):
+        """Analyse a pending survey and (optionally) auto-fill the result.
+
+        ``mode``:
+          * ``auto``   — the user chose AI automation; the recommendation is
+                         computed and stored, ready to submit.
+          * ``manual`` — the user pressed「查看分析」; compute on demand.
+        Both paths run the same six-step chain.
+        """
+        svc = get_question_service()
+        pq = await svc.get_request(body.request_id) if body.request_id else None
+        questions = body.questions
+        title = body.title
+        session_id = body.session_id
+        agent_id = body.agent_id
+        tool_call_id = body.tool_call_id
+        if pq is not None:
+            questions = questions or pq.questions
+            title = title or pq.title
+            session_id = session_id or pq.session_id
+            agent_id = agent_id or pq.agent_id
+            tool_call_id = tool_call_id or pq.tool_call_id
+        if not questions:
+            # Mirror the reason into `analysis.error` as well, so the card's
+            # single error path ("read analysis.error") always has text even
+            # when the request is rejected before any analysis runs.
+            return {"ok": False, "error": "no questions to analyse",
+                    "analysis": {"ok": False, "per_question": [], "error": "问卷没有可分析的题目"}}
+
+        key = _analysis_key(tool_call_id, body.request_id)
+        run_key = _task_key(key, body.question_index)
+
+        # Resolve the prompt template (REQ-001).  An unknown/empty id falls back
+        # to the built-in default, so a stale card selection never breaks a run.
+        tpl = next(
+            (t for t in _all_templates() if t["id"] == body.template_id),
+            None,
+        ) or next(
+            t for t in _all_templates() if t["id"] == _analysis.DEFAULT_TEMPLATE_ID
+        )
+        sys_prompt = tpl.get("system") or ""
+        user_tpl = tpl.get("user") or ""
+
+        async def _run() -> dict:
+            res = await _analysis.analyze_survey(
+                questions=questions,
+                title=title,
+                model_id=body.model_id,
+                with_context=body.with_context,
+                parallel=body.parallel,
+                session_id=session_id,
+                history_db_path=await _history_db_path(request),
+                agent_id=agent_id,
+                question_index=body.question_index,
+                answers=body.answers,
+                system_prompt=sys_prompt,
+                user_template=user_tpl,
+            )
+            res = {**res, "request_id": body.request_id,
+                   "tool_call_id": tool_call_id, "mode": body.mode,
+                   "template_id": tpl.get("id") or ""}
+            _analysis.set_analysis(key, res)
+            return res
+
+        # Run as a task so「终止分析」can cancel it mid-flight.  Rationale: a
+        # six-step chain can take a minute or more (model retries included);
+        # without a handle the bubble could only hide its spinner while the run
+        # kept burning tokens in the background.
+        task = asyncio.ensure_future(_run())
+        _ANALYSIS_TASKS[run_key] = task
+        try:
+            result = await task
+        except asyncio.CancelledError:
+            # Surface the cancellation as a normal (non-error-looking) payload;
+            # the card shows "已终止分析" rather than a scary failure.
+            cancelled = {
+                "ok": False, "cancelled": True,
+                "title": title, "model_id": body.model_id,
+                "with_context": body.with_context, "parallel": bool(body.parallel),
+                "question_index": body.question_index,
+                "per_question": [], "elapsed": 0.0,
+                "steps": _analysis.ANALYSIS_STEPS,
+                "error": "分析已被用户终止",
+                "request_id": body.request_id,
+                "tool_call_id": tool_call_id, "mode": body.mode,
+            }
+            _analysis.set_analysis(key, cancelled)
+            return {"ok": False, "cancelled": True,
+                    "error": cancelled["error"], "analysis": cancelled}
+        finally:
+            if _ANALYSIS_TASKS.get(run_key) is task:
+                _ANALYSIS_TASKS.pop(run_key, None)
+
+        # The reason lives in `result["error"]` and is surfaced to the user by
+        # the card; `ok` mirrors it at the top level for simple clients.
+        return {"ok": result.get("ok", False),
+                "error": result.get("error", ""),
+                "analysis": result}
+
+    @router.post("/analyze/cancel")
+    async def cancel_analysis(body: CancelAnalysisRequest):
+        """Stop a running analysis.  Idempotent: cancelling an unknown or
+        already-finished analysis is reported truthfully via ``cancelled``."""
+        key = _analysis_key(body.tool_call_id, body.request_id)
+        stopped = _cancel_analysis(_task_key(key, body.question_index))
+        if not stopped:
+            # Tolerate a caller that omits question_index: fall back to the
+            # card-level slot so a running whole-survey run is still stoppable.
+            stopped = _cancel_analysis(key)
+        return {"ok": True, "cancelled": stopped, "key": key}
+
+    @router.get("/analysis")
+    async def get_analysis(
+        tool_call_id: str = Query(default=""),
+        request_id: str = Query(default=""),
+        question_index: Optional[int] = Query(default=None),
+    ):
+        """Return a stored analysis (so a card reload can re-show it).
+
+        ``question_index`` narrows the lookup to one question's latest result —
+        the per-question storage means re-analysing overwrites the previous one
+        instead of accumulating history (REQ-007).
+        """
+        item = _analysis.get_question_analysis(
+            _analysis_key(tool_call_id, request_id), question_index,
+        )
+        if not item:
+            return {"ok": True, "found": False}
+        return {"ok": True, "found": True, "analysis": item}
+
+    @router.get("/decisions")
+    async def get_decisions(
+        session_id: str = Query(default=""),
+        limit: int = Query(default=50),
+    ):
+        """List stored decision records (newest first)."""
+        return {
+            "ok": True,
+            "items": _analysis.list_decisions(session_id, limit),
+        }
+
+    # ── Capsule preferences (single source of truth = disk) ──────────
+    # The card used to keep these in localStorage keyed by tool_call_id, so
+    # every new survey started from the defaults and the model selection was
+    # "reset" each time.  The file below is shared by every card, every agent
+    # and every browser, which is what makes the choice actually stick.
+    @router.get("/prefs")
+    async def get_prefs():
+        return {"ok": True, "prefs": _load_prefs()}
+
+    @router.post("/prefs")
+    async def post_prefs(body: PrefsRequest):
+        saved = _save_prefs(body.model_dump())
+        return {"ok": True, "prefs": saved}
+
+    # ── Prompt templates (REQ-001/003/005/006) ──────────────────────────
+    @router.get("/templates")
+    async def get_templates():
+        """The whole library: built-ins (editable, not deletable) + custom."""
+        return {"ok": True, "items": _all_templates(),
+                "default_id": _analysis.DEFAULT_TEMPLATE_ID}
+
+    @router.post("/templates")
+    async def post_templates(body: TemplateBody):
+        """Create or update a custom template (REQ-003).
+
+        The return-format contract is enforced here (REQ-006): a system prompt
+        that no longer asks for JSON ``{choice,confidence,reasoning}`` is
+        rejected, so a bad edit can never silently produce unparsable output.
+        """
+        tpl = _sanitize_template(body.model_dump())
+        if not tpl["name"].strip():
+            return {"ok": False, "error": "模板名称不能为空"}
+        err = _analysis.validate_template(tpl)
+        if err:
+            # 422 mirrors a validation failure; the card surfaces `error`.
+            return JSONResponse(status_code=422,
+                                content={"ok": False, "error": err})
+
+        customs = _load_custom_templates()
+        builtin_ids = {t["id"] for t in _analysis.BUILTIN_TEMPLATES}
+        if not tpl["id"]:
+            tpl["id"] = "tpl-" + uuid.uuid4().hex[:12]
+        tpl["builtin"] = tpl["id"] in builtin_ids
+        # Same id → replace (supports editing a builtin, persisted as override).
+        replaced = False
+        for i, c in enumerate(customs):
+            if c.get("id") == tpl["id"]:
+                customs[i] = tpl
+                replaced = True
+                break
+        if not replaced:
+            customs.append(tpl)
+        _save_custom_templates(customs)
+        return {"ok": True, "items": _all_templates(), "saved": tpl}
+
+    @router.delete("/templates/{template_id}")
+    async def delete_template(template_id: str):
+        """Delete a CUSTOM template.  Built-ins cannot be deleted (REQ-003)."""
+        builtin_ids = {t["id"] for t in _analysis.BUILTIN_TEMPLATES}
+        if template_id in builtin_ids:
+            return JSONResponse(
+                status_code=403,
+                content={"ok": False, "error": "内置模板不可删除，但可以编辑"},
+            )
+        customs = _load_custom_templates()
+        remaining = [c for c in customs if c.get("id") != template_id]
+        if len(remaining) == len(customs):
+            return JSONResponse(status_code=404,
+                                content={"ok": False, "error": "模板不存在"})
+        _save_custom_templates(remaining)
+        return {"ok": True, "items": _all_templates()}
 
     return router
 
@@ -503,6 +1009,18 @@ def _format_answer_for_llm(answer: dict) -> str:
     return "\n".join(lines)
 
 
+def _opt_text(o: Any) -> str:
+    """Render one option as text.
+
+    Options are documented as plain strings, but a model occasionally emits
+    ``{"label": ..., "value": ...}``.  ``'、'.join(options)`` raised TypeError
+    on those and killed the whole tool call, so normalise defensively.
+    """
+    if isinstance(o, dict):
+        return str(o.get("label") or o.get("value") or "")
+    return str(o)
+
+
 def _build_summary(title: str, questions: list[dict]) -> str:
     """Human-readable question summary (shown in the tool-call bubble)."""
     lines = [f"❓ **{title or '问卷'}**"]
@@ -511,7 +1029,13 @@ def _build_summary(title: str, questions: list[dict]) -> str:
         q_title = q.get("title", f"Q{i + 1}")
         label = _TYPE_LABELS.get(q_type, q_type)
         options = q.get("options") or []
-        suffix = f"（{'、'.join(options)}）" if options else ""
+        suffix = f"（{'、'.join(_opt_text(o) for o in options)}）" if options else ""
+        # Surface the model's own recommendation to the model on the next turn,
+        # so it stays consistent with what the user saw / auto-accepted.
+        rec = q.get("recommended")
+        if rec:
+            rec_txt = "、".join(rec) if isinstance(rec, (list, tuple)) else str(rec)
+            suffix += f" ⟨推荐：{rec_txt}⟩"
         lines.append(f"{i + 1}. [{label}] {q_title}{suffix}")
     return "\n".join(lines)
 
@@ -748,6 +1272,10 @@ class QuestionModalPlugin:
                     "问卷末页有独立'其他意见'框（同样支持添加附件）。"
                     "支持条件题：任选题可加 showIf（如 {\"q0\":[\"选项B\"]}），"
                     "用户选中前置选项后该题自动出现，实现基于前题答案的动态联动。"
+                    "**推荐选项：你可以（也应当在有明确倾向时）为每道选择题标注推荐项，"
+                    "字段名 recommended，值是选项原文（多选可用数组，如 [\"A\",\"C\"]，"
+                    "单选直接用字符串）。标注后用户可在「只用推荐」模式下不调用模型直接采纳；"
+                    "没有明确倾向时不要标注，留空即可。**"
                     "用户可以跳过本题或整份问卷；跳过或超时后不要再等待，"
                     "基于已有信息继续推进。"
                 ),

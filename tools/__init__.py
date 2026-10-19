@@ -24,9 +24,22 @@ async def question_modal(questions: list[dict], title: str = "") -> str:
             {"type": "multi",  "title": "...", "options": ["A", "B", ...]}
             {"type": "text",   "title": "..."}
 
-            # 条件题：只有当前置条件成立时才显示（可多层嵌套联动）
+            # 推荐选项（可选）：选择题可标注你推荐的选项原文。
+            # 单选用字符串，多选用数组；没有明确倾向就不要标。
+            {"type": "single", "title": "...", "options": ["A", "B"],
+             "recommended": "B"}
+            {"type": "multi",  "title": "...", "options": ["A", "B", "C"],
+             "recommended": ["A", "C"]}
+
+            # 条件题：只有当前置条件成立时该题才显示（可多层嵌套联动）
             {"type": "single", "title": "...", "options": ["A", "B"],
              "showIf": {"q0": ["B"]}}
+
+        recommended 说明（可选字段）：
+            - 值为选项原文（label 或 value 均可匹配）
+            - 标注后，用户切到「只用推荐」模式时无需调用模型即可自动采纳
+            - 注意：options 必须保持**纯字符串数组**，不要把 recommended
+              塞进 options 元素里（后端会 join(options)，对象会报错）
 
         showIf 说明（可选字段）：
             - 键（key）：引用题目，可用序号 "q0"/"q1"…，或该题的 title 原文
