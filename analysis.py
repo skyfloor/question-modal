@@ -27,7 +27,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -67,9 +69,19 @@ _ANALYSIS_MAX_TOKENS = 4000
 # Persistence helpers (atomic tmp + replace; failures never break a request)
 # ══════════════════════════════════════════════════════════════════════
 
+_WRITE_LOCK = threading.Lock()
+
+
 def _atomic_write(path: Path, payload: Any) -> None:
+    tmp = None
     try:
-        tmp = path.parent / (path.name + ".tmp")
+        # A FIXED ``<name>.tmp`` collides once two writers overlap (the submit
+        # path and a background analysis finishing at the same time): one
+        # process can publish a half-written file, and json.loads then fails
+        # at startup, silently losing the whole cache.  Unique suffix + lock.
+        tmp = path.parent / (
+            f"{path.name}.{os.getpid()}.{threading.get_ident()}.tmp"
+        )
         tmp.write_text(
             json.dumps(payload, ensure_ascii=False), encoding="utf-8",
         )
@@ -77,6 +89,37 @@ def _atomic_write(path: Path, payload: Any) -> None:
     except Exception:  # noqa: BLE001 - cache best effort only
         logger.warning("question_modal: could not persist %s", path.name,
                        exc_info=True)
+    finally:
+        if tmp is not None:
+            try:
+                tmp.unlink(missing_ok=True)
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _persist_decisions_async() -> None:
+    """Persist decisions WITHOUT blocking the submission path.
+
+    decisions.json reaches ~200 KB.  ``record_decision`` is called from the
+    /answer route right after the Future was resolved, so any time spent here
+    delays nothing for the agent but does keep the HTTP response open — and
+    the card only shows「已提交」once that response lands.
+
+    Snapshot the list *before* handing it to the thread: ``_DECISIONS`` is
+    mutated by other submissions while the thread serialises it, and
+    json.dumps over a mutating list can raise (or emit a torn record).
+    """
+    snapshot = list(_DECISIONS)
+
+    def _run() -> None:
+        with _WRITE_LOCK:
+            _atomic_write(_DECISIONS_FILE, snapshot)
+
+    try:
+        threading.Thread(target=_run, name="qm-persist-decisions",
+                         daemon=True).start()
+    except Exception:  # noqa: BLE001
+        _atomic_write(_DECISIONS_FILE, snapshot)
 
 
 def _read_json(path: Path, default: Any) -> Any:
@@ -117,7 +160,12 @@ def record_decision(record: dict) -> dict:
         **{k: v for k, v in record.items() if k not in ("id", "created_at")},
     }
     _DECISIONS.append(entry)
-    _persist_decisions()
+    # Trim eagerly so the in-memory list stays bounded even though the write
+    # itself is deferred; otherwise a burst of submissions could grow the
+    # snapshot unboundedly between two background flushes.
+    if len(_DECISIONS) > _DECISIONS_MAX:
+        del _DECISIONS[: len(_DECISIONS) - _DECISIONS_MAX]
+    _persist_decisions_async()
     return entry
 
 

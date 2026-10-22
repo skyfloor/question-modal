@@ -311,7 +311,6 @@ class QuestionService:
                 return None
             pq.status = "answered"
             pq.resolved_at = time.time()
-            self._persist_locked()
 
         result = {
             "answers": answers,
@@ -322,8 +321,23 @@ class QuestionService:
             "attachments": attachments or [],
             "skipped": False,
         }
+        # ── Wake the parked agent FIRST ────────────────────────────────
+        # 2026-10-22: `set_result` used to run *after* `_persist_locked()`
+        # (which rewrites the whole pending file) and after the results cache
+        # was written (~170 KB).  Every millisecond spent there is dead time
+        # between the user pressing「提交」and the model resuming — and it is
+        # pure spinning: the agent has everything it needs from `result`.
+        # Resolving the Future first also lets the host start the (expensive)
+        # model call while the bookkeeping below finishes.
         if pq.future and not pq.future.done():
             pq.future.set_result(result)
+
+        # Bookkeeping after the wake-up: status mirror + results cache.
+        # NOTE `self._lock` is an **asyncio.Lock**, so it must be awaited —
+        # a plain `with` raises TypeError and would leave the pending file
+        # stale (the record stays on disk after being answered).
+        async with self._lock:
+            self._persist_locked()
 
         logger.info(
             "Question %s answered (%d answers)",
