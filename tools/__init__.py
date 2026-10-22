@@ -24,8 +24,8 @@ async def question_modal(questions: list[dict], title: str = "") -> str:
             {"type": "multi",  "title": "...", "options": ["A", "B", ...]}
             {"type": "text",   "title": "..."}
 
-            # 推荐选项（可选）：选择题可标注你推荐的选项原文。
-            # 单选用字符串，多选用数组；没有明确倾向就不要标。
+            # 推荐选项（默认必做）：每道选择题都应标注你推荐的选项原文，
+            # 单选用字符串，多选用数组；只有确实完全无法取舍时才留空。
             {"type": "single", "title": "...", "options": ["A", "B"],
              "recommended": "B"}
             {"type": "multi",  "title": "...", "options": ["A", "B", "C"],
@@ -35,7 +35,7 @@ async def question_modal(questions: list[dict], title: str = "") -> str:
             {"type": "single", "title": "...", "options": ["A", "B"],
              "showIf": {"q0": ["B"]}}
 
-        recommended 说明（可选字段）：
+        recommended 说明（默认应填写）：
             - 值为选项原文（label 或 value 均可匹配）
             - 标注后，用户切到「只用推荐」模式时无需调用模型即可自动采纳
             - 注意：options 必须保持**纯字符串数组**，不要把 recommended

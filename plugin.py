@@ -59,6 +59,47 @@ _TYPE_LABELS = {"single": "单选", "multi": "多选", "text": "问答"}
 # remove themselves in the route's finally block.
 _ANALYSIS_TASKS: dict[str, asyncio.Task] = {}
 
+# ── Empty-answer gate audit trail ─────────────────────────────────
+# The strict gate (用户裁定 2026-10-21) rejects a「提交」while any visible
+# question is unanswered.  A rejection fires NO network request the backend
+# normally sees, and the toast is transient — so "was it actually blocked?"
+# had no hard evidence either way.  The card POSTs one line here every time
+# the gate fires, carrying its OWN bundle tag: that lets us tell apart
+#   (a) the gate logic not running  vs
+#   (b) the browser executing a stale bundle (a reload that didn't take).
+_GATE_FILE = _PLUGIN_DIR / "gate_blocks.json"
+
+
+def _remember_gate_block(payload: dict) -> None:
+    """Append one gate-rejection record (bounded) and log it.
+
+    Best-effort: a broken audit file must never break a live survey, so every
+    failure is swallowed to a warning.  Kept to the last 200 entries.
+    """
+    try:
+        items: list[dict] = []
+        if _GATE_FILE.is_file():
+            data = json.loads(_GATE_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, list):
+                items = data
+        items.append(payload)
+        if len(items) > 200:
+            items = items[-200:]
+        tmp = _GATE_FILE.parent / (_GATE_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(_GATE_FILE)
+    except Exception:  # noqa: BLE001 — audit trail is non-critical
+        logger.warning("question_modal: could not persist gate block", exc_info=True)
+    logger.info(
+        "question_modal: GATE-BLOCK card=%s bundle=%s missing=%s answered=%s/%s",
+        str(payload.get("tool_call_id") or "")[:24],
+        payload.get("bundle"),
+        payload.get("missing"),
+        payload.get("answered"),
+        payload.get("total"),
+    )
+
+
 
 def _analysis_key(tool_call_id: str, request_id: str) -> str:
     return tool_call_id or request_id or ""
@@ -357,6 +398,22 @@ class SkipRequest(BaseModel):
     session_id: str = Field("", description="Session ID")
 
 
+class GateBlockRequest(BaseModel):
+    """One「提交」rejected by the strict empty-answer gate.
+
+    ``bundle`` is the card's own build tag — the only reliable way to tell a
+    logic bug apart from a browser that is still running an older bundle.
+    """
+    request_id: str = Field("", description="Question request ID")
+    tool_call_id: str = Field("", description="Card tool_call_id")
+    session_id: str = Field("", description="Session ID")
+    missing: list[int] = Field(default_factory=list, description="Unanswered visible question numbers")
+    answered: int = Field(0, description="How many visible questions WERE answered")
+    total: int = Field(0, description="How many questions are visible")
+    bundle: str = Field("", description="Card build tag (proves which bundle ran)")
+
+
+
 class AnalyzeRequest(BaseModel):
     """Request body for the AI analysis endpoint.
 
@@ -633,6 +690,31 @@ def build_router() -> APIRouter:
             ok=True,
             message=f"Question {body.request_id[:8]} skipped",
             request_id=body.request_id,
+        )
+
+    @router.post("/gate-block", response_model=AnswerResponse)
+    async def gate_block(body: GateBlockRequest):
+        """Record that the strict empty-answer gate rejected a「提交」.
+
+        Pure audit — nothing is resolved.  The card keeps staying open; this
+        only gives us a durable, backend-visible trace carrying the card's own
+        bundle tag, so a "the gate didn't fire" report can be checked against
+        reality instead of a transient toast.
+        """
+        _remember_gate_block({
+            "at": time.time(),
+            "request_id": body.request_id,
+            "tool_call_id": body.tool_call_id,
+            "session_id": body.session_id,
+            "missing": body.missing,
+            "answered": body.answered,
+            "total": body.total,
+            "bundle": body.bundle,
+        })
+        return AnswerResponse(
+            ok=True,
+            message="gate-block recorded",
+            request_id=body.request_id or "-",
         )
 
     @router.get("/pending")
@@ -989,11 +1071,16 @@ def _format_answer_for_llm(answer: dict) -> str:
         att_s = _fmt_attachments(item.get("attachments"))
         if att_s:
             display = f"{display}（附件：{att_s}）" if display else f"（附件：{att_s}）"
-        # Per-question skip: the user stepped past this one without answering.
-        # Keep the line so the model knows the question was *seen and skipped*,
-        # rather than silently missing from the answer set.
-        if item.get("skipped") or not str(display).strip():
+        # Per-question skip: the user stepped past this one via「跳过本题」.
+        # #5: an EMPTY answer the user merely advanced past (下一步 without
+        # choosing) is NOT a skip — it is「未作答」.  Conflating the two made
+        # the model read "next question" as an explicit skip.  Only an explicit
+        # skipped flag reads as跳过; a blank answer keeps its own wording so
+        # the model can tell the user saw it but did not decide.
+        if item.get("skipped"):
             display = "（用户跳过本题）"
+        elif not str(display).strip():
+            display = "（未作答）"
         lines.append(f"- {key} [{_TYPE_LABELS.get(q_type, q_type)}] {display}")
 
     final_other = answer.get("other") or ""
@@ -1272,10 +1359,10 @@ class QuestionModalPlugin:
                     "问卷末页有独立'其他意见'框（同样支持添加附件）。"
                     "支持条件题：任选题可加 showIf（如 {\"q0\":[\"选项B\"]}），"
                     "用户选中前置选项后该题自动出现，实现基于前题答案的动态联动。"
-                    "**推荐选项：你可以（也应当在有明确倾向时）为每道选择题标注推荐项，"
-                    "字段名 recommended，值是选项原文（多选可用数组，如 [\"A\",\"C\"]，"
-                    "单选直接用字符串）。标注后用户可在「只用推荐」模式下不调用模型直接采纳；"
-                    "没有明确倾向时不要标注，留空即可。**"
+                    "**推荐选项（必做）：每道选择题都必须用 recommended 字段标注一个推荐项，"
+                    "值是选项原文（多选可用数组，如 [\"A\",\"C\"]，单选直接用字符串）。"
+                    "即便各选项都可接受，也要选出你认为最稳妥的一项作为推荐——默认应当出现推荐标记，"
+                    "只有确实完全无法取舍时才留空。标注后用户可在「只用推荐」模式下不调用模型直接采纳。**"
                     "用户可以跳过本题或整份问卷；跳过或超时后不要再等待，"
                     "基于已有信息继续推进。"
                 ),
