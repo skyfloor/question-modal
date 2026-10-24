@@ -24,6 +24,13 @@ async def question_modal(questions: list[dict], title: str = "") -> str:
             {"type": "multi",  "title": "...", "options": ["A", "B", ...]}
             {"type": "text",   "title": "..."}
 
+            # 题干（必做，硬性要求）：**每一道题都必须写 title（题干文字）**，
+            # 不允许只给 options 而省略 title——否则用户只会看到一排选项、
+            # 不知道这题在问什么。title 是一句完整的疑问/待裁定陈述，
+            # 不是空串、不是仅一个编号。缺 title 的题即便前端会兜底显示"第 N 题"，
+            # 也已造成体验缺陷。
+            {"type": "single", "title": "本次改动是否只碰 pm-new？", "options": ["A", "B"]}
+
             # 推荐选项（默认必做）：每道选择题都应标注你推荐的选项原文，
             # 单选用字符串，多选用数组；只有确实完全无法取舍时才留空。
             {"type": "single", "title": "...", "options": ["A", "B"],
