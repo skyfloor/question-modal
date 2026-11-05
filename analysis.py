@@ -727,6 +727,22 @@ def decision_context_text(session_id: str = "") -> str:
 # Orchestration
 # ══════════════════════════════════════════════════════════════════════
 
+def _resolve_timeout(timeout_sec: float) -> float:
+    """Clamp the caller's per-question timeout into a safe range.
+
+    A 30s floor is deliberate: too-tight a timeout makes every analysis fail
+    with an empty result, which reads as "the AI is broken" (same failure mode
+    as an over-tight max_tokens).  0 / missing → the built-in default.
+    """
+    try:
+        v = float(timeout_sec or 0)
+    except (TypeError, ValueError):
+        return _MODEL_TIMEOUT_SECS
+    if v <= 0:
+        return _MODEL_TIMEOUT_SECS
+    return max(30.0, min(600.0, v))
+
+
 async def analyze_survey(
     *,
     questions: list[dict],
@@ -741,6 +757,7 @@ async def analyze_survey(
     answers: Optional[dict] = None,
     system_prompt: str = "",
     user_template: str = "",
+    timeout_sec: float = 0,
 ) -> dict:
     """Analyse a survey's questions and return the result.
 
@@ -794,7 +811,10 @@ async def analyze_survey(
             q, idx, len(questions), title, context_for(idx),
             user_template=user_template,
         )
-        raw = await call_model(system_prompt or _SYSTEM_PROMPT, prompt, model_id)
+        raw = await call_model(
+            system_prompt or _SYSTEM_PROMPT, prompt, model_id,
+            timeout=_resolve_timeout(timeout_sec),
+        )
         parsed = _parse_model_json(raw)
         qtype = infer_qtype(q)
         is_choice = qtype in ("single", "multi")

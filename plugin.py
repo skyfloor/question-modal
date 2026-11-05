@@ -40,7 +40,7 @@ from typing import Any, AsyncGenerator, Callable, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from qwenpaw.plugins.api import PluginApi
 
@@ -84,8 +84,17 @@ def _remember_gate_block(payload: dict) -> None:
             if isinstance(data, list):
                 items = data
         items.append(payload)
-        if len(items) > 200:
-            items = items[-200:]
+        # d5：上限读全局配置 gate_log_limit（0 = 不保留）。每次写入现读，
+        # 改完立即生效，不必等 reload。
+        try:
+            limit = int(_load_prefs().get("gate_log_limit", 200) or 200)
+        except (TypeError, ValueError):
+            limit = 200
+        limit = max(0, min(1000, limit))
+        if limit <= 0:
+            items = []
+        elif len(items) > limit:
+            items = items[-limit:]
         tmp = _GATE_FILE.parent / (_GATE_FILE.name + ".tmp")
         tmp.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
         tmp.replace(_GATE_FILE)
@@ -167,13 +176,20 @@ _PREFS_DEFAULTS: dict[str, Any] = {
 
 
 def _load_prefs() -> dict:
-    """Read the persisted prefs, falling back to the defaults."""
+    """Read the persisted global prefs, falling back to the defaults.
+
+    IMPORTANT: this used to copy only the keys listed in ``_PREFS_DEFAULTS``,
+    which silently DROPPED any newer schema key (``slow_question_sec`` was
+    written to disk but never read back — a setting that "saves" yet never
+    takes effect).  Every schema key present on disk is now kept, so adding a
+    setting needs no edit here.
+    """
     try:
         if _PREFS_FILE.is_file():
             data = json.loads(_PREFS_FILE.read_text(encoding="utf-8"))
             if isinstance(data, dict):
                 out = dict(_PREFS_DEFAULTS)
-                for k in _PREFS_DEFAULTS:
+                for k in set(list(_PREFS_DEFAULTS) + list(SETTINGS_SCHEMA)):
                     if k in data:
                         out[k] = data[k]
                 return out
@@ -185,15 +201,10 @@ def _load_prefs() -> dict:
 def _save_prefs(patch: dict) -> dict:
     """Merge a whitelisted patch into the prefs file (atomic write)."""
     cur = _load_prefs()
-    # `recommend` is the third driving mode: consume the recommendation the
-    # model attached while authoring the question, without any model call.
-    if patch.get("mode") in ("ai", "recommend", "manual"):
-        cur["mode"] = patch["mode"]
-    if isinstance(patch.get("model_id"), str):
-        cur["model_id"] = patch["model_id"][:200]
-    for flag in ("with_context", "parallel"):
-        if isinstance(patch.get(flag), bool):
-            cur[flag] = patch[flag]
+    # Every schema key is accepted here (validated + clamped by
+    # ``sanitize_settings``), so adding a setting no longer means editing this
+    # function — one schema, one validator, one merge path.
+    cur.update(sanitize_settings(patch))
     cur["updated_at"] = time.time()
     try:
         tmp = _PREFS_FILE.parent / (_PREFS_FILE.name + ".tmp")
@@ -202,6 +213,511 @@ def _save_prefs(patch: dict) -> dict:
     except Exception:  # noqa: BLE001 — the card keeps a localStorage mirror
         logger.warning("question_modal: could not persist prefs", exc_info=True)
     return cur
+
+
+# ── Cache files (diagnostics tab) ───────────────────────────────────────
+# The front-end bundle is injected at runtime, so seeing a new build normally
+# means Ctrl+Shift+R.  These files are the plugin-side state that survives it;
+# clearing them is what makes the refresh actually start from a clean slate.
+#
+# Two tiers, because they are NOT equally safe:
+#   safe  — derived data.  Losing it loses nothing the user can still use.
+#   risky — anything holding an UNSUBMITTED survey or its answers.  Clearing it
+#           silently would destroy in-progress work, so the UI must opt in.
+_PURGE_HINTS = {
+    "gate_blocks.json": "拦截日志（用于排查，可随时重建）",
+    "decisions.json": "AI 决策记录（历史，用于「携带上下文」参考）",
+    "answered_results.json": "历史问卷答案（历史卡片回看依赖它）",
+    "pending_questions.json": "尚未答完的问卷（清掉等于放弃它们）",
+}
+
+# Configuration and the template library are NOT caches: purging them would
+# silently reset the user's settings, so they are hard-excluded from the
+# whitelist and reported separately for the UI to display.
+_PROTECTED_FILES = ("analysis_prefs.json", "session_prefs.json", "templates.json")
+
+# ── Settings schema: the single source of truth for what is configurable ──
+#
+# Every entry keeps its default, accepted type/values and the range guard that
+# stops a bad value from breaking a run.  ``scope`` says which layers may hold
+# it: "both" = global default AND per-session override, "global" = global only.
+#
+# Hard-won guards:
+#   * ``model_timeout_sec`` has a 30s floor — a timeout that is too tight makes
+#     every analysis fail with an empty result (same failure mode as an
+#     over-tight max_tokens).
+#   * ``slow_question_sec`` = 0 means "off", so 0 is legal while negative is not.
+SETTINGS_SCHEMA: dict[str, dict] = {
+    # ── 作答 (batch 1) ──
+    "mode": {
+        "default": "manual", "type": "enum", "values": ["ai", "recommend", "manual"],
+        "scope": "both", "batch": 1, "label": "默认答题模式",
+    },
+    "show_recommend_badge": {
+        "default": True, "type": "bool", "scope": "both", "batch": 1,
+        "label": "显示 AI 推荐标记",
+    },
+    "gate_unsaved": {
+        "default": True, "type": "bool", "scope": "both", "batch": 1,
+        "label": "未作答时拦截翻页",
+    },
+    "slow_question_sec": {
+        "default": 60, "type": "int", "min": 0, "max": 600, "scope": "both",
+        "batch": 1, "label": "题级计时提示",
+    },
+    "skip_mode": {
+        "default": "per_question", "type": "enum",
+        "values": ["per_question", "whole"], "scope": "both", "batch": 1,
+        "label": "跳过方式",
+    },
+    # ── 分析 (batch 2) ──
+    "model_id": {
+        "default": "", "type": "str", "maxlen": 200, "scope": "both",
+        "batch": 2, "label": "默认模型",
+    },
+    "template_id": {
+        "default": "", "type": "str", "maxlen": 120, "scope": "both",
+        "batch": 2, "label": "提示词模板",
+    },
+    "with_context": {
+        "default": False, "type": "bool", "scope": "both", "batch": 2,
+        "label": "携带上下文",
+    },
+    "parallel": {
+        "default": False, "type": "bool", "scope": "both", "batch": 2,
+        "label": "并行分析各题",
+    },
+    "model_timeout_sec": {
+        "default": 120, "type": "int", "min": 30, "max": 600, "scope": "both",
+        "batch": 2, "label": "单题分析超时",
+    },
+    # ── 显示 (batch 3) ──
+    "badge_position": {
+        "default": "left", "type": "enum", "values": ["left", "right"],
+        "scope": "both", "batch": 3, "label": "推荐徽章位置",
+    },
+    "badge_style": {
+        "default": "rect", "type": "enum", "values": ["rect", "round"],
+        "scope": "both", "batch": 3, "label": "徽章外观",
+    },
+    "highlight_recommended": {
+        "default": False, "type": "bool", "scope": "both", "batch": 3,
+        "label": "推荐项底色",
+    },
+    "auto_number_options": {
+        "default": True, "type": "bool", "scope": "both", "batch": 3,
+        "label": "选项自动编号",
+    },
+    "fallback_title": {
+        "default": True, "type": "bool", "scope": "both", "batch": 3,
+        "label": "缺题干时显示「第 N 题」",
+    },
+    # ── 通知 (batch 5) ──
+    "notify_manual_mode": {
+        "default": False, "type": "bool", "scope": "both", "batch": 5,
+        "label": "人工模式时提醒",
+    },
+    # ── 诊断 (batch 4) ──
+    "wait_hint_sec": {
+        "default": 180, "type": "int", "min": 30, "max": 3600, "scope": "both",
+        "batch": 4, "label": "等待提示阈值",
+    },
+    "gate_log_limit": {
+        "default": 200, "type": "int", "min": 0, "max": 1000, "scope": "global",
+        "batch": 4, "label": "拦截记录条数",
+    },
+}
+
+
+def _resolve_chat_id(
+    chat_id: str = "", session_id: str = "", agent_id: str = "",
+) -> str:
+    """Turn whatever the front end has into the chat UUID we key on.
+
+    The host exposes only ``session_id`` to front-end code, but ``session_id``
+    is NOT unique across agents (two agents can own a chat with the same
+    session_id), so every stored override is keyed by chat UUID.  This lookup
+    bridges the two: an explicit chat_id wins, otherwise match on
+    (session_id, agent_id), preferring an exact agent match.
+    """
+    if chat_id:
+        return chat_id
+    if not session_id:
+        return ""
+    rows = _iter_agent_chats()
+    exact = [r for r in rows
+             if r.get("session_id") == session_id and r.get("agent_id") == agent_id]
+    if exact:
+        return exact[0]["chat_id"]
+    loose = [r for r in rows if r.get("session_id") == session_id]
+    if len(loose) == 1:
+        return loose[0]["chat_id"]
+    return ""   # ambiguous or unknown — caller falls back to global only
+
+
+def schema_defaults() -> dict:
+    """The built-in defaults — layer ③ of the resolution chain."""
+    return {k: v["default"] for k, v in SETTINGS_SCHEMA.items()}
+
+
+def _coerce_setting(key: str, value: Any) -> tuple[bool, Any]:
+    """Validate+cushion one value against the schema.
+
+    Returns ``(ok, normalized)``.  Out-of-range numbers are CLAMPED (a user who
+    types 5 into the timeout box gets the 30s floor, not a broken run); values
+    of the wrong type are rejected outright.
+    """
+    spec = SETTINGS_SCHEMA.get(key)
+    if not spec:
+        return False, None
+    kind = spec.get("type")
+    if kind == "bool":
+        if isinstance(value, bool):
+            return True, value
+        return False, None
+    if kind == "int":
+        # bool is a subclass of int — reject it explicitly.
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return False, None
+        try:
+            num = int(value)
+        except (TypeError, ValueError):
+            return False, None
+        lo, hi = spec.get("min"), spec.get("max")
+        if lo is not None and num < lo:
+            num = lo
+        if hi is not None and num > hi:
+            num = hi
+        return True, num
+    if kind == "str":
+        if not isinstance(value, str):
+            return False, None
+        cap = spec.get("maxlen")
+        return True, (value[:cap] if cap else value)
+    if kind == "enum":
+        allowed = spec.get("values") or []
+        if isinstance(value, str) and value in allowed:
+            return True, value
+        return False, None
+    return False, None
+
+
+def sanitize_settings(patch: Any) -> dict:
+    """Keep only schema-known keys with valid (or clamped) values."""
+    if not isinstance(patch, dict):
+        return {}
+    clean: dict = {}
+    for key, value in patch.items():
+        ok, norm = _coerce_setting(key, value)
+        if ok:
+            clean[key] = norm
+    return clean
+
+
+def _session_model_id(chat_id: str) -> str:
+    """The model THIS conversation is using — the host's own definition.
+
+    宿主前端那个模型胶囊显示的就是它：``runtime_context.model``
+    （``qwenpaw/services/session_thinking.py:172`` 的 ``session_model()``，
+    注释原文 "Read the selected model owned by this conversation"）。
+
+    之前这里读的是 agent.json 的 ``active_model``，那是**agent 级**默认值。
+    实测三者并不相同：
+        会话 runtime_context.model → wd:deepseek-v4.1-flash   ← 用户界面上看到的
+        agent.json active_model    → sensenova:deepseek-flash ← 旧实现读的（错）
+    于是用户选「跟随当前对话模型」，卡片却显示另一个模型 —— 这就是
+    「选择的是会话跟随，结果还是被强制更改成其他」的根因。
+
+    读不到就返回空串，交给调用方回落到 agent 级。
+    """
+    if not chat_id:
+        return ""
+    try:
+        from qwenpaw.services.session_thinking import session_model
+    except Exception:  # noqa: BLE001
+        return ""
+    try:
+        meta = _chat_meta(chat_id)
+        slot = session_model(meta)
+        pid = getattr(slot, "provider_id", "") or ""
+        mdl = getattr(slot, "model", "") or ""
+        return ("%s:%s" % (pid, mdl)) if pid and mdl else ""
+    except Exception:  # noqa: BLE001
+        logger.debug("question_modal: session_model lookup failed", exc_info=True)
+        return ""
+
+
+def _chat_meta(chat_id: str) -> dict:
+    """``meta`` of one chat (holds ``runtime_context``), {} when unavailable.
+
+    走 `_iter_agent_chats()`（直接读各 workspace 的 chats.json）而不是宿主的
+    `get_chat_manager()`：后者是 **async** 函数且挂在 `app.chats.api` 上，
+    同步调用只会静默抛异常 → 跟随逻辑永远回落到 agent 级（本轮踩过）。
+    这条路径插件里已验证可用（/session-prefs 列表就在用它）。
+    """
+    if not chat_id:
+        return {}
+    try:
+        for row in _iter_agent_chats():
+            if row.get("chat_id") == chat_id:
+                meta = row.get("_meta")
+                return dict(meta) if isinstance(meta, dict) else {}
+    except Exception:  # noqa: BLE001
+        logger.debug("question_modal: chat meta lookup failed", exc_info=True)
+    return {}
+
+
+async def _agent_model_id(request: Any, agent_id: str) -> str:
+    """Fallback: the agent's own default model (``agent.json active_model``)."""
+    if request is None:
+        return ""
+    try:
+        from qwenpaw.app.routers.providers import _load_agent_model
+        slot = await _load_agent_model(request, agent_id)
+        pid = getattr(slot, "provider_id", "") or ""
+        mdl = getattr(slot, "model", "") or ""
+        return ("%s:%s" % (pid, mdl)) if pid and mdl else ""
+    except Exception:  # noqa: BLE001
+        logger.debug("question_modal: could not load agent model", exc_info=True)
+        return ""
+
+
+async def _fill_follow_active(
+    cfg: dict, request: Any = None, agent_id: str = "", chat_id: str = "",
+) -> dict:
+    """Fill「跟随当前对话模型」and the template-library default, SERVER-SIDE.
+
+    用户裁定（2026-11-04）：卡片与设置页必须显示同一个值。此前卡片自己兜底
+    （model_id 为空就去问 `/models/active`），而设置页没有这条路径 → 卡片显示
+    `sensenova:deepseek-flash`、设置页显示空。两条独立的兜底 = 必然分叉。
+
+    现在唯一的兜底在这里，两处都只读 `/effective-config` 的返回值：
+      • ``model_id`` 为空 → 用该会话 agent 配置的对话模型（不写盘！）
+      • ``template_id`` 为空 → 用模板库默认（``DEFAULT_TEMPLATE_ID``）
+
+    返回值里只是「解析后的实际值」，磁盘上的选择保持为空 —— 这样「用户显式配了
+    什么」与「实际用了什么」不会互相污染。``__follow_active__`` 标记让 UI 能显示
+    「跟随当前对话模型（xxx）」而不是让用户以为是自己配的。
+    """
+    cfg["__follow_active__"] = False
+    try:
+        if not cfg.get("model_id"):
+            model_id = _session_model_id(chat_id) or await _agent_model_id(
+                request, agent_id,
+            )
+            if model_id:
+                cfg["model_id"] = model_id
+                cfg["__follow_active__"] = True
+    except Exception:  # noqa: BLE001
+        logger.warning("question_modal: follow-active failed", exc_info=True)
+
+    # Template: an unset selection means "use the library default".  The card
+    # used to resolve this itself from its own list; doing it here means both
+    # surfaces read the same id.
+    try:
+        if not cfg.get("template_id"):
+            default_id = getattr(
+                _analysis, "DEFAULT_TEMPLATE_ID", "builtin-default",
+            )
+            if default_id:
+                cfg["template_id"] = default_id
+    except Exception:  # noqa: BLE001
+        pass
+    return cfg
+
+
+def resolve_effective(chat_id: str = "") -> dict:
+    """Layer ③ → ② → ① merge.  THE ONLY entry point for reading settings.
+
+    Nothing else in the plugin may splice these layers by hand: two independent
+    merge implementations is exactly how a setting silently stops working.
+
+    NOTE: this is the *merge* only (disk-backed layers).  The「跟随当前对话模型」
+    resolution needs the request to reach the host, so it lives in
+    :func:`_fill_follow_active` and is applied by the HTTP route.  Keeping them
+    apart means a sync caller still gets a pure merge.
+    """
+    out = schema_defaults()
+
+    # ② global defaults (analysis_prefs.json)
+    try:
+        out.update(sanitize_settings(_load_prefs()))
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "question_modal: could not merge global prefs", exc_info=True,
+        )
+
+    # ① per-session override
+    if chat_id:
+        try:
+            overrides = _load_session_prefs()
+            sess = overrides.get(chat_id) if isinstance(overrides, dict) else None
+            if isinstance(sess, dict):
+                out.update(sanitize_settings(sess))
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "question_modal: could not merge session prefs", exc_info=True,
+            )
+
+    # Report which keys came from an override so the UI can badge them.
+    sources: dict = {}
+    try:
+        overrides = _load_session_prefs() if chat_id else {}
+        sess = overrides.get(chat_id) if isinstance(overrides, dict) else None
+        if isinstance(sess, dict):
+            for key in sanitize_settings(sess):
+                sources[key] = "session"
+    except Exception:  # noqa: BLE001
+        pass
+    out["__sources__"] = sources
+    return out
+
+
+def _config_version() -> int:
+    """Monotonic counter derived from the two files' mtimes.
+
+    The front end only needs "did anything change since I last looked", not a
+    durable number, so deriving it from mtimes avoids a third state file.
+    """
+    total = 0
+    for path in (_PREFS_FILE, _SESSION_PREFS_FILE):
+        try:
+            if path.is_file():
+                total += int(path.stat().st_mtime_ns)
+        except Exception:  # noqa: BLE001
+            pass
+    return total
+
+
+# ── Per-session (per-chat) setting overrides ───────────────────────────
+#
+# The scope model is "global default + session override": one global set of
+# values (``analysis_prefs.json``), plus, for any chat that explicitly
+# overrode something, one entry keyed by that chat.
+#
+# The key MUST be the chat UUID — ``session_id`` is NOT unique across agents
+# (verified locally: the same ``session_id`` was observed under two different
+# agent workspaces), so keying by it would make two conversations share one
+# record.
+#
+# These helpers only persist and list overrides; reading them into the
+# effective config is a later step.
+_SESSION_PREFS_FILE = _PLUGIN_DIR / "session_prefs.json"
+
+
+def _load_session_prefs() -> dict:
+    """Read ``{chat_uuid: {...}}``; a broken file degrades to empty."""
+    try:
+        if _SESSION_PREFS_FILE.is_file():
+            data = json.loads(_SESSION_PREFS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                sessions = data.get("sessions")
+                if isinstance(sessions, dict):
+                    return sessions
+    except Exception:  # noqa: BLE001 — a broken file must not break a survey
+        logger.warning(
+            "question_modal: could not read session prefs", exc_info=True,
+        )
+    return {}
+
+
+def _session_writable(settings: Any) -> dict:
+    """Keep only keys a SESSION override is allowed to hold.
+
+    Enforced here (the storage layer) rather than at the route, so no caller —
+    route, script or future code — can slip a global-only key into an override.
+    """
+    clean: dict = {}
+    for key, value in sanitize_settings(settings).items():
+        spec = SETTINGS_SCHEMA.get(key) or {}
+        if spec.get("scope", "both") == "both":
+            clean[key] = value
+    return clean
+
+
+def _save_session_prefs(sessions: dict) -> None:
+    """Atomic write of the whole session-prefs map.
+
+    Every entry is re-filtered through ``_session_writable`` on the way in, so a
+    hand-written or legacy file cannot smuggle in a global-only key.
+    """
+    try:
+        if isinstance(sessions, dict):
+            sessions = {
+                k: _session_writable(v) for k, v in sessions.items()
+                if isinstance(k, str) and k
+            }
+            sessions = {k: v for k, v in sessions.items() if v}
+        payload = {"sessions": sessions, "updated_at": time.time()}
+        tmp = _SESSION_PREFS_FILE.parent / (_SESSION_PREFS_FILE.name + ".tmp")
+        tmp.write_text(
+            json.dumps(payload, ensure_ascii=False), encoding="utf-8",
+        )
+        tmp.replace(_SESSION_PREFS_FILE)
+    except Exception:  # noqa: BLE001 — listing still works in-process
+        logger.warning(
+            "question_modal: could not persist session prefs", exc_info=True,
+        )
+
+
+def _iter_agent_chats() -> list[dict]:
+    """Enumerate every chat of every enabled agent.
+
+    Returns ``[{chat_id, session_id, name, agent_id, agent_name}]``.
+
+    Chat records live in ``<workspace_dir>/chats.json``, so the owning agent
+    is simply *which workspace file the record came from*.  Everything is read
+    defensively — a missing or corrupt file just yields no rows.
+    """
+    rows: list[dict] = []
+    try:
+        from qwenpaw.config.utils import load_config
+        config = load_config()
+        profiles = getattr(config.agents, "profiles", {}) or {}
+    except Exception:  # noqa: BLE001 — never let listing break the plugin
+        logger.warning(
+            "question_modal: could not load agent config", exc_info=True,
+        )
+        return rows
+
+    for agent_id, profile in profiles.items():
+        try:
+            if not getattr(profile, "enabled", True):
+                continue
+            workspace_dir = getattr(profile, "workspace_dir", None)
+            if not workspace_dir:
+                continue
+            path = Path(workspace_dir) / "chats.json"
+            if not path.is_file():
+                continue
+            raw = json.loads(path.read_text(encoding="utf-8"))
+            items = raw if isinstance(raw, list) else (raw.get("chats") or [])
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                chat_id = item.get("id")
+                if not chat_id:
+                    continue
+                rows.append({
+                    "chat_id": str(chat_id),
+                    "session_id": str(item.get("session_id") or ""),
+                    "name": str(item.get("name") or ""),
+                    # 私有：供 _session_model_id 读 runtime_context.model。
+                    # 不对外暴露（/session-prefs 只挑已知字段）。
+                    "_meta": item.get("meta") if isinstance(item.get("meta"), dict) else {},
+                    "agent_id": str(agent_id),
+                    "agent_name": str(
+                        getattr(profile, "name", "") or agent_id
+                    ),
+                })
+        except Exception:  # noqa: BLE001
+            logger.warning(
+                "question_modal: could not read chats for %s", agent_id,
+                exc_info=True,
+            )
+    return rows
 
 
 # ── Analysis prompt templates (REQ-001/003/005/006) ────────────────────
@@ -517,10 +1033,17 @@ class CancelAnalysisRequest(BaseModel):
 
 
 class PrefsRequest(BaseModel):
-    """Capsule preference patch — every field optional, unknown keys ignored.
+    """Global-defaults patch.
 
-    Kept deliberately loose so an older/newer card never fails validation.
+    IMPORTANT: the four original fields are declared, but ``extra="allow"`` is
+    REQUIRED — pydantic silently DROPS any key that is not declared here, so
+    without it every new schema key (``slow_question_sec``, ``skip_mode``, …)
+    would be accepted by the route and then thrown away before reaching
+    ``sanitize_settings``.  That failure is invisible: the request returns 200
+    and the setting simply never takes effect.
     """
+    model_config = ConfigDict(extra="allow")
+
     mode: Optional[str] = Field(None, description="'ai' | 'recommend' | 'manual'")
     model_id: Optional[str] = Field(None, description="'<provider>:<model>'")
     with_context: Optional[bool] = Field(None)
@@ -968,6 +1491,241 @@ def build_router() -> APIRouter:
     async def post_prefs(body: PrefsRequest):
         saved = _save_prefs(body.model_dump())
         return {"ok": True, "prefs": saved}
+
+    # ── Effective settings (the ONLY read path for cards + settings UI) ──
+    @router.get("/effective-config")
+    async def get_effective_config(
+        request: Request,
+        chat_id: str = "", session_id: str = "", agent_id: str = "",
+    ) -> dict:
+        """Return the merged settings for one chat.
+
+        Layers: ③ built-in defaults → ② global defaults → ① session override,
+        then :func:`_fill_follow_active` resolves「跟随当前对话模型」and the
+        template-library default.  This endpoint is THE ONLY read path: the card
+        and the settings panel both render exactly what it returns, with no
+        fallbacks of their own (用户裁定 2026-11-04).
+        ``__sources__`` tells the UI which keys came from an override, so it can
+        badge them without re-implementing the merge.
+        """
+        # Accept session_id+agent_id too: the host never hands the front end a
+        # chat UUID, so the caller cannot always supply one.
+        chat_id = _resolve_chat_id(chat_id, session_id, agent_id)
+        cfg = resolve_effective(chat_id)
+        # agent_id may be supplied explicitly; otherwise fall back to the
+        # request's own agent so「跟随当前对话模型」reads the right one.  An empty
+        # id still works (the host resolver defaults to the request agent).
+        cfg = await _fill_follow_active(cfg, request, agent_id, chat_id)
+
+        # Which keys the global layer actually holds (vs pure defaults) — lets
+        # the UI show "继承自全局" vs "内建默认".
+        global_keys: list[str] = []
+        try:
+            global_keys = list(sanitize_settings(_load_prefs()).keys())
+        except Exception:  # noqa: BLE001
+            pass
+
+        # 「当前会话模式 vs 全局默认模式」的判据：本 chat 是否已有会话覆盖条目。
+        # 唯一权威是 session_prefs.json 里的条目，不推导（用户裁定 2026-11-04）。
+        has_session = False
+        try:
+            ov = _load_session_prefs()
+            has_session = bool(chat_id) and chat_id in (ov if isinstance(ov, dict) else {})
+        except Exception:  # noqa: BLE001
+            pass
+
+        return {
+            "ok": True,
+            "chat_id": chat_id,
+            "config": cfg,
+            "has_session": has_session,
+            "global_keys": global_keys,
+            "version": _config_version(),
+            "schema": [
+                {
+                    "key": k,
+                    "type": v.get("type"),
+                    "values": v.get("values"),
+                    "min": v.get("min"),
+                    "max": v.get("max"),
+                    "scope": v.get("scope", "both"),
+                    "batch": v.get("batch", 0),
+                    "label": v.get("label", k),
+                    "default": v.get("default"),
+                }
+                for k, v in SETTINGS_SCHEMA.items()
+            ],
+        }
+
+    # ── Per-session overrides (global default + session override) ────────
+    @router.get("/session-prefs")
+    async def list_session_prefs() -> dict:
+        """List only the chats that actually carry a session-level override.
+
+        Two columns as requested: the conversation id and the owning agent.
+        The chat UUID is included because ``session_id`` is not unique across
+        agents (``cron-proxy-check`` exists under both ``default`` and
+        another agent workspace).
+        """
+        overrides = _load_session_prefs()
+        if not overrides:
+            return {"sessions": [], "count": 0}
+
+        lookup = {row["chat_id"]: row for row in _iter_agent_chats()}
+        out: list[dict] = []
+        for chat_id, values in overrides.items():
+            info = lookup.get(chat_id)
+            if not info:
+                # The chat was deleted but its override survived.  List it so
+                # the stale record stays visible instead of rotting silently.
+                out.append({
+                    "chat_id": chat_id,
+                    "session_id": "",
+                    "agent_id": "",
+                    "agent_name": "",
+                    "updated_at": (values or {}).get("updated_at", 0),
+                    "missing": True,
+                })
+                continue
+            out.append({
+                "chat_id": chat_id,
+                "session_id": info["session_id"],
+                "agent_id": info["agent_id"],
+                "agent_name": info["agent_name"],
+                "updated_at": (values or {}).get("updated_at", 0),
+                "missing": False,
+            })
+        out.sort(key=lambda r: r.get("updated_at") or 0, reverse=True)
+        return {"sessions": out, "count": len(out)}
+
+    @router.post("/session-prefs")
+    async def write_session_prefs(body: dict) -> dict:
+        """Merge one chat's session-level override (never replaces it).
+
+        Semantics (2026-11-04, after the「保存后被强制成默认值」bug):
+          • 非空 ``settings`` → **合并**进现存覆盖；未提交的键保持不变。
+          • ``{"key": null}`` → 删掉该键的覆盖（回到全局默认）。
+          • **空** ``settings`` → 保留旧语义：清空整条覆盖（UI 显式意图）。
+
+        合并语义是根修：旧实现 `sessions[chat_id] = clean` 会抹掉请求里没带的
+        键，而前端只提交「改动项」，于是改一项丢一片。
+        """
+        chat_id = (body or {}).get("chat_id")
+        if not chat_id:
+            chat_id = _resolve_chat_id(
+                "", str((body or {}).get("session_id") or ""),
+                str((body or {}).get("agent_id") or ""),
+            )
+        if not isinstance(chat_id, str) or not chat_id:
+            raise HTTPException(
+                status_code=400,
+                detail="chat_id (or resolvable session_id) is required",
+            )
+
+        settings = (body or {}).get("settings")
+        if settings is None:
+            settings = {}
+        if not isinstance(settings, dict):
+            raise HTTPException(
+                status_code=400, detail="settings must be an object",
+            )
+
+        # 「空对象」= 显式清空整条覆盖（旧的、也是 UI 依赖的语义）。
+        # 与「合并」并存：有键就合并，没键才清空。
+        clear_all = not settings
+
+        sessions = _load_session_prefs()
+
+        # ── 显式删除的键要**先**捞出来 ────────────────────────────────
+        #
+        # `sanitize_settings` 把 None 视为非法值直接丢弃（它只认 schema 声明的
+        # 类型），所以「传 null 表示删掉这一项」必须在 sanitize 之前识别，否则
+        # 永远传不进来。这里只接受 scope=both 的键，避免借删除通道动全局专属键。
+        explicit_del: set = set()
+        try:
+            for key, value in (settings or {}).items():
+                if value is None:
+                    spec = SETTINGS_SCHEMA.get(key) or {}
+                    if spec.get("scope", "both") == "both":
+                        explicit_del.add(key)
+        except Exception:  # noqa: BLE001
+            explicit_del = set()
+
+        # ``_session_writable`` also re-checks scope at the storage layer.
+        clean: dict = _session_writable({
+            k: v for k, v in (settings or {}).items() if v is not None
+        })
+
+        # ── MERGE, never replace ──────────────────────────────────────────
+        #
+        # 曾经写成 `sessions[chat_id] = clean`，即**整体替换**：请求里没带的
+        # 键会被直接抹掉，然后回落到全局默认值。用户报的「保存后被强制设置成
+        # 某个默认值」就是这条 —— 实测：有 5 项覆盖，只改 wait_hint_sec 保存后，
+        # 记录只剩 {"wait_hint_sec": 200}，mode 回落到全局 recommend。
+        #
+        # 前端设置面板只提交「改动项」，卡片模式切换只提交 {mode}，两者都会
+        # 触发这个抹除，于是越用丢得越多。
+        #
+        # 现在改为与现存值合并。显式删除某个键请用空值（见下）；
+        # 清空整条覆盖请调 POST /session-prefs/clear。
+        existing = sessions.get(chat_id)
+        merged: dict = dict(existing) if isinstance(existing, dict) else {}
+        merged.pop("updated_at", None)
+
+        # 显式删除：回到全局默认。
+        for key in explicit_del:
+            merged.pop(key, None)
+        # 其余键合并写入（不触碰未提交的键）。
+        #
+        # 空串**不**落成覆盖：字符串类设置的空值只表示「没有偏好」，等同于
+        # 删掉该键。否则一个空 model_id 会被 __sources__ 标成 session，UI 便
+        # 永远认为「用户显式设过」，跟随/回落逻辑被永久冻死。
+        for key, value in clean.items():
+            if isinstance(value, str) and value.strip() == "":
+                merged.pop(key, None)
+            else:
+                merged[key] = value
+
+        if clear_all:
+            sessions.pop(chat_id, None)
+            merged = {}
+        elif merged:
+            merged["updated_at"] = time.time()
+            sessions[chat_id] = merged
+        else:
+            # 合并后没剩任何键 → 这条覆盖已无意义，整条移除。
+            sessions.pop(chat_id, None)
+
+        _save_session_prefs(sessions)
+        return {
+            "ok": True, "chat_id": chat_id, "stored": bool(merged),
+            "values": merged,
+        }
+
+    @router.post("/session-prefs/clear")
+    async def clear_session_prefs(body: dict) -> dict:
+        """Drop one chat's ENTIRE session override (UI「清空本会话覆盖」).
+
+        独立端点而不是靠「POST 空 settings」：合并语义上线后，空对象容易被
+        误当成「什么都没改」，一个显式动词端点让意图无歧义，也让设置页的按钮
+        有明确的后端对应物（而不是隐式依赖空 body 的巧合）。
+        """
+        chat_id = (body or {}).get("chat_id")
+        if not chat_id:
+            chat_id = _resolve_chat_id(
+                "", str((body or {}).get("session_id") or ""),
+                str((body or {}).get("agent_id") or ""),
+            )
+        if not isinstance(chat_id, str) or not chat_id:
+            raise HTTPException(
+                status_code=400,
+                detail="chat_id (or resolvable session_id) is required",
+            )
+        sessions = _load_session_prefs()
+        existed = chat_id in sessions
+        sessions.pop(chat_id, None)
+        _save_session_prefs(sessions)
+        return {"ok": True, "chat_id": chat_id, "cleared": existed}
 
     # ── Prompt templates (REQ-001/003/005/006) ──────────────────────────
     @router.get("/templates")
