@@ -40,14 +40,99 @@ from typing import Any, AsyncGenerator, Callable, Optional
 
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from starlette.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from qwenpaw.plugins.api import PluginApi
 
 from .question_service import get_question_service
 from . import analysis as _analysis
+from . import question_service as _qs_mod
 
 logger = logging.getLogger(__name__)
+
+
+def _attach_to_host_log() -> None:
+    """把插件 logger 挂到宿主的日志 handler 上 —— 否则所有日志不可观测。
+
+    ## 为什么必须这么做（2026-11-07 实测）
+
+    插件自己的 `logging.getLogger(__name__)` 拿到的 logger **不会写进
+    宿主的主日志文件**（`<WORKING_DIR>/qwenpaw.log`）。实测：在 `register()`
+    里打 `logger.warning("QMDIAG-WARNING")` + `logger.error("QMDIAG-ERROR")`，
+    重载插件后 `grep -c QMDIAG <主日志>` = **0**。
+
+    原因是宿主（`qwenpaw/utils/logging.py`）只给 `LOG_NAMESPACE`（= "qwenpaw"）
+    和 `apscheduler` 挂了文件 handler（`_attach_logger_file_handler`），
+    插件命名空间不在其中。
+
+    ## 后果有多严重
+
+    所有关键失败都**完全无声**：
+      • `_runner_loop` 引擎加载失败 → runner 静默不工作
+      • `ensure_runner` 抛异常被 except 吞掉 → 问卷不推进
+      • ai 分析 429 重试耗尽 → 用户只看到「卡住」
+    用户实测「关页面后问卷卡 60 秒被看门狗释放」，我**无法从日志确认原因**，
+    只能靠推断 —— 这就是这个缺口的直接代价。
+
+    ## 做法
+
+    找到宿主 namespace logger 的文件 handler，挂到本插件 logger 上
+    （保留 propagate，仍然会去 root/stderr）。找不到就静默跳过 ——
+    日志不可观测是缺陷，但**绝不能因此让插件起不来**。
+    """
+    try:
+        host = logging.getLogger("qwenpaw")
+        file_handler = None
+        for h in host.handlers:
+            if getattr(h, "baseFilename", None):
+                file_handler = h
+                break
+        if file_handler is None:
+            # 宿主还没配好（比如日志初始化顺序靠后）—— 下次 register 再试
+            return
+        # 注意：子模块 logger 的真实名字带包前缀，而**这个前缀就是 `__name__`**。
+        #
+        # 生产实测：`plugin.py` 的 `__name__` 是 `plugin_question_modal`（没有点号，
+        # 因为宿主把插件文件当成包顶层加载），而 `question_service.py` 的 logger 名
+        # 是 `plugin_question_modal.question_service`。
+        # 我第一版用 `__name__.rsplit(".")[0]` 推前缀 → 得到空串 → 子模块全漏掉，
+        # 表现为 `runner:` 日志一条都不出现（诊断打印 names 才暴露）。
+        # ★ 只挂**父** logger，子 logger 靠 propagate 上来写 —— 绝不重复挂。
+        #
+        # 2026-11-07 实测（问卷自检 D1）：早先这里同时给父
+        # `plugin_question_modal` 和子 `plugin_question_modal.question_service`
+        # 挂了**同一个** file_handler，而子 logger 的 `propagate` 默认为 True
+        # → 一条子模块日志先被自己的 handler 写一次，再向上传播给父的同一个
+        # handler 写第二次。全日志 `uniq -c` 显示 13 组 "2 份"，而宿主自身日志
+        # 全是单条 —— 这就是判据。
+        #
+        # 复现（3 行纯 stdlib）：父+子同挂 = 2 行；只挂父、子靠 propagate = 1 行。
+        #
+        # 代价不只是日志翻倍：所有基于日志条数的取证都会被放大一倍（我就在
+        # 「runner 是不是起了两次」上险些误判）。
+        #
+        # 只设 level、不挂 handler：子模块仍能进父 handler（propagate），
+        # 也不会丢掉 DEBUG 以下的过滤能力。
+        for name in (f"{__name__}.question_service", f"{__name__}.recommend",
+                     f"{__name__}.analysis"):
+            logger_ = logging.getLogger(name)
+            logger_.setLevel(logging.INFO)
+            # 防御：若上一代代码已经给它挂过同一个 handler，主动摘掉
+            # （reload 时 logger 对象是跨代际复用的，旧 handler 会留着）。
+            base = getattr(file_handler, "baseFilename", None)
+            for h in list(logger_.handlers):
+                if getattr(h, "baseFilename", None) == base:
+                    logger_.removeHandler(h)
+        logging.getLogger(__name__).setLevel(logging.INFO)
+        base = getattr(file_handler, "baseFilename", None)
+        if not any(getattr(x, "baseFilename", None) == base
+                   for x in logger.handlers):
+            logger.addHandler(file_handler)
+
+
+    except Exception:  # noqa: BLE001 — 观测失败不能影响插件加载
+        pass
 
 _PLUGIN_DIR = Path(__file__).parent.resolve()
 
@@ -95,7 +180,9 @@ def _remember_gate_block(payload: dict) -> None:
             items = []
         elif len(items) > limit:
             items = items[-limit:]
-        tmp = _GATE_FILE.parent / (_GATE_FILE.name + ".tmp")
+        # 唯一 tmp 名（固定名在多进程并发下会互相移走/截断）
+        tmp = _GATE_FILE.parent / (
+            f"{_GATE_FILE.name}.{os.getpid()}.{time.time_ns()}.tmp")
         tmp.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
         tmp.replace(_GATE_FILE)
     except Exception:  # noqa: BLE001 — audit trail is non-critical
@@ -207,7 +294,8 @@ def _save_prefs(patch: dict) -> dict:
     cur.update(sanitize_settings(patch))
     cur["updated_at"] = time.time()
     try:
-        tmp = _PREFS_FILE.parent / (_PREFS_FILE.name + ".tmp")
+        tmp = _PREFS_FILE.parent / (
+            f"{_PREFS_FILE.name}.{os.getpid()}.{time.time_ns()}.tmp")
         tmp.write_text(json.dumps(cur, ensure_ascii=False), encoding="utf-8")
         tmp.replace(_PREFS_FILE)
     except Exception:  # noqa: BLE001 — the card keeps a localStorage mirror
@@ -649,7 +737,8 @@ def _save_session_prefs(sessions: dict) -> None:
             }
             sessions = {k: v for k, v in sessions.items() if v}
         payload = {"sessions": sessions, "updated_at": time.time()}
-        tmp = _SESSION_PREFS_FILE.parent / (_SESSION_PREFS_FILE.name + ".tmp")
+        tmp = _SESSION_PREFS_FILE.parent / (
+            f"{_SESSION_PREFS_FILE.name}.{os.getpid()}.{time.time_ns()}.tmp")
         tmp.write_text(
             json.dumps(payload, ensure_ascii=False), encoding="utf-8",
         )
@@ -746,7 +835,8 @@ def _save_custom_templates(items: list[dict]) -> None:
     """Persist the custom templates (atomic write)."""
     payload = {"schema_version": 1, "updated_at": time.time(), "items": items}
     try:
-        tmp = _TEMPLATES_FILE.parent / (_TEMPLATES_FILE.name + ".tmp")
+        tmp = _TEMPLATES_FILE.parent / (
+            f"{_TEMPLATES_FILE.name}.{os.getpid()}.{time.time_ns()}.tmp")
         tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(_TEMPLATES_FILE)
     except Exception:  # noqa: BLE001
@@ -1236,7 +1326,12 @@ def build_router() -> APIRouter:
                 orphan=True,
             )
 
-        resolved = await svc.skip(body.request_id)
+        # 用户主动点「跳过问卷」/「跳过并提交」也是一类来源，必须带原因，
+        # 否则卡片与模型仍只看到光秃秃的「跳过」二字。
+        resolved = await svc.skip(
+            body.request_id, reason="用户在卡片上点了「跳过问卷」",
+            by="user",
+        )
         if resolved is None:
             # Same reasoning as /answer: no live Future means nothing was
             # unparked, so do NOT let the card claim「✓ 已跳过」.
@@ -1254,7 +1349,9 @@ def build_router() -> APIRouter:
             )
         _remember_result(
             pq.tool_call_id or pq.request_id, "skipped",
-            {"request_id": pq.request_id},
+            {"request_id": pq.request_id,
+             "skip_reason": "用户在卡片上点了「跳过问卷」",
+             "skipped_by": "user"},
         )
         return AnswerResponse(
             ok=True,
@@ -1301,6 +1398,12 @@ def build_router() -> APIRouter:
                 "questions": pq.questions,
                 "question_count": len(pq.questions),
                 "status": pq.status,
+                # `tool_call_id` 是问卷卡片在宿主消息流里的唯一标识，也是
+                # `/survey-state` 的查询键。此前这里不返回它，导致任何"从 pending
+                # 反查问卷进度"的调用方（含验证脚本）都必须去扫 survey_states.json，
+                # 而那份文件在问卷刚弹出时可能还没落盘 → 反查失败。
+                # 补上它不改变任何既有语义，只是把本来就有的字段暴露出来。
+                "tool_call_id": pq.tool_call_id,
             })
         return {"ok": True, "count": len(items), "items": items}
 
@@ -1368,6 +1471,23 @@ def build_router() -> APIRouter:
 
         key = _analysis_key(tool_call_id, body.request_id)
         run_key = _task_key(key, body.question_index)
+
+        # ★ 记录每一次分析请求的**来源线索**，用于判定「是否重复分析」。
+        #
+        # 背景（阶段 4）：后端 runner 会自己调 `analyze_survey`，前端也曾对
+        # 同一题再发一次 `POST /analyze` → 同一题烧两份配额。已给前端加
+        # `!backendDown` 守卫让位，但**仅靠观察界面无法证伪**「前端是否偷偷
+        # 又发了一次」：两份结果只影响气泡渲染，用户看不出差别。
+        #
+        # 这段日志让判定变成纯读日志，不需要任何浏览器 console：
+        #   • `via=analyze-http` + `mode=auto` 且**该题后端也在跑** → 重复
+        #   • 同一 tool_call_id 同一题出现两次 `analyze-http` → 重复
+        #   • 正常情况：每题只应有一条来自后端的 `runner:fill`
+        logger.info(
+            "analyze-request: tcid=%s q=%s mode=%s model=%s (via=analyze-http)",
+            (tool_call_id or "-")[:24], body.question_index, body.mode or "-",
+            (body.model_id or "default")[:24],
+        )
 
         # Resolve the prompt template (REQ-001).  An unknown/empty id falls back
         # to the built-in default, so a stale card selection never breaks a run.
@@ -1467,6 +1587,264 @@ def build_router() -> APIRouter:
             return {"ok": True, "found": False}
         return {"ok": True, "found": True, "analysis": item}
 
+    # ── 后端权威的问卷推进状态 ─────────────────────────────────────
+    #
+    # 用户裁定（2026-11-05）：推进权应从「前端 React effect」搬到后端，
+    # 前端只读 + 发 action —— 因为两个标签页会各持一份前端状态互相抢占，
+    # 而没有页面在跑时推进循环根本不存在。
+    #
+    # 阶段 0（已完成）：只做「后端也有这份 state」+ 影子比对，零行为变化。
+    # 阶段 1（2026-11-07 用户裁定）：**state 权威整体后移** —— answers /
+    # cursor / mode 全部以后端为唯一真值，前端退化为渲染 + 发 action。
+
+    @router.get("/survey-state")
+    async def get_survey_state(tool_call_id: str = Query(default="")):
+        """Return the backend's record of how far this survey has got.
+
+        阶段 1 起这是**权威快照**：前端挂载时先拉它拿首帧，再订阅
+        /survey-stream 拿增量。两条通道缺一不可 —— 只有 SSE 会在连接前
+        丢事件，只有 GET 则无法感知后续变化。
+        """
+        import traceback as _tb
+        try:
+            return _survey_state_impl(tool_call_id)
+        except BaseException as exc:      # noqa: BLE001 — 排障用
+            return JSONResponse(
+                status_code=200,
+                content={"ok": False, "error": repr(exc),
+                         "trace": _tb.format_exc()[-1500:]},
+            )
+
+    def _survey_state_impl(tool_call_id: str):
+        st = get_question_service().get_survey(tool_call_id)
+        if st is None:
+            return {"ok": True, "found": False}
+        # 跨 reload 存活的旧代际实例仍是旧类：to_json() 里没有新增的
+        # skip_reason。统一补齐，让历史卡片也能从 /survey-state 读到原因。
+        try:
+            _skip = str(getattr(st, "skip_reason", "") or "")
+        except Exception:  # noqa: BLE001
+            _skip = ""
+        return {"ok": True, "found": True, "rev": st.rev, "state": {
+            **st.to_json(), "orphan": st.orphan, "skip_reason": _skip,
+        }}
+
+    @router.get("/survey-stream")
+    async def get_survey_stream(
+        tool_call_id: str = Query(default=""),
+        since_rev: int = Query(default=0),
+    ):
+        """SSE: replay this survey's state, then stream every subsequent change.
+
+        为什么要 SSE 而不是轮询：多个标签页轮询会把请求量按标签数放大，
+        而且轮询间隔内的跳步对"自动推进"是可见的卡顿。SSE 让后端一写就推，
+        多标签各自订阅、各自渲染同一份 state —— 这正是宿主 run 的做法
+        （`app/task_tracker.py` 的 attach + buffer 重放 + detach）。
+
+        ★ 断开只摘订阅者，**不停问卷**。这就是"关掉窗口仍在推进"的机制前提。
+        """
+        svc = get_question_service()
+
+        async def event_gen():
+            queue, replay = svc.subscribe(tool_call_id)
+            try:
+                # 首帧：先补一份完整快照，避免「连接前的变更」丢失。
+                st = svc.get_survey(tool_call_id)
+                if st is not None:
+                    # 同 _survey_state_impl：旧代际实例的 to_json 没有 skip_reason
+                    try:
+                        _skip = str(getattr(st, "skip_reason", "") or "")
+                    except Exception:  # noqa: BLE001
+                        _skip = ""
+                    payload = {"kind": "snapshot", "rev": st.rev,
+                               "state": {**st.to_json(), "orphan": st.orphan,
+                                         "skip_reason": _skip}}
+                    yield f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+                else:
+                    yield ('data: ' + json.dumps(
+                        {"kind": "snapshot", "rev": 0, "state": None},
+                        ensure_ascii=False) + "\n\n")
+                # 重放订阅登记之前已发生的变更（since_rev 之后的）
+                for ev in replay:
+                    if int(ev.get("rev") or 0) > int(since_rev or 0):
+                        yield ("data: " + json.dumps(
+                            {"kind": "change", **ev}, ensure_ascii=False) + "\n\n")
+                while True:
+                    try:
+                        ev = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    except asyncio.TimeoutError:
+                        # 心跳：既保住中间代理，也让前端能区分「静默」与「断线」
+                        yield 'data: {"kind":"ping"}\n\n'
+                        continue
+                    yield ("data: " + json.dumps(
+                        {"kind": "change", **ev}, ensure_ascii=False) + "\n\n")
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001
+                logger.debug("survey stream ended", exc_info=True)
+            finally:
+                svc.unsubscribe(tool_call_id, queue)
+
+        return StreamingResponse(
+            event_gen(),
+            media_type="text/event-stream",
+            headers={"Cache-Control": "no-cache", "Connection": "keep-alive",
+                     "X-Accel-Buffering": "no"},
+        )
+
+    @router.post("/survey-action")
+    async def post_survey_action(body: dict):
+        """Apply one user action to the backend state — the backend decides.
+
+        阶段 1 起这里是**裁决者**：写入 state、广播给所有标签页、并在
+        `submit` / `release` 时真正 resolve 掉等待中的 agent。
+
+        ★ 幂等保证（双开的根本）：同一份问卷第二次 submit 返回
+        `already_submitted`，绝不重复 resolve —— `submit_answer()` 的
+        `_pending.pop()` 本身就保证了这点，这里只是把它明确成契约。
+        """
+        tool_call_id = str((body or {}).get("tool_call_id") or "")
+        action = str((body or {}).get("action") or "")
+        payload = (body or {}).get("payload") or {}
+        if not isinstance(payload, dict):
+            payload = {}
+        # 发起变更的标签页 id。前端靠它区分「自己的回声」与「别人的修改」：
+        # 回声不能覆盖本地 state（否则正在输入的文本被旧值冲掉）。
+        origin = str((body or {}).get("origin") or "")
+        svc = get_question_service()
+
+        # 终态问卷不再接受任何写入（幂等 + 防覆盖已提交的答案）
+        cur = svc.get_survey(tool_call_id)
+        if cur is not None and cur.status == "submitted" and action != "release":
+            return {"ok": True, "accepted": False,
+                    "reason": "already_submitted",
+                    "state": cur.to_json()}
+
+        if action == "release":
+            released = await svc.release_survey(
+                tool_call_id, str(payload.get("by") or "user"), origin,
+                reason=str(payload.get("reason") or "")
+                       or "用户在卡片上点了「释放阻塞」",
+            )
+            st = svc.get_survey(tool_call_id)
+            return {"ok": True, "accepted": bool(released),
+                    "reason": "" if released else "already_submitted",
+                    "state": st.to_json() if st is not None else None}
+
+        st = svc.apply_action(tool_call_id, action, payload, origin)
+        if st is None:
+            return {"ok": False, "accepted": False,
+                    "error": "survey state not found"}
+        # ★ `submit` 只记录「这份问卷已提交」这个**事实**并广播，绝不在这里
+        # 唤醒 agent。
+        #
+        # 原因（2026-11-07 自查发现的设计错误）：唤醒 agent 的唯一正确通道是
+        # `POST /answer`，因为只有它带着 answers / other / attachments。
+        # 若在这里调 `release_survey()`（内部走 `skip()`），agent 收到的会是
+        # `{"skipped": true}` —— **用户的全部答案被丢弃**，而卡片却显示
+        # 「已提交」。这正是本项目历史上反复出现的"谎报成功"类缺陷。
+        #
+        # 职责划分：
+        #   · /answer   → 携带答案，真正 resolve（幂等由 _pending.pop 保证）
+        #   · /survey-action{submit} → 只记状态 + 广播，让另一个标签页同步看到
+        #   · /survey-action{release} → 显式放弃，按 skip 语义释放（见上面分支）
+        return {"ok": True, "accepted": True, "reason": "",
+                "state": st.to_json()}
+
+    @router.post("/survey-shadow")
+    async def post_survey_shadow(body: dict):
+        """Compare the frontend's state against the backend's (diagnostic only).
+
+        前端在每次推进后 fire-and-forget 上报，这里只比对与落盘差异。
+        **无论比对结果如何都不影响问卷**：失败静默，绝不阻塞作答。
+        """
+        tool_call_id = str((body or {}).get("tool_call_id") or "")
+        reported = (body or {}).get("state") or {}
+        svc = get_question_service()
+        result = svc.compare_shadow(tool_call_id, reported if isinstance(reported, dict) else {})
+        svc.record_shadow_diff(tool_call_id, result)
+        return {"ok": True, "match": bool(result.get("match")),
+                "diffs": result.get("diffs") or [],
+                "reason": result.get("reason") or ""}
+
+    @router.get("/survey-shadow")
+    async def get_survey_shadow(limit: int = Query(default=50)):
+        """Read the recorded shadow diffs (empty file = frontend matches backend)."""
+        try:
+            if not _qs_mod._SHADOW_FILE.exists():
+                return {"ok": True, "count": 0, "items": []}
+            rows = json.loads(_qs_mod._SHADOW_FILE.read_text(encoding="utf-8")) or []
+            if not isinstance(rows, list):
+                rows = []
+        except Exception:  # noqa: BLE001
+            return {"ok": True, "count": 0, "items": [], "error": "unreadable"}
+        return {"ok": True, "count": len(rows), "items": rows[-max(1, int(limit)):]}
+
+    @router.post("/survey-prune")
+    async def post_survey_prune(body: dict | None = None):
+        """清掉测试/僵尸 survey state —— **必须走这里，不能改文件**。
+
+        ## 为什么不能直接改 survey_states.json（2026-11-07 实测）
+
+        `QuestionService._surveys()` 返回的是 `_SharedState` 上的**内存表**，
+        它跨插件 reload 存活（保住 parked Future 的关键设计），并且
+        `surveys_restored` 标志也在共享容器上 —— 所以插件**不会**重读磁盘。
+
+        后果：我手工把 `survey_states.json` 从 221 条删到 11 条，然后 reload，
+        插件内存里仍是那 221 条 → 下次 `_persist_surveys()` **原样写回**，
+        磁盘清理完全无效（实测 11 条 reload 后立刻变回 200+ 条）。
+
+        所以清理必须**同时作用于内存表**，这正是本端点的存在理由。
+
+        ## 安全约束（默认只删测试残留）
+
+        判据：`request_id` 为空 ⇒ 该 state 不是由 `plugin.py` 的中间件创建的
+        （中间件创建时一律带 request_id），只可能是验证脚本进程内 `create()`
+        的产物。真实问卷**一定**带 request_id，因此默认清理**不可能**删掉真实数据。
+
+        `include_pending_with_request_id=false`（默认）时，连"带 request_id 但
+        已 submitted"的历史记录也一并清掉会更有风险，故保持保守：只清无 id 的。
+        需要清空全部时显式传 `purge_all=true`（危险，需人工确认）。
+        """
+        payload = body if isinstance(body, dict) else {}
+        purge_all = bool(payload.get("purge_all"))
+        # 按前缀清理：测试脚本用这个精准删掉自己造的键，
+        # 不需要（也不应该）碰真实记录。
+        prefix = str(payload.get("prefix") or "")
+        svc = get_question_service()
+        table = svc._surveys()
+        before = len(table)
+        removed = []
+        for k in list(table.keys()):
+            st = table[k]
+            has_req = bool(getattr(st, "request_id", ""))
+            hit = (
+                purge_all
+                or (prefix and k.startswith(prefix))
+                or not has_req
+            )
+            if hit:
+                removed.append(k)
+                table.pop(k, None)
+        # 一并清掉对应的 runner（对应 state 已不存在，留着就是僵尸 task）
+        try:
+            svc._prune_stale_runners()
+        except Exception:  # noqa: BLE001
+            logger.warning("prune runners failed after survey prune", exc_info=True)
+        svc._persist_surveys()
+        after = len(table)
+        logger.info("survey-prune: purge_all=%s prefix=%r %d -> %d",
+                    purge_all, prefix, before, after)
+        return {
+            "ok": True,
+            "purge_all": purge_all,
+            "prefix": prefix,
+            "before": before,
+            "after": after,
+            "removed": len(removed),
+            "removed_sample": removed[:10],
+        }
+
     @router.get("/decisions")
     async def get_decisions(
         session_id: str = Query(default=""),
@@ -1486,6 +1864,47 @@ def build_router() -> APIRouter:
     @router.get("/prefs")
     async def get_prefs():
         return {"ok": True, "prefs": _load_prefs()}
+
+    @router.get("/engine-status")
+    async def get_engine_status():
+        """后端推进引擎是否可用 —— 生产加载路径的真实自检。
+
+        为什么需要这个端点（2026-11-07）：`_runner_loop` 早期写成裸
+        `import recommend`，在生产（插件以**包**加载、插件目录不在 sys.path）
+        必然 ModuleNotFoundError，且被 except 吞成一条 **插件 logger 的
+        warning —— 而插件的 logger 输出不进主日志**，于是这个致命缺陷
+        完全不可观测，外部只表现为「关掉页面就不推进了」。
+
+        这个端点把自检结果暴露成可查询的 JSON，任何人（含验证脚本）都能
+        一眼确认引擎状态，而不必依赖日志。
+        """
+        info: dict = {"ok": True, "available": False, "missing": [],
+                      "import_style": "relative", "error": ""}
+        try:
+            # ★ 必须走 **runner 用的同一个入口**，否则自检会在真缺陷前报正常
+            info["entry"] = "_load_recommend_engine"
+            rec = _qs_mod._load_recommend_engine()
+            info["available"] = True
+            info["module_file"] = getattr(rec, "__file__", "")
+            # 记录插件的真实模块名 —— 宿主用 `plugin_<id>` 命名空间加载，
+            # 这个字段能证明引擎是在**生产加载路径**下解析的
+            info["plugin_module"] = __name__
+            need = ("step_once", "prune_hidden", "visible_indices", "is_visible",
+                    "chosen_tokens", "question_recommended",
+                    "choice_for_question", "filled_answer", "q_type",
+                    "opt_value", "opt_label")
+            info["missing"] = [fn for fn in need
+                               if not callable(getattr(rec, fn, None))]
+            if info["missing"]:
+                info["available"] = False
+        except Exception as e:  # noqa: BLE001
+            info["error"] = f"{type(e).__name__}: {e}"
+        try:
+            svc = get_question_service()
+            info["runners_live"] = len(svc._runners())
+        except Exception:  # noqa: BLE001
+            info["runners_live"] = -1
+        return info
 
     @router.post("/prefs")
     async def post_prefs(body: PrefsRequest):
@@ -1848,6 +2267,75 @@ def _fmt_attachments(items: Any) -> str:
     return "、".join(names)
 
 
+def _sanitize_sentinel(obj: Any, _depth: int = 0) -> Any:
+    """深拷贝 ``obj``，并把前端内部哨兵 ``__other__`` 归一掉。
+
+    ## 为什么需要（2026-11-07 实测缺陷）
+
+    `__other__` 是**前端**用来表示「用户选了『其他』并自己写了文字」的哨兵
+    （`src/index.tsx` 的 `const OTHER`）。它属于实现细节，绝不该出现在给模型的
+    文本里 —— 否则模型会以为用户真选了一个叫 `__other__` 的选项。
+
+    D7 首轮修复只把哨兵从**可读块**（局部变量 ``display``）里剔除了，
+    但函数末尾 `json.dumps(answer)` 序列化的是**原始入参**，于是同一段文本里
+    后半截仍然带着 ``"value": "__other__"``。实测证据：
+
+        【用户提交的问卷答案】
+        - q0 [单选] 没有看到徽章          ← 可读块已剔除
+        {"answers": {"q0": {"value": "__other__", ...}}}   ← raw JSON 仍泄露
+
+    修复方式是**在序列化前深拷贝一份净化版**，原始 ``answer`` 保持不动
+    （它可能被上层别处引用，就地修改会引入隐性副作用）。
+
+    ## 归一规则（与可读块、recommend.py 保持一致）
+
+      * 字符串 ``"__other__"``  → ``""``（空串；真实内容在 ``other`` 字段里）
+      * 列表中的 ``"__other__"`` → 从列表剔除（保留用户真正选中的其余项）
+
+    ``other`` 字段本身**照常保留** —— 用户打的字必须原样送到模型。
+
+    递归深度上限保护：答案结构固定很浅，设上限只为防御异常输入
+    （例如某上层误传了自引用结构），避免无限递归把工具调用拖死。
+    """
+    if _depth > 8:
+        return obj
+    if isinstance(obj, str):
+        return "" if obj == "__other__" else obj
+    if isinstance(obj, list):
+        return [
+            _sanitize_sentinel(x, _depth + 1)
+            for x in obj
+            if not (isinstance(x, str) and x == "__other__")
+        ]
+    if isinstance(obj, dict):
+        return {k: _sanitize_sentinel(v, _depth + 1) for k, v in obj.items()}
+    if isinstance(obj, tuple):
+        return tuple(_sanitize_sentinel(x, _depth + 1) for x in obj)
+    return obj
+
+
+def _skip_reason_text(answer: dict) -> str:
+    """把「谁跳的、为什么」写成一句人话，供卡片与模型共用。
+
+    用户裁定 2026-11-08 第 1+4 项：旧实现无条件写「用户跳过了本次问卷」，
+    把 watchdog / 超时 / 释放阻塞 这些**系统行为**伪装成用户意愿，模型据此
+    继续决策 = 建立在假事实上。这里按 skipped_by 分流，并带上真实原因。
+    """
+    by = str(answer.get("skipped_by") or "")
+    reason = str(answer.get("skip_reason") or "").strip()
+    if by == "watchdog":
+        head = "系统自动释放（自动推进看门狗）"
+    elif by == "timeout":
+        head = "系统自动跳过（问卷作答超时）"
+    elif by in ("release", "user_release"):
+        head = "用户手动释放阻塞"
+    elif by in ("skip", "", "user"):
+        head = "用户跳过了本次问卷"
+    else:
+        head = f"问卷已跳过（来源：{by}）"
+    return head + ("：" + reason if reason else "")
+
+
 def _format_answer_for_llm(answer: dict) -> str:
     """Render the user's answer as readable text plus the raw JSON.
 
@@ -1855,9 +2343,28 @@ def _format_answer_for_llm(answer: dict) -> str:
     readable block makes the model's life much easier.
     """
     if answer.get("skipped"):
-        return "用户跳过了本次问卷。\n" + json.dumps(
-            {"skipped": True}, ensure_ascii=False,
-        )
+        # 保留已有答案：watchdog 释放前 AI 可能已填好若干题（实测
+        # chatcmpl-tool-9fa5a40ffabe2bca 的 q0 就被旧版裸 skip 丢掉了）。
+        # 不能让模型以为「一个字都没答」，也不能把系统跳过说成用户主动。
+        kept = answer.get("answers") or {}
+        lines: list[str] = [_skip_reason_text(answer)]
+        if kept:
+            lines.append("【跳过前已作答的题目（仍然有效，请勿忽略）】")
+            for key, item in kept.items():
+                if not isinstance(item, dict):
+                    continue
+                val = item.get("value", "")
+                if isinstance(val, list):
+                    val = "、".join(str(v) for v in val)
+                other = item.get("other") or ""
+                if other:
+                    val = f"{val}（其他：{other}）" if val else other
+                if item.get("skipped"):
+                    val = "（跳过本题）"
+                lines.append(f"- {key}: {val or '（未作答）'}")
+            lines.append("")
+        lines.append(json.dumps(_sanitize_sentinel(answer), ensure_ascii=False))
+        return "\n".join(lines)
 
     answers = answer.get("answers") or {}
     lines: list[str] = ["【用户提交的问卷答案】"]
@@ -1867,9 +2374,22 @@ def _format_answer_for_llm(answer: dict) -> str:
         q_type = item.get("type", "text")
         value = item.get("value", "")
         other = item.get("other", "") or ""
-        display = value
+        # ── D7：绝不把前端内部哨兵 `__other__` 回传给模型 ──────────────
+        #
+        # `__other__` 是**前端**用来表示「用户选了『其他』并自己写了文字」的
+        # 哨兵（src/index.tsx:1174 `const OTHER`）。后端只有 recommend.py:36
+        # 认得它，这个渲染函数原先不认 → 单选「其他」时原样拼成
+        #   `q1 [单选] __other__（其他：没有看到徽章）`
+        # 把实现细节泄露给模型，也让模型误以为用户选了某个叫 __other__ 的选项。
+        #
+        # 前端渲染侧（src/index.tsx:2235/2241）早已把哨兵剔除并把 value 归一成
+        # label；这里与之对齐。真实内容在 `other` 里，剔除哨兵后自然走下面
+        # `if display else other` 那条既有分支，不会丢信息。
         if isinstance(value, list):
+            value = [v for v in value if str(v) != "__other__"]
             display = "、".join(str(v) for v in value)
+        else:
+            display = "" if str(value) == "__other__" else value
         if other:
             display = f"{display}（其他：{other}）" if display else other
         # Files the user attached under this question's「其他」box.
@@ -1882,8 +2402,24 @@ def _format_answer_for_llm(answer: dict) -> str:
         # the model read "next question" as an explicit skip.  Only an explicit
         # skipped flag reads as跳过; a blank answer keeps its own wording so
         # the model can tell the user saw it but did not decide.
+        #
+        # ── D4（用户裁定 2026-11-07 q1/q3）：跳过有三种来源，措辞必须分开 ──
+        #
+        # 原先任何 `skipped` 都写成「（用户跳过本题）」，于是 AI 自动跳过观察题
+        # 会被模型读成"用户主动放弃了这题" —— 事实相反：用户**根本没被问过**。
+        # 这类误述会让后续决策建立在错误归因上（"用户不想回答" vs
+        # "系统没让用户答"），所以必须按 `skipped_by` 分流：
+        #   · requires_human → 自动模式因「只能真人观察」而跳过（用户没被问）
+        #   · no_recommend   → 自动模式因无可用推荐而跳过（用户没被问）
+        #   · 其它/缺省       → 真的是用户点了「跳过本题」
+        _skip_by = str(item.get("skipped_by") or "")
         if item.get("skipped"):
-            display = "（用户跳过本题）"
+            if _skip_by == "requires_human":
+                display = "（AI 跳过：需人工观察，未交给用户作答）"
+            elif _skip_by == "no_recommend":
+                display = "（AI 跳过：无可用推荐）"
+            else:
+                display = "（用户跳过本题）"
         elif not str(display).strip():
             display = "（未作答）"
         lines.append(f"- {key} [{_TYPE_LABELS.get(q_type, q_type)}] {display}")
@@ -1897,7 +2433,10 @@ def _format_answer_for_llm(answer: dict) -> str:
         lines.append(f"- 其他意见附件：{final_att}")
 
     lines.append("")
-    lines.append(json.dumps(answer, ensure_ascii=False))
+    # raw JSON 也要净化：D7 首轮只改了上面的可读块，这里序列化的仍是原始
+    # 入参 → `"value": "__other__"` 照样送到模型眼前。深拷贝后再净化，
+    # 原始 answer 不受影响（见 `_sanitize_sentinel` 的说明）。
+    lines.append(json.dumps(_sanitize_sentinel(answer), ensure_ascii=False))
     return "\n".join(lines)
 
 
@@ -1915,21 +2454,60 @@ def _opt_text(o: Any) -> str:
 
 def _build_summary(title: str, questions: list[dict]) -> str:
     """Human-readable question summary (shown in the tool-call bubble)."""
+    # 延迟 import：recommend 是可选引擎（`_load_recommend_engine` 有降级路径），
+    # 顶层 import 会让「引擎缺失」从「推进不工作」升级成「插件加载失败」。
+    try:
+        from .recommend import question_recommended as _qrec
+    except Exception:  # noqa: BLE001 — 摘要渲染绝不能因为可选引擎而崩
+        _qrec = None
     lines = [f"❓ **{title or '问卷'}**"]
     for i, q in enumerate(questions):
-        q_type = q.get("type", "text")
+        # D8a：题型必须走 infer_qtype，与卡片/分析器同一真相源。
+        # 原先 `q.get("type", "text")` 不做推断 → 模型省略 type 但有 options 的题
+        # （很常见，schema 里 type 是可选）会在气泡里被标成 `[问答]`，
+        # 而卡片实际渲染成单选题 —— 摘要与真实界面不一致（自检 #2/#3 实测）。
+        try:
+            q_type = _analysis.infer_qtype(q)
+        except Exception:  # noqa: BLE001
+            q_type = q.get("type", "text")
         q_title = q.get("title", f"Q{i + 1}")
         label = _TYPE_LABELS.get(q_type, q_type)
         options = q.get("options") or []
         suffix = f"（{'、'.join(_opt_text(o) for o in options)}）" if options else ""
         # Surface the model's own recommendation to the model on the next turn,
         # so it stays consistent with what the user saw / auto-accepted.
-        rec = q.get("recommended")
+        #
+        # D8b：必须复用 question_recommended()，它才认 `ai_recommended` 别名
+        # （早期版本用过这个名字，模型偶尔还在用）。原实现只读 `recommended`
+        # → 用别名的推荐不会出现在 ⟨推荐：…⟩ 里，模型下一轮就看不到自己标过什么。
+        rec = _qrec(q) if _qrec is not None else _legacy_rec_list(q)
         if rec:
-            rec_txt = "、".join(rec) if isinstance(rec, (list, tuple)) else str(rec)
-            suffix += f" ⟨推荐：{rec_txt}⟩"
+            suffix += f" ⟨推荐：{'、'.join(rec)}⟩"
         lines.append(f"{i + 1}. [{label}] {q_title}{suffix}")
     return "\n".join(lines)
+
+
+def _legacy_rec_list(q: Any) -> list[str]:
+    """Fallback when the optional recommend engine cannot be imported.
+
+    Kept deliberately tiny — it mirrors ``recommend.question_recommended`` so the
+    summary never silently loses the recommendation just because the engine
+    module failed to load.
+    """
+    if not isinstance(q, dict):
+        return []
+    raw = q.get("recommended")
+    if raw is None:
+        raw = q.get("ai_recommended")
+    if raw is None:
+        return []
+    items = raw if isinstance(raw, (list, tuple)) else [raw]
+    out: list[str] = []
+    for x in items:
+        s = str("" if x is None else x).strip()
+        if s:
+            out.append(s)
+    return out
 
 
 async def _notify_bubble_removed_doc() -> None:  # pragma: no cover
@@ -2044,6 +2622,58 @@ class QuestionModalMiddleware(_MiddlewareBase):
         channel = str(request_context.get("channel", "") or "")
 
         svc = get_question_service()
+
+        # ★ 必须把当前生效的 mode 一起传下去（2026-11-07 真机抓出的缺陷）。
+        #
+        # `svc.create()` 早在阶段 0 就支持 mode 参数，但这里的调用**一直没传**，
+        # 于是每份真实问卷的后端 state 都停在默认 `manual` —— 后端推进循环
+        # （阶段 2）看到 mode != recommend 就直接 return，**永不推进**。
+        # 用后端注入 state 的测试发现不了这个问题（那时 mode 是测试自己设的），
+        # 只有走真实 agent 链路弹问卷才暴露：卡片显示「只用推荐」，state 却是 manual。
+        #
+        # 解析链与会话设置一致：session_id → chat UUID → resolve_effective 三层合并。
+        #
+        # 中间件运行在 agent 内部，`_iter_agent_chats()`（要访问宿主 chat manager）
+        # 不一定可用，所以再加一层兜底：直接扫覆盖文件里 **键就是 session_id**
+        # 的记录。用户在前端面板保存时，如果拿不到 chat UUID 就会用 session_id 当键，
+        # 这一层保证那种情况下 mode 也能取到。
+        _chat_id = ""
+        try:
+            _chat_id = _resolve_chat_id("", session_id, agent_id)
+            _eff = resolve_effective(_chat_id).get("mode") if _chat_id else None
+            if not _eff:
+                _ov = _load_session_prefs()
+                if isinstance(_ov, dict):
+                    for _k in (session_id, f"{session_id}:{agent_id}"):
+                        _s = _ov.get(_k)
+                        if isinstance(_s, dict) and _s.get("mode"):
+                            _eff = _s["mode"]
+                            break
+            _mode = str(_eff or "manual")
+            if _mode not in ("ai", "recommend", "manual"):
+                _mode = "manual"
+        except Exception:  # noqa: BLE001 — 取不到就用保守默认，绝不阻挡问卷
+            logger.warning("could not resolve survey mode", exc_info=True)
+            _mode = "manual"
+
+        # ★ 同时把「生效设置快照」一起传下去（阶段 3）。
+        #
+        # `ai` 推进要在**完全没有页面**的情况下调模型，因此它必须自带
+        # 用哪个模型 / 要不要带上下文 / 超时多少。存快照而不是让推进循环现查：
+        # 现查要反读文件 + 反查 chat UUID，而且用户在问卷进行中改了设置
+        # 会让正在跑的问卷**中途换模型** —— 一道题用一个模型，结果不可比。
+        _prefs: dict = {}
+        try:
+            _cfg = resolve_effective(_chat_id) if _chat_id else {}
+            _prefs = {
+                "model_id": str(_cfg.get("model_id") or ""),
+                "with_context": bool(_cfg.get("with_context")),
+                "model_timeout_sec": float(_cfg.get("model_timeout_sec") or 0),
+                "template_id": str(_cfg.get("template_id") or ""),
+            }
+        except Exception:  # noqa: BLE001 — 取不到就用默认，绝不阻挡问卷
+            logger.warning("could not resolve survey prefs", exc_info=True)
+
         pending = await svc.create(
             session_id=session_id,
             agent_id=agent_id,
@@ -2052,11 +2682,33 @@ class QuestionModalMiddleware(_MiddlewareBase):
             title=title,
             questions=questions,
             tool_call_id=str(getattr(tool_call, "id", "") or ""),
+            mode=_mode,
+            prefs=_prefs,
         )
 
         # Remember the question list too, so a reloaded card can address the
         # right pending record by tool_call_id instead of guessing.
         _register_question(pending.request_id, session_id, questions)
+
+        # ── 阶段 1：给这份问卷挂看门狗（只对自动模式生效）────────────
+        # 用户裁定（2026-11-07）：手动释放 + 看门狗 60s 无进展释放。
+        # 判据在 question_service._watchdog_loop 里按 mode 二次过滤：
+        # manual 不干预（人工作答本来就会停顿），只有 ai/recommend
+        # 这种「本该自己动」的模式卡住才回收。
+        try:
+            svc.ensure_watchdog(pending.tool_call_id)
+        except Exception:  # noqa: BLE001 — 看门狗起不来不能阻挡问卷弹出
+            logger.warning("could not start survey watchdog", exc_info=True)
+
+        # ── 阶段 2：recommend 模式的后端推进 ─────────────────────────
+        # 用户裁定（2026-11-07）：recommend 模式下由**后端**逐题推进并广播，
+        # 前端只渲染；这样关掉所有页面问卷也能走完。manual 等人操作、
+        # ai 要调模型（阶段 3），所以这里只对 recommend 起循环。
+        try:
+            svc._prune_stale_runners()   # 先清上一代代码的僵尸 task
+            svc._sync_runners(pending.tool_call_id)
+        except Exception:  # noqa: BLE001 — 推进起不来不能阻挡问卷弹出
+            logger.warning("could not start survey runner", exc_info=True)
 
         # NOTE: do **not** push into the host's console_push_store here.
         # That store feeds the host's own top-right notification bubble,
@@ -2082,8 +2734,10 @@ class QuestionModalMiddleware(_MiddlewareBase):
         except asyncio.TimeoutError:
             # Never leave the agent blocked forever: resolve as skipped
             # and tell the model explicitly so it can carry on.
+            _to_reason = f"问卷作答超时（{timeout:.0f} 秒未作答），系统自动跳过"
             try:
-                await asyncio.shield(svc.skip(pending.request_id))
+                await asyncio.shield(svc.skip(
+                    pending.request_id, reason=_to_reason, by="timeout"))
             except Exception:  # noqa: BLE001
                 logger.debug("skip on timeout failed", exc_info=True)
             logger.warning(
@@ -2095,7 +2749,7 @@ class QuestionModalMiddleware(_MiddlewareBase):
                 "type": "text",
                 "text": (
                     f"{summary}\n\n"
-                    f"【用户未在 {timeout:.0f} 秒内作答，问卷已自动跳过】\n"
+                    f"【{_to_reason}】\n"
                     '{"skipped": true, "reason": "timeout"}\n'
                     "请不要再等待，直接基于已有信息继续推进；"
                     "如确有必要，可稍后再次调用 question_modal。"
@@ -2106,7 +2760,10 @@ class QuestionModalMiddleware(_MiddlewareBase):
             # Request interrupted (user pressed stop) — clean the pending
             # entry so it never resolves the REST path later.
             try:
-                await asyncio.shield(svc.skip(pending.request_id))
+                await asyncio.shield(svc.skip(
+                    pending.request_id,
+                    reason="用户停止了本轮会话，等待中的问卷被取消",
+                    by="cancel"))
             except Exception:  # noqa: BLE001
                 logger.debug("skip on cancel failed", exc_info=True)
             raise
@@ -2139,7 +2796,44 @@ class QuestionModalPlugin:
     """Ask-User plugin (QwenPaw 2.x port)."""
 
     def register(self, api: PluginApi) -> None:
+        _attach_to_host_log()
         logger.info("Registering question-modal plugin (2.x port)...")
+        # 清掉上一代代码遗留的 runner task（它们跑的是旧代码对象，
+        # 曾导致 survey_states.json 被旧版固定 tmp 名并发写没）
+        try:
+            get_question_service()._prune_stale_runners()
+        except Exception:  # noqa: BLE001
+            logger.warning("could not prune stale runners", exc_info=True)
+
+        # ── 0. 引擎自检：确认 recommend 推进引擎在**生产加载方式**下可用 ──
+        #
+        # 为什么在这里做（2026-11-07 真机抓出的缺陷）：`_runner_loop` 里若写成
+        # 裸 `import recommend`，在生产环境（插件以**包**加载、插件目录不在
+        # sys.path）必然 ModuleNotFoundError，且被 except 吞掉 → **runner
+        # 静默不工作**，外部只看到「关掉页面就不推进了」。
+        #
+        # 这类失败必须**在启动时大声报出来**，而不是等到用户关掉页面才发生。
+        # 用相对导入（`.recommend`）保证能命中，并在这里显式验证一次。
+        try:
+            from . import recommend as _rec_check
+            _missing = [fn for fn in ("step_once", "prune_hidden",
+                                      "visible_indices", "is_visible",
+                                      "chosen_tokens", "question_recommended",
+                                      "choice_for_question", "filled_answer")
+                        if not callable(getattr(_rec_check, fn, None))]
+            if _missing:
+                logger.error(
+                    "question_modal: recommend engine loaded but missing %s "
+                    "— backend driving will NOT work", _missing)
+            else:
+                logger.info(
+                    "question_modal: recommend engine ready "
+                    "(backend driving available)")
+        except Exception:  # noqa: BLE001
+            logger.error(
+                "question_modal: recommend engine FAILED to load — "
+                "backend driving unavailable, surveys will stall when the "
+                "page closes", exc_info=True)
 
         # ── 1. Tool: declare question_modal so the LLM can discover it ──
         try:
@@ -2172,6 +2866,14 @@ class QuestionModalPlugin:
                     "值是选项原文（多选可用数组，如 [\"A\",\"C\"]，单选直接用字符串）。"
                     "即便各选项都可接受，也要选出你认为最稳妥的一项作为推荐——默认应当出现推荐标记，"
                     "只有确实完全无法取舍时才留空。标注后用户可在「只用推荐」模式下不调用模型直接采纳。**"
+                    "**观察题（必标）：若某题的答案只有用户亲眼看到界面才能给出"
+                    "（如「你看到了什么」「徽章标在哪一项」），必须在该题加 "
+                    "requires_human: true。自动模式（ai/只用推荐）由模型作答，"
+                    "而模型看不到用户屏幕，只能凭题面猜——不标就会编造一个具体但错误的"
+                    "观察结果（实测 AI 答\"徽章在 B 项\"、用户实际\"在 A 左侧\"）。"
+                    "标了之后自动模式会跳过该题并标注「AI 跳过：需人工观察」，"
+                    "绝不替你编答案。征求意见/判断题（「你觉得」「你认为哪个更好」）"
+                    "**不要**标 requires_human——那些你可以回答。**"
                     "用户可以跳过本题或整份问卷；跳过或超时后不要再等待，"
                     "基于已有信息继续推进。"
                 ),
