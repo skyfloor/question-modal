@@ -1,0 +1,16 @@
+{
+  "name": "question-modal-plugin",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "vite build"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.0.0",
+    "typescript": "^5.0.0",
+    "vite": "^5.0.0"
+  },
+  "dependencies": {
+    "marked": "^12.0.2"
+  }
+}

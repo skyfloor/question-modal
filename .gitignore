@@ -1,3 +1,55 @@
+# ── 依赖与构建缓存 ──
 node_modules/
 __pycache__/
 *.pyc
+*.pyo
+.pytest_cache/
+.vite/
+
+# ── 本地备份与临时产物（勿入仓库）──
+# src/index.tsx.bak-* 之类是改代码前的一次性备份，
+# 每轮开发都会新增十几份；进仓库会让历史被源码副本淹没。
+*.bak
+*.bak-*
+*.orig
+*.rej
+*~
+.DS_Store
+Thumbs.db
+
+# ── 过程快照与已废弃测试 ──
+# snapshots/ 是某轮开发留下的空目录结构；_retired/ 是被取代的旧测试，
+# 留着只会让 clone 的人以为它们还在跑。
+snapshots/
+_retired/
+
+# ── 过程笔记 / 设计草稿（2026-11-13 用户裁定不进仓库）──
+# 这些是开发期的思考记录，内容随实现演进会过时，
+# 进仓库只会让 clone 下来的人读到与代码不符的旧结论。
+*TODO*.md
+*_TODO.md
+*_TODO.MD
+QM_*.md
+PHASE*_TODO.md
+
+# ── 运行时状态（插件自己会写，绝不能进仓库）──
+# ★ 这几个文件含用户真实配置与会话数据，误提交等于泄露。
+analysis_prefs.json
+session_prefs.json
+survey_states.json
+analysis_results.json
+answered_results.json
+decisions.json
+templates.json
+pending_questions.json
+gate_blocks.json
+*.bak-*-pre*
+*.bak-*-post*
+
+# ── 明文凭据一律不得入库 ──
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*credential*
+*secret*

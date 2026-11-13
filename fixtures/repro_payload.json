@@ -1,0 +1,31 @@
+[
+  {
+    "title": "优先级冲突：现行 findStartFromGraph 是「摊平键优先」，readNodeCfg 是「pm:cfg 权威」，两者相反。零回归断言口径怎么定？",
+    "options": [
+      "严格按你原指令做：只改 MsgQueuePage:71 和 OrgBaseSetting:616 两个 push 函数，其余引用点保留（它们会落 404，符合现状）",
+      "完整清理：两 path 的**全部** push 入口去掉/改 pending（含 l3-new/CpAdminLayout:219 侧边导航项、AdminDashboard:191/205 两张卡、AppCenter:179 configRoute、permission.ts:60 权限映射）",
+      "路径反过来：这两条改成 pending 置灰（当成“未建完”入口），而不是删",
+      "你先列完整清单和影响面给我看，我再裁定"
+    ],
+    "recommended": "完整清理：两 path 的**全部** push 入口去掉/改 pending（含 l3-new/CpAdminLayout:219 侧边导航项、AdminDashboard:191/205 两张卡、AppCenter:179 configRoute、permission.ts:60 权限映射）"
+  },
+  {
+    "title": "类型差异：现有路径对空集返回 []string{}（非 nil），readNodeStrListCfg 返回 nil。零回归断言怎么写？",
+    "options": [
+      "甲：给 CpAdminSidebar 补 pending 视觉（置灰 + 禁用 tooltip + 不可点）+ 顶栏搜索框/用户菜单置灰禁用",
+      "乙：不补视觉，只靠 pending 短路（点击无反应，但仍会是死入口，不算置灰）",
+      "丙：顶栏搜索框与用户菜单直接隐藏（不显示未完成的入口）",
+      "丁：只处理侧边导航，顶栏两处保持现状（继续落 404）"
+    ],
+    "recommended": "甲：给 CpAdminSidebar 补 pending 视觉（置灰 + 禁用 tooltip + 不可点）+ 顶栏搜索框/用户菜单置灰禁用"
+  },
+  {
+    "title": "侧边导航与顶栏的 pending 标记范围怎么定？",
+    "options": [
+      "就标这 4 条（无 name 的）：/、/login、AdminDashboard 的 path:''、ProjectDetail 的 path:''",
+      "全部菜单项都标 pending",
+      "只标侧边导航，顶栏不动"
+    ],
+    "recommended": "就标这 4 条（无 name 的）：/、/login、AdminDashboard 的 path:''、ProjectDetail 的 path:''"
+  }
+]
