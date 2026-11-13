@@ -291,6 +291,16 @@ class PendingQuestion:
     request_id: str
     session_id: str = ""
     agent_id: str = ""
+    # Chat UUID this survey belongs to.  ``session_id`` is NOT unique across
+    # agents and — more importantly — the host does NOT expose it to injected
+    # front-end code in every environment (``getCurrentSessionId()`` derives it
+    # from the URL and returns null outside ``/chat/<id>``), so the front end
+    # cannot always send a resolvable session_id.  Recording the chat UUID here
+    # at creation time gives ``/resolve`` an authoritative answer to hand back,
+    # so saving settings stops depending on a session_id→chat_uuid lookup.
+    # (2026-11-13: user hit "chat_id (or resolvable session_id) is required"
+    # when the same code worked on the LAN machine but not via the frpc domain.)
+    chat_id: str = ""
     user_id: str = ""
     channel: str = ""
     title: str = ""
@@ -316,6 +326,7 @@ class PendingQuestion:
             "request_id": self.request_id,
             "session_id": self.session_id,
             "agent_id": self.agent_id,
+            "chat_id": self.chat_id,
             "user_id": self.user_id,
             "channel": self.channel,
             "title": self.title,
@@ -562,6 +573,7 @@ class QuestionService:
                     request_id=str(item["request_id"]),
                     session_id=str(item.get("session_id", "") or ""),
                     agent_id=str(item.get("agent_id", "") or ""),
+                    chat_id=str(item.get("chat_id", "") or ""),
                     user_id=str(item.get("user_id", "") or ""),
                     channel=str(item.get("channel", "") or ""),
                     title=str(item.get("title", "") or ""),
@@ -1650,6 +1662,7 @@ class QuestionService:
             request_id=str(uuid.uuid4()),
             session_id=kwargs.get("session_id", ""),
             agent_id=kwargs.get("agent_id", ""),
+            chat_id=kwargs.get("chat_id", "") or "",
             user_id=kwargs.get("user_id", ""),
             channel=kwargs.get("channel", ""),
             title=kwargs.get("title", ""),
