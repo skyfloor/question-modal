@@ -3,7 +3,7 @@
   "name": "Question Modal 问卷弹窗",
   "version": "2.4.3",
   "type": "tool",
-  "description": "文字作答改为多页点选问卷，支持AI推荐、只用推荐与人工答卷。",
+  "description": "把文字作答改为可点选的多页问卷，支持单选多选问答与条件联动，内置 AI 推荐，可选自动分析、只用推荐或人工作答，答案结构化返回。",
   "author": "skyfloor",
   "entry": {
     "backend": "plugin.py",
