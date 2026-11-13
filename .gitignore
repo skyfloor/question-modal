@@ -17,6 +17,12 @@ __pycache__/
 .DS_Store
 Thumbs.db
 
+# ── 临时测试页与截图 ──
+# _p1page.html 之类是运行时生成的探针页，shot_*.png 是某次调试截图
+_p1page.html
+__*.html
+shot_*.png
+
 # ── 过程快照与已废弃测试 ──
 # snapshots/ 是某轮开发留下的空目录结构；_retired/ 是被取代的旧测试，
 # 留着只会让 clone 的人以为它们还在跑。
