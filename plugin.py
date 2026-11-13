@@ -241,6 +241,13 @@ _RESULTS_FILE = _PLUGIN_DIR / "answered_results.json"
 # keeps the number of concurrent open writes at one).
 _PERSIST_LOCK = threading.Lock()
 
+# Serialises the read-modify-write cycle of the SETTINGS files.
+#
+# 2026-11-13（用户需求 2）：此前两个 save 都是「读整份 → 改 → 写整份」且
+# **没有任何锁**。两个标签页同时保存时，后写者拿的是自己读到的旧快照，
+# 会把先写者的改动整个抹掉（丢失更新）—— 与「后写为准」正好相反。
+_PREFS_LOCK = threading.RLock()
+
 
 # ══════════════════════════════════════════════════════════════════════
 # Capsule preferences (B3) — disk is the single source of truth
@@ -286,7 +293,17 @@ def _load_prefs() -> dict:
 
 
 def _save_prefs(patch: dict) -> dict:
-    """Merge a whitelisted patch into the prefs file (atomic write)."""
+    """Merge a whitelisted patch into the prefs file (atomic write).
+
+    2026-11-13：整个「读 → 合并 → 写」放在 ``_PREFS_LOCK`` 里，否则并发
+    保存会互相覆盖（详见 ``_PREFS_LOCK`` 的注释）。
+    """
+    with _PREFS_LOCK:
+        return _save_prefs_locked(patch)
+
+
+def _save_prefs_locked(patch: dict) -> dict:
+    """Body of :func:`_save_prefs`; caller must hold ``_PREFS_LOCK``."""
     cur = _load_prefs()
     # Every schema key is accepted here (validated + clamped by
     # ``sanitize_settings``), so adding a setting no longer means editing this
@@ -636,11 +653,18 @@ def resolve_effective(chat_id: str = "") -> dict:
         )
 
     # ① per-session override
+    #
+    # 2026-11-13 方案 D1：只有当本会话的 `__active_scope__` 不是 "default"
+    # 时才把会话层叠上去。切到默认模式后，覆盖数据仍留在磁盘（切回即恢复），
+    # 但**不参与生效值计算** —— 否则"切了默认模式却还在用会话值"，
+    # 用户看到的就是"切了没效果"。
     if chat_id:
         try:
             overrides = _load_session_prefs()
             sess = overrides.get(chat_id) if isinstance(overrides, dict) else None
-            if isinstance(sess, dict):
+            if isinstance(sess, dict) and str(
+                sess.get("__active_scope__") or ""
+            ).strip() != "default":
                 out.update(sanitize_settings(sess))
         except Exception:  # noqa: BLE001
             logger.warning(
@@ -648,11 +672,19 @@ def resolve_effective(chat_id: str = "") -> dict:
             )
 
     # Report which keys came from an override so the UI can badge them.
+    #
+    # 2026-11-13 方案 D1：标 session 的前提是"会话层**真的参与了**生效值计算"。
+    # 若本会话 active_scope=default（切到了默认模式），覆盖数据虽然还留在
+    # 磁盘上，却不生效 —— 此时若仍标 session，UI 会显示「此项已被会话覆盖」，
+    # 而实际用的是全局值，显示与事实不符（实测：切默认后 model_id 明明是
+    # 全局值，sources 却是 {'model_id': 'session'}）。
     sources: dict = {}
     try:
         overrides = _load_session_prefs() if chat_id else {}
         sess = overrides.get(chat_id) if isinstance(overrides, dict) else None
-        if isinstance(sess, dict):
+        if isinstance(sess, dict) and str(
+            sess.get("__active_scope__") or ""
+        ).strip() != "default":
             for key in sanitize_settings(sess):
                 sources[key] = "session"
     except Exception:  # noqa: BLE001
@@ -720,6 +752,22 @@ def _session_writable(settings: Any) -> dict:
         spec = SETTINGS_SCHEMA.get(key) or {}
         if spec.get("scope", "both") == "both":
             clean[key] = value
+    # `__keyts__` 是逐键写入时间戳（并发冲突检测，2026-11-13）。它不是用户
+    # 设置项、不在 SETTINGS_SCHEMA 里，`sanitize_settings` 会把它当未知键丢掉
+    # —— 那样时间戳永远存不下来，冲突检测也就永不触发。这里原样保留。
+    if isinstance(settings, dict) and isinstance(settings.get("__keyts__"), dict):
+        clean["__keyts__"] = {
+            str(k): float(v) for k, v in settings["__keyts__"].items()
+            if isinstance(v, (int, float))
+        }
+    # `__active_scope__` = 本会话当前用哪套配置（2026-11-13 方案 D1）。
+    # 它不是用户设置项、不在 SETTINGS_SCHEMA 里，同样要在 sanitize 之后原样
+    # 放行，否则「切到默认模式」的标记存不下来，has_session 永远算不对
+    # （切了跟没切一样）。
+    if isinstance(settings, dict):
+        _mark = str(settings.get("__active_scope__") or "").strip()
+        if _mark in ("session", "default"):
+            clean["__active_scope__"] = _mark
     return clean
 
 
@@ -728,25 +776,30 @@ def _save_session_prefs(sessions: dict) -> None:
 
     Every entry is re-filtered through ``_session_writable`` on the way in, so a
     hand-written or legacy file cannot smuggle in a global-only key.
+
+    2026-11-13（用户需求 2）：写入放在 ``_PREFS_LOCK`` 内。路由层已在同一把
+    锁里完成「读 → 改」，这里再挡一层，避免任何绕过路由的写入（脚本 / 未来
+    调用方）让两份整表互相覆盖。
     """
-    try:
-        if isinstance(sessions, dict):
-            sessions = {
-                k: _session_writable(v) for k, v in sessions.items()
-                if isinstance(k, str) and k
-            }
-            sessions = {k: v for k, v in sessions.items() if v}
-        payload = {"sessions": sessions, "updated_at": time.time()}
-        tmp = _SESSION_PREFS_FILE.parent / (
-            f"{_SESSION_PREFS_FILE.name}.{os.getpid()}.{time.time_ns()}.tmp")
-        tmp.write_text(
-            json.dumps(payload, ensure_ascii=False), encoding="utf-8",
-        )
-        tmp.replace(_SESSION_PREFS_FILE)
-    except Exception:  # noqa: BLE001 — listing still works in-process
-        logger.warning(
-            "question_modal: could not persist session prefs", exc_info=True,
-        )
+    with _PREFS_LOCK:
+        try:
+            if isinstance(sessions, dict):
+                sessions = {
+                    k: _session_writable(v) for k, v in sessions.items()
+                    if isinstance(k, str) and k
+                }
+                sessions = {k: v for k, v in sessions.items() if v}
+            payload = {"sessions": sessions, "updated_at": time.time()}
+            tmp = _SESSION_PREFS_FILE.parent / (
+                f"{_SESSION_PREFS_FILE.name}.{os.getpid()}.{time.time_ns()}.tmp")
+            tmp.write_text(
+                json.dumps(payload, ensure_ascii=False), encoding="utf-8",
+            )
+            tmp.replace(_SESSION_PREFS_FILE)
+        except Exception:  # noqa: BLE001 — listing still works in-process
+            logger.warning(
+                "question_modal: could not persist session prefs", exc_info=True,
+            )
 
 
 def _iter_agent_chats() -> list[dict]:
@@ -1944,21 +1997,99 @@ def build_router() -> APIRouter:
         except Exception:  # noqa: BLE001
             pass
 
-        # 「当前会话模式 vs 全局默认模式」的判据：本 chat 是否已有会话覆盖条目。
-        # 唯一权威是 session_prefs.json 里的条目，不推导（用户裁定 2026-11-04）。
+        # ── 「会话模式 vs 默认模式」的判据（2026-11-13 方案 D1 改造）──────
+        #
+        # 用户裁定：来回切换**不能丢数据**。
+        #   切到默认模式 = 只把「本会话当前用哪套」标成 default，
+        #   会话里自定义过的那几项**原样保留**；切回会话模式立刻恢复。
+        #
+        # 所以判据不能再是「有没有覆盖条目」——旧实现里"删掉条目"既是切模式
+        # 又是丢数据，两件事被绑死。改为读显式标记 `__active_scope__`：
+        #   · "session" → 会话模式
+        #   · "default" → 默认模式（覆盖数据仍在磁盘上，随时可切回）
+        #   · 无标记（历史数据）→ 有覆盖即视为 session，兼容旧数据
         has_session = False
+        active_scope = "default"
         try:
             ov = _load_session_prefs()
-            has_session = bool(chat_id) and chat_id in (ov if isinstance(ov, dict) else {})
+            sess = ov.get(chat_id) if (chat_id and isinstance(ov, dict)) else None
+            if isinstance(sess, dict):
+                mark = str(sess.get("__active_scope__") or "").strip()
+                # 2026-11-13 用户裁定（严格判定）：历史数据没有标记时，
+                # **必须真的存在至少一个用户值项**才算会话模式。
+                # 否则一条只含内部字段（__keyts__ 等）的记录会被误判成
+                # 会话模式 —— 那种记录不含任何用户选择，语义上是"没设过"。
+                _has_real_value = bool(sanitize_settings(sess))
+                if mark in ("session", "default"):
+                    active_scope = mark
+                    has_session = (mark == "session")
+                elif _has_real_value:
+                    has_session = True
+                    active_scope = "session"
+                else:
+                    has_session = False
+                    active_scope = "default"
         except Exception:  # noqa: BLE001
             pass
+
+        # 分层原始数据（见下方 return 里的说明）。
+        #   session_config = 该会话**显式覆盖过**的键（不掺全局、不受
+        #                    active_scope 影响 —— 即使现在不是会话模式，
+        #                    磁盘上留着的这些值也要能如实显示）
+        #   global_config  = 全局层的原始值（磁盘上的 analysis_prefs）
+        session_config: dict = {}
+        global_config: dict = {}
+        try:
+            _all = _load_session_prefs() if chat_id else {}
+            _sess = _all.get(chat_id) if isinstance(_all, dict) else None
+            if isinstance(_sess, dict):
+                session_config = sanitize_settings(_sess)
+        except Exception:  # noqa: BLE001
+            session_config = {}
+        try:
+            global_config = sanitize_settings(_load_prefs())
+        except Exception:  # noqa: BLE001
+            global_config = {}
+
+        # 本会话各键的最后写入时间（并发冲突检测用，2026-11-13 需求 2）。
+        # 前端打开面板时记下它，保存时作为 `seen` 发回；后端据此判断
+        # 「这个键在我看过之后是否被别处改过」，从而给出
+        # 「设置已于 xx 时间被其它位置修改」的标注。
+        key_ts: dict = {}
+        try:
+            if chat_id:
+                _all = _load_session_prefs()
+                _sess = _all.get(chat_id) if isinstance(_all, dict) else None
+                if isinstance(_sess, dict) and isinstance(_sess.get("__keyts__"), dict):
+                    key_ts = {
+                        str(k): float(v)
+                        for k, v in _sess["__keyts__"].items()
+                        if isinstance(v, (int, float))
+                    }
+        except Exception:  # noqa: BLE001 — 提示数据缺失绝不能影响读配置
+            key_ts = {}
 
         return {
             "ok": True,
             "chat_id": chat_id,
             "config": cfg,
             "has_session": has_session,
+            # 显式标记，供前端判断"当前用哪套"（与 has_session 同义但更明确）
+            "active_scope": active_scope,
+            # ── 分层原始数据（2026-11-13 用户报「页签数据显示错层」）───────
+            #
+            # 问题：切到默认模式后 active_scope=default，生效值 config 就等于
+            # 全局值。前端会话页签原本读的是 `config`（生效值），于是显示成
+            # 全局数据；点保存时 set_scope 一改，生效值立刻切成会话覆盖，
+            # 页签内容"突然刷新"。
+            #
+            # 修法：把两层原始数据分别返回，前端各页签读自己那层，与"当前
+            # 生效哪套"彻底解耦 —— 会话页签永远显示会话层，默认页签永远
+            # 显示全局层，不管现在 active_scope 是什么。
+            "session_config": session_config,
+            "global_config": global_config,
             "global_keys": global_keys,
+            "key_ts": key_ts,
             "version": _config_version(),
             "schema": [
                 {
@@ -2004,8 +2135,18 @@ def build_router() -> APIRouter:
                     "agent_name": "",
                     "updated_at": (values or {}).get("updated_at", 0),
                     "missing": True,
+                    "active_scope": str(
+                        (values or {}).get("__active_scope__") or ""
+                    ).strip() or ("session" if sanitize_settings(values or {})
+                                  else "default"),
                 })
                 continue
+            # 2026-11-13：带上作用域标记。切到默认模式的会话虽然仍有一条
+            # 记录（保留数据用），但它**不在会话模式下运行** —— 不带标记的话
+            # 这个列表会把它列成"有会话覆盖"，误导排查。
+            _mark = str((values or {}).get("__active_scope__") or "").strip()
+            if _mark not in ("session", "default"):
+                _mark = "session" if sanitize_settings(values or {}) else "default"
             out.append({
                 "chat_id": chat_id,
                 "session_id": info["session_id"],
@@ -2013,6 +2154,8 @@ def build_router() -> APIRouter:
                 "agent_name": info["agent_name"],
                 "updated_at": (values or {}).get("updated_at", 0),
                 "missing": False,
+                "active_scope": _mark,
+                "active": (_mark == "session"),
             })
         out.sort(key=lambda r: r.get("updated_at") or 0, reverse=True)
         return {"sessions": out, "count": len(out)}
@@ -2051,74 +2194,148 @@ def build_router() -> APIRouter:
 
         # 「空对象」= 显式清空整条覆盖（旧的、也是 UI 依赖的语义）。
         # 与「合并」并存：有键就合并，没键才清空。
-        clear_all = not settings
-
-        sessions = _load_session_prefs()
-
-        # ── 显式删除的键要**先**捞出来 ────────────────────────────────
+        # ── 模式切换（2026-11-13 方案 D1：切默认模式**不删数据**）──────
         #
-        # `sanitize_settings` 把 None 视为非法值直接丢弃（它只认 schema 声明的
-        # 类型），所以「传 null 表示删掉这一项」必须在 sanitize 之前识别，否则
-        # 永远传不进来。这里只接受 scope=both 的键，避免借删除通道动全局专属键。
-        explicit_del: set = set()
-        try:
-            for key, value in (settings or {}).items():
-                if value is None:
-                    spec = SETTINGS_SCHEMA.get(key) or {}
-                    if spec.get("scope", "both") == "both":
-                        explicit_del.add(key)
-        except Exception:  # noqa: BLE001
-            explicit_del = set()
+        # 请求体可带 `set_scope: "session" | "default"`：
+        #   · "default" → 只打标记，会话自定义项原样保留；切回即恢复
+        #   · "session" → 打标记，会话覆盖继续生效
+        #
+        # 不能沿用「空 settings = 清空」来做切换：实测会把会话里设过的
+        # 模型/模板/上下文一起删掉，切回来只拿到全局值的副本。
+        _set_scope = str((body or {}).get("set_scope") or "").strip()
+        if _set_scope not in ("session", "default"):
+            _set_scope = ""
 
-        # ``_session_writable`` also re-checks scope at the storage layer.
-        clean: dict = _session_writable({
-            k: v for k, v in (settings or {}).items() if v is not None
-        })
+        # 只带 set_scope 而 settings 为空 = 单纯切模式，**不能**当成清空，
+        # 否则 D1 的核心（切默认模式保留数据）立刻失效。
+        clear_all = (not settings) and (not _set_scope)
 
-        # ── MERGE, never replace ──────────────────────────────────────────
+        # 整个「读 → 合并 → 写」在同一把锁内完成。
         #
-        # 曾经写成 `sessions[chat_id] = clean`，即**整体替换**：请求里没带的
-        # 键会被直接抹掉，然后回落到全局默认值。用户报的「保存后被强制设置成
-        # 某个默认值」就是这条 —— 实测：有 5 项覆盖，只改 wait_hint_sec 保存后，
-        # 记录只剩 {"wait_hint_sec": 200}，mode 回落到全局 recommend。
-        #
-        # 前端设置面板只提交「改动项」，卡片模式切换只提交 {mode}，两者都会
-        # 触发这个抹除，于是越用丢得越多。
-        #
-        # 现在改为与现存值合并。显式删除某个键请用空值（见下）；
-        # 清空整条覆盖请调 POST /session-prefs/clear。
-        existing = sessions.get(chat_id)
-        merged: dict = dict(existing) if isinstance(existing, dict) else {}
-        merged.pop("updated_at", None)
+        # 2026-11-13（用户需求 2）：此前无锁，两个标签页同时保存时各自基于
+        # 自己读到的旧快照写回，后写者会**抹掉**先写者的改动（丢失更新），
+        # 与「后写为准」正好相反。加锁后每次写入都建立在最新磁盘状态上，
+        # 「最后一次为准」才成立。
+        with _PREFS_LOCK:
+            sessions = _load_session_prefs()
 
-        # 显式删除：回到全局默认。
-        for key in explicit_del:
-            merged.pop(key, None)
-        # 其余键合并写入（不触碰未提交的键）。
-        #
-        # 空串**不**落成覆盖：字符串类设置的空值只表示「没有偏好」，等同于
-        # 删掉该键。否则一个空 model_id 会被 __sources__ 标成 session，UI 便
-        # 永远认为「用户显式设过」，跟随/回落逻辑被永久冻死。
-        for key, value in clean.items():
-            if isinstance(value, str) and value.strip() == "":
+            # ── 显式删除的键要**先**捞出来 ────────────────────────────
+            #
+            # `sanitize_settings` 把 None 视为非法值直接丢弃（它只认 schema
+            # 声明的类型），所以「传 null 表示删掉这一项」必须在 sanitize
+            # 之前识别，否则永远传不进来。这里只接受 scope=both 的键，
+            # 避免借删除通道动全局专属键。
+            explicit_del: set = set()
+            try:
+                for key, value in (settings or {}).items():
+                    if value is None:
+                        spec = SETTINGS_SCHEMA.get(key) or {}
+                        if spec.get("scope", "both") == "both":
+                            explicit_del.add(key)
+            except Exception:  # noqa: BLE001
+                explicit_del = set()
+
+            # ``_session_writable`` also re-checks scope at the storage layer.
+            clean: dict = _session_writable({
+                k: v for k, v in (settings or {}).items() if v is not None
+            })
+
+            # ── MERGE, never replace ──────────────────────────────────────
+            #
+            # 曾经写成 `sessions[chat_id] = clean`，即**整体替换**：请求里没带
+            # 的键会被直接抹掉，然后回落到全局默认值。用户报的「保存后被强制
+            # 设置成某个默认值」就是这条 —— 实测：有 5 项覆盖，只改
+            # wait_hint_sec 保存后，记录只剩 {"wait_hint_sec": 200}，
+            # mode 回落到全局 recommend。
+            #
+            # 现在改为与现存值合并。显式删除某个键请用空值（见下）；
+            # 清空整条覆盖请调 POST /session-prefs/clear。
+            existing = sessions.get(chat_id)
+            merged: dict = dict(existing) if isinstance(existing, dict) else {}
+            merged.pop("updated_at", None)
+
+            # ── 逐键写入时间戳（并发冲突检测，2026-11-13 需求 2）──────────
+            #
+            # 用户裁定：「同一会话多处写入，以最后一次为准，并提示
+            # 「设置已于 xx 时间被其它位置修改」」。
+            #
+            # 判定依据是**逐键**时间戳 `__keyts__`，而不是文件 mtime：
+            # mtime 粒度太粗（同一秒内多次写入无法区分），也无法回答
+            # 「具体哪几个键被别处改了」，前端就无从给出有用提示。
+            keyts: dict = {}
+            if isinstance(existing, dict) and isinstance(
+                existing.get("__keyts__"), dict
+            ):
+                keyts = dict(existing["__keyts__"])
+            merged.pop("__keyts__", None)
+
+            # 客户端「看过」的键时间戳（可选）。有它才能断定「这次覆盖了别处
+            # 的改动」而不是「用户自己刚改的」。没带 seen 的调用方（卡片上的
+            # 即时切换、脚本）不做判定 —— 它们本来就不展示提示。
+            seen = (body or {}).get("seen")
+            if not isinstance(seen, dict):
+                seen = {}
+
+            _now = time.time()
+            conflicts: list[dict] = []
+
+            # 显式删除：回到全局默认，并清掉时间戳，避免「已删的键还留着
+            # 旧时间」被误判成冲突。
+            for key in explicit_del:
                 merged.pop(key, None)
+                keyts.pop(key, None)
+
+            # 其余键合并写入（不触碰未提交的键）。
+            #
+            # 空串**不**落成覆盖：字符串类设置的空值只表示「没有偏好」，
+            # 等同于删掉该键。否则一个空 model_id 会被 __sources__ 标成
+            # session，UI 便永远认为「用户显式设过」，跟随/回落逻辑被永久冻死。
+            for key, value in clean.items():
+                prev_ts = keyts.get(key, 0)
+                seen_ts = seen.get(key)
+                if (
+                    isinstance(seen_ts, (int, float))
+                    and prev_ts
+                    and float(prev_ts) > float(seen_ts) + 1e-6
+                ):
+                    conflicts.append({
+                        "key": key,
+                        "previous": merged.get(key),
+                        "at": float(prev_ts),
+                    })
+                if isinstance(value, str) and value.strip() == "":
+                    merged.pop(key, None)
+                    keyts.pop(key, None)
+                else:
+                    merged[key] = value
+                    keyts[key] = _now
+
+            # 施加作用域标记（D1）。只切模式时除标记外不写任何值，
+            # 未设置的键天然继续跟随全局。
+            if _set_scope:
+                merged["__active_scope__"] = _set_scope
+
+            if clear_all:
+                sessions.pop(chat_id, None)
+                merged = {}
+                keyts = {}
+            elif merged:
+                merged["updated_at"] = _now
+                merged["__keyts__"] = keyts
+                sessions[chat_id] = merged
             else:
-                merged[key] = value
+                # 合并后没剩任何键 → 这条覆盖已无意义，整条移除。
+                sessions.pop(chat_id, None)
 
-        if clear_all:
-            sessions.pop(chat_id, None)
-            merged = {}
-        elif merged:
-            merged["updated_at"] = time.time()
-            sessions[chat_id] = merged
-        else:
-            # 合并后没剩任何键 → 这条覆盖已无意义，整条移除。
-            sessions.pop(chat_id, None)
+            _save_session_prefs(sessions)
 
-        _save_session_prefs(sessions)
         return {
             "ok": True, "chat_id": chat_id, "stored": bool(merged),
             "values": merged,
+            "key_ts": keyts if not clear_all else {},
+            # 前端据此标注「设置已于 <at> 被其它位置修改」，不阻断保存
+            # （用户裁定 q1：不弹窗、只标注；q0：后写为准）。
+            "conflicts": conflicts,
         }
 
     @router.post("/session-prefs/clear")
@@ -2140,6 +2357,25 @@ def build_router() -> APIRouter:
                 status_code=400,
                 detail="chat_id (or resolvable session_id) is required",
             )
+
+        # ── 破坏性操作必须显式确认（2026-11-13 用户裁定 q2）──────────────
+        #
+        # 这个端点会**真的删掉**用户在该会话里的全部自定义设置，且无法撤销。
+        # 而 D1 上线后「切到默认模式」已改为只打标记、保留数据 —— 两者语义
+        # 相邻，很容易被误用（例如把"切模式"写成调这里，静默丢数据）。
+        # 因此要求调用方显式传 ``confirm: true``，让"删数据"永远是一个
+        # 有意识的动作，而不是顺手调错。
+        if not bool((body or {}).get("confirm")):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "clearing a session override is destructive; pass "
+                    '{"confirm": true} to proceed. To just switch to the '
+                    "default mode, use POST /session-prefs with "
+                    '{"set_scope": "default"} instead - it keeps the data.'
+                ),
+            )
+
         sessions = _load_session_prefs()
         existed = chat_id in sessions
         sessions.pop(chat_id, None)
@@ -2650,6 +2886,16 @@ class QuestionModalMiddleware(_MiddlewareBase):
                             _eff = _s["mode"]
                             break
             _mode = str(_eff or "manual")
+            # 诊断（2026-11-13）：mode 解析结果必须可见，否则"问卷秒被自动答完"
+            # 无法区分是「配置读错」还是「配置本身如此」。
+            # 保留为 INFO：这条是"问卷被秒自动答完"类故障的唯一快速判据
+            # （2026-11-13 实测：正是靠它一眼区分"配置读错"与"配置本身如此"）。
+            # 每份问卷只打一次，不构成日志噪音。
+            logger.info(
+                "survey-mode resolve: session=%s agent=%s chat=%s eff=%r -> %s",
+                session_id[:12] or "-", agent_id or "-",
+                _chat_id[:8] or "-", _eff, _mode,
+            )
             if _mode not in ("ai", "recommend", "manual"):
                 _mode = "manual"
         except Exception:  # noqa: BLE001 — 取不到就用保守默认，绝不阻挡问卷
