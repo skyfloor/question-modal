@@ -52,6 +52,24 @@ from . import question_service as _qs_mod
 logger = logging.getLogger(__name__)
 
 
+def _resolve_working_dir() -> Path:
+    """宿主的 WORKING_DIR —— 唯一来源，不自己拼路径。
+
+    为什么不硬编码 `/app/working`：部署形态可变（compose 挂载点、测试用的
+    临时目录）。取不到时退回 `Path.cwd()`，并且只在**调用点**降级，
+    绝不在模块导入期抛异常（导入期失败会让整个插件装不上）。
+    """
+    try:
+        from qwenpaw.constant import WORKING_DIR  # noqa: PLC0415
+
+        return Path(str(WORKING_DIR))
+    except Exception:  # noqa: BLE001
+        return Path.cwd()
+
+
+_WORKING_DIR = _resolve_working_dir()
+
+
 def _attach_to_host_log() -> None:
     """把插件 logger 挂到宿主的日志 handler 上 —— 否则所有日志不可观测。
 
@@ -418,9 +436,39 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "label": "缺题干时显示「第 N 题」",
     },
     # ── 通知 (batch 5) ──
+    #
+    # 2026-11-14 用户裁定：由布尔开关升级为「通知频道」单选枚举。
+    # 键名刻意保留 `notify_manual_mode`（不改成 notify_channel），因为盘上
+    # 已有该键的历史值；旧值 true/false 在 enum 校验下会被拒 → 回落
+    # default "off"，语义等价（都是关），无破坏性迁移。
+    #
+    # 选项与可用性（q5 纯全局：不允许会话级覆盖）：
+    #   off        关闭
+    #   browser    浏览器通知（仅页面存活时有效）
+    #   wechat     微信（需先通过测试发送才允许启用，见 /notify/test）
+    #   dingtalk   钉钉（需 client_id + client_secret 成对，见 _CHANNEL_REQUIRED_CREDS）
+    #   feishu     飞书（需 app_id + app_secret 成对）
+    #   任一渠道未启用/缺凭据/无真实会话 → 面板置灰并写明缺什么
+    #
+    # 为什么是单选而非多选：q6 裁定「一次只能选 1 个频道」，避免同一提醒
+    # 在多处重复打扰；浏览器与频道通知的取舍由用户显式选择。
+    "notify_channel": {
+        "default": "off", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["off", "browser", "wechat", "dingtalk", "feishu"],
+        "label": "人工模式提醒频道",
+    },
+    # 向后兼容：老配置里可能存着 notify_manual_mode=true。保留该键作为
+    # **只读的迁移来源**（resolve 时若 notify_channel 仍为 off 且旧键为
+    # true，则视为 browser），避免用户升级后静默失去提醒。
     "notify_manual_mode": {
-        "default": False, "type": "bool", "scope": "both", "batch": 5,
-        "label": "人工模式时提醒",
+        "default": False, "type": "bool", "scope": "global", "batch": 5,
+        "label": "（旧）人工模式时提醒",
+    },
+    # 频道测试闸门（q4 裁定）：所有频道必须先发测试数据、测试通过才允许
+    # 真正投递。这里存「已通过测试的频道集合」，由 /notify/test 写入。
+    "notify_verified": {
+        "default": "", "type": "str", "scope": "global", "batch": 5,
+        "label": "已通过测试的频道",
     },
     # ── 诊断 (batch 4) ──
     "wait_hint_sec": {
@@ -432,6 +480,28 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "batch": 4, "label": "拦截记录条数",
     },
 }
+
+
+def _req_agent_id(request, explicit: str = "") -> str:
+    """确定本次请求属于哪个 agent（读通知频道配置的唯一正确来源）。
+
+    2026-11-14 实测缺陷（必须记住）：插件跑在宿主的**单一进程**里，而本机
+    有 3 个 agent（default / QwenPaw_QA_Agent_0.2 / wb74Jn）。若靠「config.json
+    里只有一个 agent 就猜它」，猜测返回空串 → 路径退化成不存在的
+    ``<WORKING_DIR>/config.json`` → 微信被判「未启用或缺凭据」，而它其实是
+    可用的。**隔离探针 ready=True、线上端点 ready=False** 就是这条引起的。
+
+    回退顺序：显式参数 → 请求头 X-Agent-Id → 环境变量 → 空（调用方再兜底）。
+    """
+    if explicit:
+        return explicit
+    try:
+        head = request.headers.get("x-agent-id") or ""
+        if head:
+            return head.strip()
+    except Exception:  # noqa: BLE001
+        pass
+    return _current_agent_id()
 
 
 def _resolve_chat_id(
@@ -707,6 +777,592 @@ def _config_version() -> int:
         except Exception:  # noqa: BLE001
             pass
     return total
+
+
+# ── Notification channels ──────────────────────────────────────────────
+#
+# 2026-11-14 用户裁定（pm-req 8 项阻断澄清后）：
+#   q1 开着浏览器时可选浏览器或频道通知；**关掉浏览器时只能走频道通知**
+#      → 频道投递必须由**后端**发起（前端 effect 关页即失效）
+#   q2 频道可用判定 = enabled + 有凭据 + **且有真实会话**（三者都要）
+#   q4 所有频道必须先发测试数据、测试通过才允许真正投递
+#   q5 纯全局作用域（不允许会话级覆盖）
+#   q6 单选：一次只能选 1 个频道
+#
+# 为什么走 HTTP 回环而不是直接 import 宿主内部函数：
+#   1. 插件进程与宿主之间没有现成的对象引用（插件是子进程/受限上下文）；
+#   2. `/api/messages/send` 是宿主的**公开契约**，比 import 私有函数稳定；
+#   3. 端口由环境变量 `QWENPAW_INTERNAL_HOST_API_PORT` 提供，不硬编码。
+#
+# ⚠️ 已知上游缺陷（2026-11-14 实测，用户裁定「等官方修、不碰插件」）：
+# wechat 渠道的 `_check_result` 要求响应含 ret/errcode，而 iLink 成功时只返回
+# `{"message_id": <int>}` → 每次**已成功送达**的发送都会抛
+# `PLATFORM_RESULT_UNKNOWN`（用户实测 5/5 全部收到）。故这里把该错误码
+# 视为「已送达」，仅记日志，绝不因此丢弃提醒。
+
+# 频道显示名（面板与日志共用；缺省回落 channel key）
+# 2026-11-14 用户裁定：删除 Slack / Discord 两个选项
+# （原话「其他的选项，例如：slack,discord这2个删掉」）。
+# 保留微信 + 钉钉 + 飞书三种远程频道。
+_NOTIFY_CHANNEL_LABELS = {
+    "browser": "浏览器通知",
+    "wechat": "微信",
+    "dingtalk": "钉钉",
+    "feishu": "飞书",
+}
+
+# 本插件「频道通知」路径覆盖的远程频道（browser 不是宿主频道）
+_NOTIFY_REMOTE_CHANNELS = ("wechat", "dingtalk", "feishu")
+
+# 上游 wechat 渠道的已知误报：实际已送达但返回失败。
+# 只认这一个错误码，其它失败必须如实上报（绝不吞掉真实故障）。
+_KNOWN_FALSE_NEGATIVE = "PLATFORM_RESULT_UNKNOWN"
+
+
+def _host_api_port() -> int:
+    """宿主 HTTP 端口（供插件回环调用）。"""
+    for name in ("QWENPAW_INTERNAL_HOST_API_PORT", "QWENPAW_PORT"):
+        raw = os.environ.get(name, "").strip()
+        if raw.isdigit():
+            return int(raw)
+    return 8088
+
+
+def _host_api_base() -> str:
+    return "http://127.0.0.1:" + str(_host_api_port())
+
+
+def _notify_verified_set(cfg: dict) -> set[str]:
+    """已通过测试闸门的频道集合（逗号分隔存在全局配置里）。"""
+    raw = cfg.get("notify_verified") or ""
+    if not isinstance(raw, str):
+        return set()
+    return {part.strip() for part in raw.split(",") if part.strip()}
+
+
+def _notify_channel_state(channel: str, cfg: dict, agent_id: str = "") -> dict:
+    """判定一个频道的可用状态。
+
+    返回 ``{channel, label, ready, reason, verified}``：
+      ready=False 时 reason 说明为什么（面板据此置灰并显示原因）。
+    """
+    label = _NOTIFY_CHANNEL_LABELS.get(channel, channel)
+    state = {
+        "channel": channel,
+        "label": label,
+        "ready": False,
+        "reason": "",
+        "verified": channel in _notify_verified_set(cfg),
+    }
+    if channel == "off":
+        # 「关闭」永远可用（它就是"不发通知"）。
+        # 虽然 /notify/channels 对 off 有单独分支，但这里也处理一下，
+        # 避免任何直接调用（测试/诊断）落到"未知频道"的误导性分支。
+        state["ready"] = True
+        state["verified"] = True
+        return state
+    if channel == "browser":
+        # 浏览器通知不依赖宿主频道配置，但同样要过测试闸门（q4）。
+        state["ready"] = True
+        if not state["verified"]:
+            state["reason"] = "尚未通过测试发送"
+        return state
+
+    if channel not in _NOTIFY_REMOTE_CHANNELS:
+        state["reason"] = "未知频道"
+        return state
+
+    try:
+        info = _host_channel_info(channel, agent_id)
+    except Exception as exc:  # noqa: BLE001
+        state["reason"] = "无法读取宿主频道配置：" + type(exc).__name__
+        return state
+
+    if not info.get("configured"):
+        if not info.get("enabled"):
+            state["reason"] = "宿主未启用该频道"
+        else:
+            miss = info.get("missing") or []
+            state["reason"] = "缺少凭据：" + "、".join(miss) if miss else "缺少凭据"
+        return state
+    if not info.get("sessions"):
+        # q2 裁定：三者都要满足，缺会话即不可用（不知道发给谁）
+        state["reason"] = "该频道还没有任何会话，无法确定收件人"
+        return state
+    state["ready"] = True
+    if not state["verified"]:
+        state["reason"] = "尚未通过测试发送"
+    return state
+
+
+# 每个 IM 渠道的**成对**必填凭据。缺任意一项即视为未配置。
+#
+# 为什么要成对：钉钉/飞书都是 OAuth 客户端模型，AppKey 与 AppSecret 必须
+# 同时存在才能换取 access_token；只配一半时宿主也能启动渠道，但发送必然
+# 401 —— 在面板上把它显示为「可用」会误导用户。
+_CHANNEL_REQUIRED_CREDS = {
+    "wechat": ("bot_token",),
+    "dingtalk": ("client_id", "client_secret"),
+    "feishu": ("app_id", "app_secret"),
+}
+
+
+def _missing_credentials(channel: str, chan: dict) -> list:
+    """返回该渠道缺失的凭据字段名列表（空列表 = 齐备）。"""
+    need = _CHANNEL_REQUIRED_CREDS.get(channel)
+    if not need:
+        return ["<unknown-channel>"]
+    return [k for k in need if not str(chan.get(k) or "").strip()]
+
+
+def _host_channel_info(channel: str, agent_id: str = "") -> dict:
+    """读宿主频道配置 + 会话数（同步，供 resolve 与 UI 共用）。
+
+    只读磁盘上的 agent 配置与会话表，不触发宿主启动渠道 —— 面板探测不应
+    有副作用（启动一个未运行的渠道代价很高）。
+    """
+    info = {"configured": False, "sessions": 0, "target_user": "", "enabled": False}
+    try:
+        cfg = _current_agent_config(agent_id)
+        channels = (cfg or {}).get("channels") or {}
+        chan = channels.get(channel) or {}
+        enabled = bool(chan.get("enabled"))
+        info["enabled"] = enabled
+        missing = _missing_credentials(channel, chan)
+        info["missing"] = missing
+        # 每个渠道的凭据字段不同，必须按**该渠道自己的必填对**判断：
+        #   微信   bot_token
+        #   钉钉   client_id + client_secret（缺一不可，AppKey 与 AppSecret 成对）
+        #   飞书   app_id + app_secret
+        # 2026-11-14 教训：原实现只取「任意一个非空 token」，钉钉只配了
+        # client_secret 或只配 client_id 也会被当成「已配置」，发出去必然失败。
+        info["configured"] = bool(enabled and not missing)
+        if not info["configured"]:
+            return info
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "question_modal: could not read host channel %s", channel,
+            exc_info=True,
+        )
+        return info
+
+    # 真实会话（q2 的第三项）：取该频道最近一条会话，其 user_id 即收件人。
+    try:
+        rows = _list_chats(agent_id)
+        mine = [r for r in rows if (r.get("channel") or "") == channel]
+        info["sessions"] = len(mine)
+        if mine:
+            mine.sort(
+                key=lambda r: str(
+                    r.get("updated_at") or r.get("created_at") or "",
+                ),
+                reverse=True,
+            )
+            info["target_user"] = str(mine[0].get("user_id") or "")
+            info["target_session"] = str(mine[0].get("session_id") or "")
+            info["chat_id"] = str(mine[0].get("id") or "")
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "question_modal: could not list chats for %s", channel,
+            exc_info=True,
+        )
+    return info
+
+
+def _current_agent_config(agent_id: str = "") -> dict:
+    """当前 agent 的 agent.json（频道配置来源）。"""
+    # 插件在宿主进程内运行时，当前工作目录即 agent workspace；
+    # 但更可靠的是从已知路径推导：<WORKING_DIR>/workspaces/<agent>/agent.json。
+    path = _agent_config_path(agent_id)
+    if not path.is_file():
+        return {}
+    with open(path, "r", encoding="utf-8") as fh:
+        data = json.load(fh)
+    return data if isinstance(data, dict) else {}
+
+
+def _agent_config_path(agent_id: str = "") -> Path:
+    """定位某个 agent 的 agent.json。
+
+    2026-11-14 修正（决定性）：**必须由调用方传入 agent_id**。此前靠
+    「config.json 里只有一个 agent 就猜它」——本机有 3 个 agent（default /
+    QwenPaw_QA_Agent_0.2 / wb74Jn），猜测直接返回空串，于是路径退化成
+    ``<WORKING_DIR>/config.json``（不存在）→ 读不到频道配置 → 微信被判
+    「未启用或缺凭据」，而实际上它是可用的。实测症状：隔离探针 ready=True，
+    线上端点 ready=False。
+
+    回退顺序：显式环境变量 → 传入的 agent_id → 请求头推导（见调用点）。
+    """
+    explicit = os.environ.get("QWENPAW_QUESTION_MODAL_AGENT_CONFIG", "").strip()
+    if explicit:
+        return Path(explicit)
+    if agent_id:
+        cand = _WORKING_DIR / "workspaces" / agent_id / "agent.json"
+        if cand.is_file():
+            return cand
+    return _WORKING_DIR / "config.json"
+
+
+def _current_agent_id() -> str:
+    """零参数兜底（仅用于日志/内部调用）；HTTP 路由一律传 agent_id。"""
+    explicit = os.environ.get("QWENPAW_QUESTION_MODAL_AGENT_ID", "").strip()
+    if explicit:
+        return explicit
+    try:
+        raw = _WORKING_DIR / "config.json"
+        if raw.is_file():
+            with open(raw, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            agents = ((data.get("agents") or {}).get("profiles") or {})
+            if len(agents) == 1:
+                return next(iter(agents))
+    except Exception:  # noqa: BLE001
+        pass
+    return ""
+
+
+def _list_chats(agent_id: str = "") -> list[dict]:
+    """某个 agent 的会话表（chats.json）。"""
+    path = _agent_config_path(agent_id).parent / "chats.json"
+    if not path.is_file():
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception:  # noqa: BLE001
+        return []
+    items = data if isinstance(data, list) else (data.get("chats") or [])
+    return [r for r in items if isinstance(r, dict)]
+
+
+def _post_host_api(
+    path: str, payload: dict, timeout: float = 20.0, agent_id: str = "",
+) -> tuple[int, Any]:
+    """POST 到宿主的 HTTP API（回环）。返回 ``(status, body)``。
+
+    只用标准库：插件不打包 httpx，宿主也不保证提供。阻塞调用交给调用方
+    放进线程池（`asyncio.to_thread`），避免卡住事件循环。
+
+    ⚠️ ``agent_id`` 必须由调用方传真实值。2026-11-14 实测踩坑：缺省时用
+    ``_current_agent_id() or "default"``，在多 agent 机器上 `_current_agent_id()`
+    返回空串 → 请求头变成 ``X-Agent-Id: default`` → 宿主去 **default 那个
+    agent 的 workspace** 找渠道 → 报 ``Channel not found: wechat``（微信渠道
+    实际挂在 wb74Jn 上）。同一次发送，带对的 agent 报「已送达」，带 default
+    报「渠道不存在」——这就是根因。
+    """
+    import urllib.error
+    import urllib.request
+
+    aid = agent_id or _current_agent_id()
+    if not aid:
+        # 不能瞎填 "default"：那会让宿主去错的 workspace 找渠道。
+        return 0, "无法确定 agent_id（多 agent 环境下必须显式传入）"
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        _host_api_base() + path,
+        data=data,
+        method="POST",
+        headers={
+            "Content-Type": "application/json",
+            "X-Agent-Id": aid,
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        return exc.code, exc.read().decode("utf-8", "replace")
+    except Exception as exc:  # noqa: BLE001
+        return 0, f"{type(exc).__name__}: {exc}"
+
+
+def _is_known_false_negative(status: int, body: str) -> bool:
+    """上游 wechat 渠道的已知误报（**已送达**却返回失败）。
+
+    2026-11-14 实测：iLink `sendmessage` 成功时只返回
+    ``{"message_id": <int>}``，而 channel 的 ``_check_result`` 要求响应含
+    ret/errcode → 抛 ``PLATFORM_RESULT_UNKNOWN``。用户实测 5/5 条全部收到。
+    用户裁定「等官方修、不碰插件」，故此处按已送达处理。
+
+    只认这一个错误码：其它 5xx / 网络错误必须如实上报。
+    """
+    return status >= 400 and _KNOWN_FALSE_NEGATIVE in (body or "")
+
+
+def _is_context_token_expired(body: str) -> bool:
+    """context_token 过期（微信协议限制，**不是故障**）。
+
+    2026-11-14 实测：iLink 对过期 token 返回 ``{"ret": -2, "errmsg":
+    "prepare failed"}``，宿主渠道翻译成 ``CONTEXT_TOKEN_INVALID``。
+
+    为什么必须单独识别：微信的 context_token 只在**用户主动给机器人发消息**
+    时由平台下发，没有独立的刷新接口（已实测 `getupdates` 在无新消息时
+    只返回空列表、不刷新 token）。所以这不是配置错误，把「请重新绑定」
+    这类误导性提示给用户是错的 —— 正确提示是「请给机器人发一条消息」。
+    """
+    return "CONTEXT_TOKEN_INVALID" in (body or "")
+
+
+async def _send_via_channel(
+    channel: str, text: str, info: dict, agent_id: str = "",
+) -> dict:
+    """通过宿主将文本投递到某个频道。返回投递结果描述。
+
+    ``agent_id`` 必须透传到宿主：宿主按它选 workspace，选错就报
+    ``Channel not found``（详见 :func:`_post_host_api`）。
+    """
+    target_user = info.get("target_user") or ""
+    target_session = info.get("target_session") or ""
+    if not target_user:
+        return {"ok": False, "delivered": False, "error": "缺少收件人（该频道没有会话）"}
+
+    status, body = await asyncio.to_thread(
+        _post_host_api,
+        "/api/messages/send",
+        {
+            "channel": channel,
+            "target_user": target_user,
+            "target_session": target_session,
+            "text": text,
+        },
+        20.0,
+        agent_id,
+    )
+    if 200 <= status < 300:
+        return {"ok": True, "delivered": True, "http": status, "body": body[:300]}
+    if _is_known_false_negative(status, body):
+        # 已送达，仅是渠道返回值格式误判。如实记账但不算失败。
+        logger.info(
+            "question_modal: notify %s delivered despite %s (known upstream bug)",
+            channel, _KNOWN_FALSE_NEGATIVE,
+        )
+        return {
+            "ok": True, "delivered": True, "http": status,
+            "note": "已送达（渠道响应格式异常，按已送达处理）",
+            "body": body[:300],
+        }
+    if _is_context_token_expired(body):
+        # 微信协议限制：token 只能由用户发消息刷新，没有刷新接口。
+        # 明确告知「该去做什么」，不要误导成配置错误。
+        hint = "微信会话凭证已过期（微信限制：只有你给机器人发过消息后才能主动推送）。请先在微信里给机器人发一条消息，再点「测试」。"
+        logger.warning(
+            "question_modal: notify %s failed, context token expired", channel,
+        )
+        return {
+            "ok": False, "delivered": False, "http": status,
+            "error": hint, "expired": True, "body": body[:300],
+        }
+    logger.warning(
+        "question_modal: notify %s failed HTTP %s: %s", channel, status, body[:200],
+    )
+    return {"ok": False, "delivered": False, "http": status, "error": body[:300]}
+
+
+async def _notify_test(channel: str, text: str = "", agent_id: str = "") -> dict:
+    """测试发送（q4 闸门）：成功即把该频道记为已验证。
+
+    ## 2026-11-14 用户报缺陷后的修正
+    「可见测试按钮和测试结果，但切换成下拉后这 2 个内容丢失了」
+    → 每次测试（成功/失败）都必须**落盘**并可从 `GET /notify/test-log` 查回。
+    测试结果不是一次性副作用，而是可事后查证的诊断证据。
+    """
+    out = await _do_notify_test(channel, text, agent_id)
+    # 无论成败都记一条 —— 失败原因同样是要给用户看的信息。
+    rec = {
+        "at": time.time(),
+        "at_text": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "ok": bool(out.get("ok")),
+        "delivered": bool(out.get("delivered")),
+        "http": out.get("http"),
+        "note": out.get("note") or "",
+        "error": out.get("error") or "",
+        "expired": bool(out.get("expired")),
+    }
+    log = _append_test_log(channel, rec)
+    # 把该频道的最新记录随响应带回，前端无需再请求一次即可显示。
+    out["last"] = rec
+    out["history"] = log.get(channel, [])[:_TEST_LOG_MAX]
+    return out
+
+
+async def _do_notify_test(channel: str, text: str, agent_id: str) -> dict:
+    """实际执行一次测试发送（不含记账）。"""
+    cfg = resolve_effective("")
+    if channel == "browser":
+        # 浏览器通知由前端执行，后端无从代发；这里只做「允许登记」，
+        # 实际的 Notification 弹窗由前端测试按钮触发并回报。
+        _mark_notify_verified("browser", True)
+        return {"ok": True, "channel": channel, "delivered": True,
+                "note": "浏览器通知已允许（测试弹窗由前端触发）"}
+
+    state = _notify_channel_state(channel, cfg, agent_id)
+    if not state["ready"]:
+        return {"ok": False, "channel": channel, "delivered": False,
+                "error": state["reason"] or "频道不可用"}
+
+    info = _host_channel_info(channel, agent_id)
+    msg = text or f"【QwenPaw 通知测试】{_NOTIFY_CHANNEL_LABELS.get(channel, channel)}频道连通性验证，收到即表示配置正确。"
+    result = await _send_via_channel(channel, msg, info, agent_id)
+    if result.get("delivered"):
+        _mark_notify_verified(channel, True)
+    return {"ok": bool(result.get("ok")), "channel": channel, **result}
+
+
+# 每个频道保留最近 N 次测试记录（磁盘）。上限存在的理由：无上限会让
+# notify_test_log.json 无限增长，且用户实际只会看最近几条。
+_TEST_LOG_MAX = 20
+_TEST_LOG_FILE = _PLUGIN_DIR / "notify_test_log.json"
+
+
+def _load_test_log() -> dict:
+    """读取各频道的测试历史 ``{channel: [record, ...]}``（新的在前）。"""
+    try:
+        if not _TEST_LOG_FILE.is_file():
+            return {}
+        with open(_TEST_LOG_FILE, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        logger.warning("question_modal: could not read notify test log", exc_info=True)
+        return {}
+
+
+def _append_test_log(channel: str, record: dict) -> dict:
+    """把一次测试结果追加到磁盘日志（原子写，失败不阻断测试本身）。
+
+    ## 为什么必须落盘（2026-11-14 用户报缺陷）
+    「可见测试按钮和测试结果，但是你现在切换成下拉后，这 2 个内容丢失了」
+    —— 第一版结果只写 `settingsState.notifyMsg`（前端内存），刷新即丢，
+    且只对「当前选中频道」可见。测试结果本质是**诊断证据**，必须能事后查。
+    """
+    try:
+        log = _load_test_log()
+        items = log.get(channel)
+        if not isinstance(items, list):
+            items = []
+        items.insert(0, record)
+        log[channel] = items[:_TEST_LOG_MAX]
+        tmp = _TEST_LOG_FILE.parent / (
+            f"{_TEST_LOG_FILE.name}.{os.getpid()}.{time.time_ns()}.tmp")
+        tmp.write_text(json.dumps(log, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(_TEST_LOG_FILE)
+        return log
+    except Exception:  # noqa: BLE001
+        logger.warning("question_modal: could not persist notify test log", exc_info=True)
+        return {}
+
+
+def _mark_notify_verified(channel: str, ok: bool) -> None:
+    """维护「已通过测试的频道」集合（全局配置项 notify_verified）。"""
+    try:
+        prefs = _load_prefs()
+        current = _notify_verified_set({"notify_verified": prefs.get("notify_verified", "")})
+        if ok:
+            current.add(channel)
+        else:
+            current.discard(channel)
+        prefs = dict(prefs)
+        prefs["notify_verified"] = ",".join(sorted(current))
+        _save_prefs(prefs)
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "question_modal: could not persist notify_verified", exc_info=True,
+        )
+
+
+def _agent_display_name(agent_id: str = "") -> str:
+    """该 agent 的展示名（用于通知文案「来自 xxx 智能体」）。
+
+    2026-11-14 用户要求：推送消息除现有内容外，还要带上
+    「来自xxx智能体-年月日时分秒」，这样多 agent 时能一眼看出是谁发的。
+
+    取值顺序（都读磁盘，不触发宿主启动）：
+      1. ``<workspace>/agent.json`` 的 ``name``（本机 example：'后端开发'）
+      2. ``agent.json`` 的 ``display_name``（未来若有）
+      3. 回退 agent_id 本身（宁可显示 id，也不要显示空）
+
+    注意 ``config.json`` 的 ``agents.profiles.<id>`` 在本机**没有** name 字段
+    （实测全为 None），所以不能只读那里 —— 真正的名字在 workspace 的
+    agent.json 里。读不到一律回退，绝不抛异常打断通知。
+    """
+    try:
+        path = _agent_config_path(agent_id)
+        if path.is_file():
+            with open(path, "r", encoding="utf-8") as fh:
+                data = json.load(fh)
+            if isinstance(data, dict):
+                for key in ("name", "display_name"):
+                    val = str(data.get(key) or "").strip()
+                    if val:
+                        return val
+    except Exception:  # noqa: BLE001 — 取名失败绝不能阻断通知
+        logger.debug("question_modal: could not read agent name", exc_info=True)
+    return str(agent_id or "").strip()
+
+
+def _notify_stamp(agent_id: str = "") -> str:
+    """通知尾部的时间戳行：「来自后端开发智能体-2026-11-14 12:40:33」。
+
+    刻意用**本地时间**（用户看的是自己时钟），格式固定到秒，
+    这样钉钉里连收几条也能分辨先后。
+    """
+    name = _agent_display_name(agent_id)
+    who = (name + "智能体") if name else "智能体"
+    return f"来自{who}-{time.strftime('%Y-%m-%d %H:%M:%S')}"
+
+
+async def notify_survey_pending(
+    call_id: str, title: str, count: int, agent_id: str = "",
+) -> dict:
+    """提醒用户「有一份问卷在等你作答」。
+
+    由**后端**调用（q1 裁定的关键：关掉浏览器时只能走频道通知，前端
+    effect 关页即失效）。频道为单选（q6），且必须已过测试闸门（q4）。
+
+    文案（q0 裁定）：与浏览器通知同口径 —— 「问卷名」有 N 道题等你作答。
+    注意：只发标题与题数，**不发题目正文**（2026-11-13 安全红线）。
+    """
+    cfg = resolve_effective("")
+    channel = str(cfg.get("notify_channel") or "off")
+
+    # 旧键迁移：老配置可能只有 notify_manual_mode=true
+    if channel == "off" and cfg.get("notify_manual_mode"):
+        channel = "browser"
+
+    if channel == "off":
+        return {"ok": True, "delivered": False, "channel": "off",
+                "reason": "通知频道已关闭"}
+
+    state = _notify_channel_state(channel, cfg, agent_id)
+    if not state["ready"]:
+        return {"ok": False, "delivered": False, "channel": channel,
+                "reason": state["reason"] or "频道不可用"}
+    if not state["verified"]:
+        # q4：未通过测试的频道一律不许真正投递。
+        return {"ok": False, "delivered": False, "channel": channel,
+                "reason": "该频道尚未通过测试发送，请先在设置里点「测试」"}
+
+    # ── 文案（2026-11-14 用户要求追加来源与时间）──────────────────────
+    #
+    # 用户原话：「推送的消息，除了现有的内容外，还需要增加以下内容：
+    # 来自xxx智能体-年月日时分秒」。
+    # 于是定稿为两行：
+    #   「问卷标题」有 N 道题等你作答
+    #   来自后端开发智能体-2026-11-14 12:40:33
+    # 仍**不带题目正文**（2026-11-13 安全红线不变）。
+    base = (
+        f"「{title}」有 {count} 道题等你作答" if count > 0
+        else f"「{title}」等你作答"
+    )
+    stamp = _notify_stamp(agent_id)
+    body = base + "\n" + stamp
+    if channel == "browser":
+        # 浏览器通知只能前端发；后端标记为「交由前端处理」。
+        return {"ok": True, "delivered": False, "channel": "browser",
+                "delegated": True, "text": body}
+
+    info = _host_channel_info(channel, agent_id)
+    return await _send_via_channel(channel, body, info, agent_id)
 
 
 # ── Per-session (per-chat) setting overrides ───────────────────────────
@@ -1030,10 +1686,18 @@ def _build_per_question(questions: list, answers: dict) -> list:
             skipped = bool(a.get("skipped"))
         else:
             value, other, skipped = a, "", False
+        # 多选：先剔除前端哨兵 `__other__` 再拼接，否则决策记录里会出现
+        # 「甲、__other__」这种把实现细节写进答案的内容（2026-11-14 实测）。
         if isinstance(value, list):
-            value = "、".join(str(v) for v in value)
-        if other:
-            value = (str(value) + "、" + other) if value else other
+            value = "、".join(str(v) for v in value if str(v) != "__other__")
+        elif str(value) == "__other__":
+            value = ""
+        # 同上（2026-11-14）：value 已是具体选项时，other 是用户改选后遗留的
+        # 残留，不得并入答案，否则决策记录里也会留下用户没表达过的内容。
+        # value 为空（= 用户只选了「其他」并写了文字）时，other 才是真答案。
+        has_option = bool(str(value).strip())
+        if other and not has_option:
+            value = other
         out.append({
             "index": i,
             "title": (q or {}).get("title") or f"问题 {i + 1}",
@@ -1191,6 +1855,23 @@ class PrefsRequest(BaseModel):
     model_id: Optional[str] = Field(None, description="'<provider>:<model>'")
     with_context: Optional[bool] = Field(None)
     parallel: Optional[bool] = Field(None)
+
+
+class NotifyTestRequest(BaseModel):
+    """测试发送一个通知频道（q4 闸门）。"""
+    model_config = ConfigDict(extra="forbid")
+
+    channel: str = Field(..., description="频道 key，如 wechat / browser")
+    text: Optional[str] = Field(None, description="自定义测试文案（留空用默认）")
+
+
+class NotifySendRequest(BaseModel):
+    """投递一条问卷待作答提醒。"""
+    model_config = ConfigDict(extra="forbid")
+
+    tool_call_id: str = Field("", description="问卷卡片标识（用于日志追踪）")
+    title: str = Field("", description="问卷标题（不发题目正文）")
+    count: int = Field(0, description="未作答题数")
 
 
 class AnswerResponse(BaseModel):
@@ -2107,6 +2788,84 @@ def build_router() -> APIRouter:
             ],
         }
 
+    # ── Notification channels (2026-11-14) ────────────────────────────────
+    #
+    # 三个端点分工：
+    #   GET  /notify/channels  面板探测：每个频道是否可用、为何不可用、是否已验证
+    #   POST /notify/test      测试发送（q4 闸门），成功即登记已验证
+    #   POST /notify/send      真正投递一条提醒（供前端/后端内部调用）
+    #
+    # 为什么可用性判定在后端：q2 裁定要「enabled + 凭据 + 有真实会话」三者
+    # 同时满足，这三项数据都在宿主侧（agent.json / chats.json），前端拿不到。
+    @router.get("/notify/channels")
+    async def get_notify_channels(
+        request: Request,
+        agent_id: str = Query(default=""),
+    ) -> dict:
+        """列出所有可选通知频道及其可用状态。
+
+        ⚠️ agent_id 必须从请求取（请求头 X-Agent-Id 或显式参数）：本机有多个
+        agent，靠「猜唯一 workspace」会读到错误的 agent.json —— 实测症状是
+        微信明明可用却被判 ready=False。``_req_agent_id`` 统一做这个回退。
+        """
+        aid = _req_agent_id(request, agent_id)
+        cfg = resolve_effective("")
+        current = str(cfg.get("notify_channel") or "off")
+        channels = []
+        for key in ("off",) + tuple(_NOTIFY_REMOTE_CHANNELS) + ("browser",):
+            if key == "off":
+                channels.append({
+                    "channel": "off", "label": "关闭", "ready": True,
+                    "reason": "", "verified": True,
+                })
+                continue
+            ch_state = _notify_channel_state(key, cfg, aid)
+            # 附带该频道最近一次测试结果：面板打开即可看到上次测试的结论，
+            # 不用先点一次「测试」才知道状态（2026-11-14 用户报缺陷后补）。
+            hist = _load_test_log().get(key) or []
+            if hist:
+                ch_state["last_test"] = hist[0]
+            channels.append(ch_state)
+        return {
+            "ok": True,
+            "current": current,
+            # 旧键迁移后的有效值（前端据此显示，避免「明明开着却显示关闭」）
+            "effective": (
+                "browser" if current == "off" and cfg.get("notify_manual_mode")
+                else current
+            ),
+            "channels": channels,
+        }
+
+    @router.post("/notify/test")
+    async def post_notify_test(body: NotifyTestRequest, request: Request) -> dict:
+        """测试发送一个频道；通过后才允许真正投递（q4 裁定）。"""
+        return await _notify_test(
+            body.channel, body.text or "", _req_agent_id(request, ""),
+        )
+
+    @router.post("/notify/send")
+    async def post_notify_send(body: NotifySendRequest, request: Request) -> dict:
+        """投递一条问卷待作答提醒（幂等由调用方负责）。"""
+        return await notify_survey_pending(
+            body.tool_call_id, body.title or "问卷", int(body.count or 0),
+            _req_agent_id(request, ""),
+        )
+
+    @router.get("/notify/test-log")
+    async def get_notify_test_log(channel: str = Query(default="")) -> dict:
+        """各频道的测试历史（磁盘持久化，刷新/换设备都查得到）。
+
+        2026-11-14 用户报缺陷后新增：测试结果此前只写在前端内存里，
+        下拉框一重渲染就丢、切到别的频道也看不到。这里改为落盘 + 可查询。
+        """
+        log = _load_test_log()
+        if channel:
+            return {"ok": True, "channel": channel,
+                    "items": log.get(channel, [])[:_TEST_LOG_MAX],
+                    "limit": _TEST_LOG_MAX}
+        return {"ok": True, "log": log, "limit": _TEST_LOG_MAX}
+
     # ── Per-session overrides (global default + session override) ────────
     @router.get("/session-prefs")
     async def list_session_prefs() -> dict:
@@ -2626,8 +3385,18 @@ def _format_answer_for_llm(answer: dict) -> str:
             display = "、".join(str(v) for v in value)
         else:
             display = "" if str(value) == "__other__" else value
-        if other:
-            display = f"{display}（其他：{other}）" if display else other
+        # ── 2026-11-14 用户报障：只在「真的选了其他」时拼接 other ────────
+        # 场景：用户在「其他」里写了文字，随后改选普通选项，前端旧实现没清
+        # `other` → 这里会拼成「甲（其他：用户手写文字）」，模型读成「用户
+        # 选了甲并补充了这句话」，而用户根本没补充。
+        # 判据与前端 `sanitizeOther` 一致：value 为空或仍是哨兵 `__other__`
+        # （说明用户没选任何普通选项，内容确实在 other 里）才拼接；value 是
+        # 具体选项时 other 属残留，忽略。
+        # 这样既修掉脏数据，又不破坏合法场景（选「其他」时 value 已被上面
+        # 归一成 ""，仍会拼上）。
+        value_is_option = bool(str(display).strip())
+        if other and not value_is_option:
+            display = other
         # Files the user attached under this question's「其他」box.
         att_s = _fmt_attachments(item.get("attachments"))
         if att_s:

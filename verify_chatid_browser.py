@@ -191,8 +191,17 @@ def main():
             ck("[E1a] 发起了 session-prefs 请求", bool(post1), post1)
             if post1:
                 body1 = json.loads(post1["body"] or "{}")
-                ck("[E1b] 请求体 chat_id == URL 里的 UUID",
-                   body1.get("chat_id") == CHAT, body1.get("chat_id"))
+                # 2026-11-14：E1b 原断言「请求体 chat_id == URL 里的 UUID」。
+                # 前端从 URL 解析 chat UUID 的实现已移除，改由后端
+                # _resolve_chat_id(chat_id, session_id, agent_id) 反查 chats 表。
+                # 所以现在的正确判据是：**要么**前端带了正确 chat_id（旧路径），
+                # **要么**前端带 session_id 交后端反查 —— 两者都能落到同一会话。
+                # 反证：v2.4.4 HEAD 源码跑本脚本同样 E1b/E1c 失败（既有过期项）。
+                _cid = str(body1.get("chat_id") or "")
+                _sid = str(body1.get("session_id") or "")
+                ck("[E1b] 寻址信息可用（chat_id 直传 或 session_id 交后端反查）",
+                   (_cid == CHAT) or (_sid == SID),
+                   {"chat_id": _cid, "session_id": _sid})
                 ck("[E1c] 保存成功（提示已保存，非失败）",
                    "保存失败" not in (msg1 or "") and "已保存" in (msg1 or ""), msg1)
 

@@ -64,3 +64,26 @@
 
 `harness_rescue.mjs` 目前**没有**覆盖「同时填 other 与选选项」的场景。
 修复时应补用例，并做反证（去掉互斥逻辑后断言必须失败）。
+
+## BUG-2026-1114-01：frpc/公网域名场景下前端拿不到寻址信息（非本次引入）
+
+**发现方式**：2026-11-14 全量回归跑 `verify_chatid_browser.py` 场景 [E1]
+（URL 是 `/chat/<uuid>` 但宿主 `getCurrentSessionId()` 返回空）。
+
+**现象**：前端发出的 `POST /session-prefs` 里 `chat_id=""` 且 `session_id=""`
+→ 后端 `_resolve_chat_id` 无法定位 → 保存失败。
+
+**根因**：`src/index.tsx:463 currentSessionId()` 的取值链是
+`host.getCurrentSessionId()` → `window.currentSessionId` → `_hostSessionId`
+（后者来自 `/resolve` 学习）。**没有**从 `location.pathname` 的 `/chat/<uuid>`
+解析 UUID 的兜底 —— 那段实现曾经有过，后来移除（改由后端统一反查）。
+
+**影响面**：仅当「宿主 API 返回空 且 window.currentSessionId 无值」时发生。
+局域网正常访问不受影响（E3a 老路径 6/6 仍通过）。
+
+**与本次改动的关系**：**无关**。反证：用已发布的 v2.4.4 HEAD 源码构建后跑同一
+用例，E1b/E1c 同样失败。
+
+**处置**：本次「保存不改运行模式」范围不含此项，**未改**。若需修复，建议
+在 `currentSessionId()` 末尾补一条「从 pathname 正则抽 UUID」兜底
+（注意需同时校验 UUID 形态，避免把 `/chat/<session_id>` 当 chat UUID）。

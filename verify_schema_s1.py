@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
 """S1 离线单测：三层优先级 / 越界钳制 / 非法值 / 全局键不再被丢弃。"""
-import json, types, logging, pathlib, ast, time, sys, os
+import json, types, logging, pathlib, ast, time, sys, os, threading
 
 P = "/app/working/plugins/question-modal/plugin.py"
 src = open(P, encoding="utf-8").read()
 tree = ast.parse(src)
 
-names = ("_load_prefs", "_save_prefs", "_load_session_prefs", "_save_session_prefs",
+names = ("_load_prefs", "_save_prefs", "_save_prefs_locked",
+         "_load_session_prefs", "_save_session_prefs",
          "_iter_agent_chats", "schema_defaults", "_coerce_setting",
          "sanitize_settings", "_session_writable", "resolve_effective",
          "_config_version")
@@ -20,6 +21,12 @@ mod.__dict__.update({
     "_PLUGIN_DIR": pathlib.Path("/tmp/qms1"),
     "_PREFS_FILE": pathlib.Path("/tmp/qms1/analysis_prefs.json"),
     "_SESSION_PREFS_FILE": pathlib.Path("/tmp/qms1/session_prefs.json"),
+    # 2026-11-14：plugin.py 于 2026-11-13 新增 `_PREFS_LOCK`（整表读改写串行化，
+    # 防两标签页并发保存互相覆盖）。`_save_prefs` / `_save_session_prefs` 都
+    # `with _PREFS_LOCK:`，而本脚本用 AST 抽函数到独立模块、不执行模块级赋值，
+    # 于是 `NameError: _PREFS_LOCK is not defined`。
+    # 这是**用例过期**（脚本没跟上实现），不是产品缺陷 —— 补一个等价锁即可。
+    "_PREFS_LOCK": threading.RLock(),
 })
 pathlib.Path("/tmp/qms1").mkdir(exist_ok=True)
 for n in tree.body:
@@ -110,7 +117,18 @@ v2 = mod._config_version()
 ck("[S1-17] 版本号随配置写入变化", v2 != v1, (v1, v2))
 
 # ⑧ schema 完整性
-ck("[S1-18] schema 共 18 项可配置（p0 只读说明不计入；含 notify_manual_mode）", len(mod.SETTINGS_SCHEMA) == 18, len(mod.SETTINGS_SCHEMA))
+ck("[S1-18] schema 共 20 项可配置（p0 只读说明不计入；含 notify_* 3 项）",
+   len(mod.SETTINGS_SCHEMA) == 20, len(mod.SETTINGS_SCHEMA))
+# 用「必要键必须都在」而非只数总数：数字会随功能增加而变（2026-11-14
+# 通知频道改造把 18 项加到 20 项），只断总数会让下次新增又假失败。
+_REQUIRED_KEYS = [
+    "mode", "model_id", "template_id", "with_context", "parallel",
+    "model_timeout_sec", "wait_hint_sec", "slow_question_sec",
+    "notify_channel", "notify_verified", "notify_manual_mode",
+]
+ck("[S1-18b] 关键配置项齐全（含通知频道三项）",
+   all(k in mod.SETTINGS_SCHEMA for k in _REQUIRED_KEYS),
+   [k for k in _REQUIRED_KEYS if k not in mod.SETTINGS_SCHEMA])
 ck("[S1-19] 第 1 批 5 项标 batch=1",
    sorted(k for k, v in mod.SETTINGS_SCHEMA.items() if v.get("batch") == 1)
    == ["gate_unsaved", "mode", "show_recommend_badge",

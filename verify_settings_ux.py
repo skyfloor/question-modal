@@ -101,7 +101,14 @@ window.__tabOnStyle=()=>{
 };
 window.__noteLine=()=>{
   const rows=[...root().querySelectorAll(".qm-set-row")];
-  const row=rows.find(r=>(r.innerText||"").includes("人工模式时提醒"));
+  // 2026-11-14：该行标签已由「人工模式时提醒」（布尔开关）升级为
+  // 「人工模式提醒频道」（单选枚举，见 plugin.py SETTINGS_SCHEMA.notify_channel）。
+  // 旧用例仍查旧文案 → 找不到行 → 恒返回 null → 本项恒失败。
+  // 改为按**新旧两种文案**匹配，避免下次再改标签时又假失败。
+  const row=rows.find(r=>{
+    const t=r.innerText||"";
+    return t.includes("人工模式提醒") || t.includes("人工模式时提醒");
+  });
   if(!row) return null;
   const note=row.querySelector(".qm-set-rownote")||row;
   const cs=getComputedStyle(note);

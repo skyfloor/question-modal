@@ -162,13 +162,18 @@ def main():
            eB2["mode"])
         ck("[A5b] A（有覆盖）仍保持自己的 ai", eA2["mode"] == "ai", eA2["mode"])
 
-        print("\n===== [A6] 并发 20 次写不同键 → 无丢失 =====")
+        print("\n===== [A6] 并发 17 次写不同键 → 无丢失 =====")
         wr(SP, {"sessions": {}, "updated_at": 1})
+        # ⚠️ 2026-11-14 修正：这里原来含 `notify_manual_mode`，但它是
+        # **global-only 键**（SETTINGS_SCHEMA 里 scope="global"），
+        # `_session_writable` 会**按设计拒绝**把它写进会话覆盖 ——
+        # 于是「所有键都在」恒不成立（少了它），属用例过期而非产品缺陷。
+        # 并发丢键检查必须只用可写进会话层（scope="both"）的键。
         keys = ["mode", "model_id", "template_id", "with_context", "parallel",
                 "show_recommend_badge", "gate_unsaved", "slow_question_sec",
                 "skip_mode", "badge_position", "badge_style",
                 "highlight_recommended", "auto_number_options", "fallback_title",
-                "notify_manual_mode", "wait_hint_sec", "model_timeout_sec"]
+                "wait_hint_sec", "model_timeout_sec"]
         results = []
 
         def worker(k):
@@ -178,7 +183,7 @@ def main():
                    "slow_question_sec": 30, "skip_mode": "whole",
                    "badge_position": "right", "badge_style": "round",
                    "highlight_recommended": True, "auto_number_options": False,
-                   "fallback_title": False, "notify_manual_mode": True,
+                   "fallback_title": False,
                    "wait_hint_sec": 60, "model_timeout_sec": 300}[k]
             results.append(api("/session-prefs", "POST", {
                 "chat_id": B, "session_id": "", "agent_id": AG,

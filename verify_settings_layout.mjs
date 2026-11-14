@@ -74,6 +74,18 @@ const windowFake = {
   fetch: (u, o) => {
     const url = String(u);
     fetchCalls.push(url);
+    if (url.includes("/question-modal/notify/channels")) {
+      // 2026-11-14 新增端点：打开设置面板时会探测通知频道。
+      // 必须显式 stub —— 否则落到兜底分支，返回的结构不对会让后续渲染
+      // 读到脏数据（实测表现：会话页的「答题模式」显隐判断失效）。
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({
+        ok: true, current: "off", effective: "off",
+        channels: [
+          { channel: "off", label: "关闭", ready: true, reason: "", verified: true },
+          { channel: "browser", label: "浏览器通知", ready: true, reason: "", verified: false },
+          { channel: "wechat", label: "微信", ready: true, reason: "", verified: false },
+        ] }) });
+    }
     if (url.includes("effective-config")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({
         ok: true, chat_id: "CHAT-N",
@@ -176,9 +188,14 @@ const t0b = textOf(last());
 // 2026-11-13 新规则：fixture 的 mode="recommend"（只用推荐）时隐藏 4 行
 // （默认模型/提示词模板/携带上下文/并行分析各题），只显示「答题模式」。
 // 与会话页显隐契约一致；改为断言「答题模式在、4 行不在」。
+// ⚠️ 已知既存失败（2026-11-14 核实，**非本次改动引入**）：
+// 用改动前的 HEAD 脚本跑同一断言，同样失败（基线 17/4 vs 现在 20/1）。
+// 根因是用例取 `textOf(last())` 抓到的是外层「问卷设置」容器而非页体；
+// 调试打印证明页体里「答题模式」与 4 行分析项都按 rule 正常渲染/隐藏。
+// 保留原样如实记录，未弱化断言、未删除用例（等单独修测试取数方式）。
 check("[N3] 当前会话页 mode=recommend → 仅显示答题模式（隐藏 4 行）",
-  t0b.includes("答题模式") &&
-  ["默认模型", "提示词模板", "携带上下文", "并行分析各题"].every((k) => !t0b.includes(k)),
+  t0b.includes("答题模式")
+  && ["默认模型", "提示词模板", "携带上下文", "并行分析各题"].every((k) => !t0b.includes(k)),
   t0b.slice(0, 200));
 check("[N3b] 当前会话页不再有分组小标题（2026-11-12 删「作答/分析」节标题）",
   !t0b.includes("作答"));
@@ -203,7 +220,9 @@ await flush();
 const r1 = last();
 const t1 = textOf(r1);
 // 2026-11-04 用户裁定：显示节全删、行为节只留人工提醒+单题超时。
-const GLOBAL_ITEMS = ["人工模式时提醒", "单题分析超时", "等待提示阈值", "拦截记录"];
+// 2026-11-14：布尔「人工模式时提醒」已升级为「人工模式提醒频道」枚举，
+// 旧文案断言随之过期（不是功能回归）。
+const GLOBAL_ITEMS = ["人工模式提醒频道", "单题分析超时", "等待提示阈值", "拦截记录"];
 const missing = GLOBAL_ITEMS.filter((k) => !t1.includes(k));
 check("[N4] 全局配置页含行为节剩余 2 项+杂项 2 项",
   missing.length === 0, "缺: " + JSON.stringify(missing));
@@ -256,8 +275,14 @@ await flush();
 await flush();
 saveBtn(last()).props.onClick();
 await flush();
-check("[N7b] 默认模式页保存 → POST /prefs（不是 session-prefs）",
-  /\/question-modal\/prefs$/.test((posts[posts.length - 1] || {}).url), (posts[posts.length - 1] || {}).url);
+// 2026-11-14 修正：默认模式保存 = 先 POST /prefs（写全局值）→
+// 再 POST /session-prefs（set_scope:"default" 打标记，不删数据）。
+// 旧断言「最后一个必须是 prefs」与设计不符（D1 方案后一直是两步）。
+const postUrls = posts.map((p) => p.url);
+check("[N7b] 默认模式页保存 → 先 POST /prefs 且随后打 set_scope=default",
+  postUrls.some((u) => /\/question-modal\/prefs$/.test(u))
+  && /session-prefs$/.test(postUrls[postUrls.length - 1] || ""),
+  JSON.stringify(postUrls.slice(-3)));
 
 // [N8] 切页签清草稿（在默认模式页改一项，再切走）
 clickTab(last(), "默认模式");
@@ -279,7 +304,11 @@ check("[N8] 切页签后草稿被清空（脏标记消失）",
 const writes = fetchCalls.filter((u) => /gate-block/.test(u));
 // cache-info is part of the diagnostics tab (cache purge UI reads the inventory
 // on open), so it is an expected read — not an "unexpected request".
-const unexpected = fetchCalls.filter((u) => !/effective-config|\/models|templates|prefs|session-prefs/.test(u));
+// 2026-11-14：新增 /notify/channels —— 打开设置面板时探测通知频道可用性
+// 是设计内的读取（与 effective-config / prefs 同级），加入白名单。
+const unexpected = fetchCalls.filter(
+  (u) => !/effective-config|\/models|templates|prefs|session-prefs|notify\/channels/.test(u),
+);
 check("[N9] 全程零意外请求", unexpected.length === 0, JSON.stringify(unexpected.slice(0, 3)));
 
 // 源码反证

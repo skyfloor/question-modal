@@ -97,7 +97,11 @@ window.__tabOnStyle=()=>{const t=root().querySelector(".qm-set-tabon");if(!t)ret
   const cs=getComputedStyle(t);return {bg:cs.backgroundColor,bb:cs.borderBottomColor,br:cs.borderBottomLeftRadius};};
 window.__noteLine=()=>{
   const rows=[...root().querySelectorAll(".qm-set-row")];
-  const row=rows.find(r=>(r.innerText||"").includes("人工模式时提醒"));
+  // 2026-11-14：标签由「人工模式时提醒」升级为「人工模式提醒频道」，两种都认。
+  const row=rows.find(r=>{
+    const t=r.innerText||"";
+    return t.includes("人工模式提醒") || t.includes("人工模式时提醒");
+  });
   const note=row&&(row.querySelector(".qm-set-rownote")||row);
   return note?{h:note.clientHeight,sh:note.scrollHeight}:null;
 };

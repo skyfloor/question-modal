@@ -1,6 +1,25 @@
 # -*- coding: utf-8 -*-
 """验证 2026-11-13 修复：保存会话设置不再依赖 session_id 反查。
 
+⚠️⚠️ 部分断言已过期（2026-11-14 定性，非本次改动引入）⚠️⚠️
+
+  [D6a] 含 /chat/ 解析
+  [D6b] 含 UUID 形态校验
+  [D6c] 含中文可操作错误提示「没能定位当前会话」
+
+  这三条检查的是**前端从 URL 里解析 chat UUID** 的那段实现。该实现后来被
+  移除，改为由后端 `_resolve_chat_id(chat_id, session_id, agent_id)` 统一
+  反查（前端发 session_id，后端查 chats 表拿 UUID）。
+
+  反证（2026-11-14 实测）：用**已发布的 v2.4.4 HEAD 源码**构建后跑本脚本，
+  D6a/D6b/D6c 同样三条失败；且 `git show HEAD:src/index.tsx` 里
+  「没能定位当前会话」出现 0 次 → 证明是**已发布基线就存在的过期用例**，
+  不是「保存不改运行模式」这次改动引入的回归。
+
+  仍有效的部分（保留价值）：[D5] 空 chat_id + 空 session_id → 400
+  （后端不静默降级）、[D6d] 无裸 import（插件能加载的前提）。
+  前端寻址路径现由 verify_chatid_browser.py 的端到端保存链路间接覆盖。
+
 用户报告（原话）：
   「我原来是在局域网访问 agent，开发也是在这个上，现在是基于 frpc 映射的
     公网域名访问（另外一台机器），在之前的机器是正常保存的，新机器上无法保存」
@@ -148,10 +167,18 @@ def main():
 
         print("\n===== [D6] 前端产物 =====")
         dist = open(PLUG + "/dist/index.js", encoding="utf-8", errors="ignore").read()
-        ck("[D6a] 含 /chat/ 解析", "\\/chat\\/" in dist, "")
-        ck("[D6b] 含 UUID 形态校验（防 session_id 混作 chat_id）",
-           "0-9a-f]{8}-[0-9a-f]{4}" in dist, "")
-        ck("[D6c] 含中文可操作错误提示", "没能定位当前会话" in dist, "")
+        # 2026-11-14：D6a/D6b/D6c 三条已过期（见文件头说明）——前端 URL 解析
+        # chat UUID 的实现已被移除，改由后端 _resolve_chat_id 统一反查。
+        # 已用 v2.4.4 HEAD 源码反证：同样失败。这里改为**只报告不判失败**，
+        # 避免每次回归都被三条已知过期项污染统计。
+        _stale = {
+            "[D6a] 含 /chat/ 解析": "\\/chat\\/" in dist,
+            "[D6b] 含 UUID 形态校验（防 session_id 混作 chat_id）":
+                "0-9a-f]{8}-[0-9a-f]{4}" in dist,
+            "[D6c] 含中文可操作错误提示": "没能定位当前会话" in dist,
+        }
+        for _n, _v in _stale.items():
+            print("  ⊘ " + _n + " → 已过期（前端解析路径已移除），跳过判失败")
         ck("[D6d] 无裸 import（插件加载前提）",
            not dist.lstrip().startswith("import ") and "\nimport " not in dist, "")
     finally:

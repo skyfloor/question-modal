@@ -340,6 +340,18 @@ function injectStyles(): void {
       // 右对齐（双联动下拉），此时不能被 min-width 限制住。
       ".qm-set-rowctlwide{flex:1 1 auto;min-width:0;justify-content:flex-end}",
 
+      // ── 整行块布局（2026-11-14 用户报「UI 怎么变成这样了」）─────────
+      // 症状：左侧标签「人工模式提醒频道」被挤成竖排（每字一行），
+      // 中间一段失败文案拉成一条长线，面板被撑满还留大片空白。
+      // 根因：.qm-set-row 是 grid `minmax(0,1fr) auto`，auto 列按**内容
+      // max-content** 定宽。通知频道行右侧那段中文失败原因很长，把 auto 列
+      // 撑到极宽，1fr 的标签列被压到只剩几像素 → 每字一行。
+      // 修法：长内容行改用单列块布局（标签在上、控件独占下方整行），
+      // 从结构上消除「右列撑爆左列」的可能，而不是靠调宽度碰运气。
+      ".qm-set-rowblock{grid-template-columns:minmax(0,1fr);row-gap:6px;align-items:start}",
+      ".qm-set-rowblock .qm-set-rowctl{min-width:0;flex:1 1 auto;justify-content:flex-start;",
+      "flex-wrap:wrap;overflow-wrap:anywhere;word-break:break-word}",
+
       // 分段选择 = 参考稿 radio-group：灰底圆角容器 + 白色激活块（蓝字）
       ".qm-set-seg{display:inline-flex;border:0;border-radius:10px;overflow:hidden;",
       "background:var(--app-fill-subtle,#f8fafc);padding:4px;gap:2px}",
@@ -494,8 +506,8 @@ const _notifiedCards: Record<string, boolean> = {};
 
 /** Show the reminder for one card.  Returns how it was delivered. */
 async function notifyManualSurvey(
-  callId: string, title: string, count: number,
-): Promise<"system" | "inpage" | "skipped"> {
+  callId: string, title: string, count: number, channel?: string,
+): Promise<"system" | "inpage" | "channel" | "skipped"> {
   if (typeof window === "undefined") return "skipped";
   if (_notifiedCards[callId]) return "skipped";
 
@@ -514,6 +526,38 @@ async function notifyManualSurvey(
   const body = count > 0
     ? ("「" + title + "」有 " + count + " 道题等你作答")
     : ("「" + title + "」等你作答");
+
+  // ── 频道通知（2026-11-14）───────────────────────────────────────────
+  //
+  // 走宿主投递（微信等），由后端完成。这样「关掉浏览器」也能收到 ——
+  // 是 q1 裁定的核心诉求。后端会二次校验「是否已通过测试闸门」，
+  // 前端无需重复判断（判断规则只有一份，在 plugin.py）。
+  const chan = String(channel || "");
+  if (chan && chan !== "off" && chan !== "browser") {
+    try {
+      const resp = await fetch(apiUrl("/question-modal/notify/send"), {
+        method: "POST",
+        headers: { ...authHeaders(), "Content-Type": "application/json" },
+        body: JSON.stringify({ tool_call_id: callId, title, count }),
+      });
+      const d = await resp.json().catch(() => ({}));
+      if (d && d.delivered) return "channel";
+      // 投递失败必须让用户看得见原因（不能静默）——但不要因此打断作答，
+      // 所以只提示一次，不重试。
+      const why = (d && (d.reason || d.error)) || "未知原因";
+      try { console.warn("[question-modal] channel notify failed:", why); } catch (_) {}
+      try {
+        const { message } = (window.QwenPaw.host.antd || {}) as any;
+        if (message && message.warning) {
+          message.warning("问卷提醒未能发送：" + why);
+        }
+      } catch (_) { /* host UI 不可用时忽略 */ }
+      return "inpage";
+    } catch (e) {
+      try { console.warn("[question-modal] channel notify error:", e); } catch (_) {}
+      return "inpage";
+    }
+  }
 
   const N = (window as any).Notification;
   if (!N) return "inpage";
@@ -2471,6 +2515,36 @@ function formatAnswers(
     lines.push(`- 其他意见附件：${finalOtherAtt.map((f) => f.file_name).join("、")}`);
   }
   return lines.join("\n");
+}
+
+/** 提交前的最后一道防线：清掉「选了普通选项却还带着『其他』文字/附件」的残留。
+ *
+ *  ## 为什么需要它（2026-11-14 用户报障）
+ *  「点了其他、填了文字，然后改选普通选项，提交后答案里还有其他文字」
+ *  —— 根因是若干 setAns 路径只改 `value` 没清 `other`（单选 toggle 最典型，
+ *  多选当时已清）。改动点已逐个补齐，但这个组合一旦落到 payload 里，
+ *  模型看到的是「用户选了甲，还补充了这句话」，属于**凭空捏造用户表达**，
+ *  比丢一个字段严重得多。
+ *
+ *  所以不依赖「所有写入点都不出错」，而是在**唯一出口**再兜一次：
+ *  只要 `value` 不是「其他」哨兵（或为空），`other` 与挂在它下面的附件
+ *  一律视为失效。多选只要不含 `__other__` 同样清。
+ *
+ *  纯函数、幂等，不影响合法场景：只有真的选了「其他」的答案会保留文字。
+ */
+function sanitizeOther(ans: Record<string, QA>): Record<string, QA> {
+  const next: Record<string, QA> = {};
+  Object.keys(ans || {}).forEach((k) => {
+    const a = ans[k];
+    if (!a || typeof a !== "object") { next[k] = a; return; }
+    const v = (a as any).value;
+    const usesOther = Array.isArray(v)
+      ? v.indexOf(OTHER) !== -1
+      : String(v ?? "") === OTHER;
+    if (usesOther) { next[k] = a; return; }   // 真的选了「其他」→ 原样保留
+    next[k] = { ...a, other: "", attachments: [] };
+  });
+  return next;
 }
 
 /** Compact question list, used when a skipped survey is expanded. */
@@ -4786,14 +4860,22 @@ function AskUserCard(props: { data?: any }) {
     // harness 的微任务顺序让 setAnMode 先落地，所以它一直是绿的。
     const cfgModeNow = normMode(cfgOf("mode", "manual"));
     if (cfgModeNow !== "manual") return;       // AI/只用推荐 会自己推进，不需要提醒
-    if (!cfgOf("notify_manual_mode", false)) return;
+    // 2026-11-14：提醒频道从布尔升级为单选枚举（off/browser/wechat/...）。
+    // 兼容旧键：老配置只有 notify_manual_mode=true 时按 browser 处理，
+    // 否则升级后用户会静默失去提醒。
+    const chanNow = String(cfgOf("notify_channel", "off") || "off");
+    const legacyOn = !!cfgOf("notify_manual_mode", false);
+    if (chanNow === "off" && !legacyOn) return;
     if (answered || skippedAll || deadReason) return;  // 已经不在等作答
     if (!argsReady(args) || !questions.length) return; // 题还没到手
     // 用页面已有的 filledAnswer 判定（与「未作答拦截」同一套规则），
     // 避免另造一套判定导致两处结论不一致。
     const pending = visibleIndices(questions, answers)
       .filter((i: number) => !filledAnswer(answers[`q${i}`])).length;
-    void notifyManualSurvey(callId, title, pending);
+    // 频道通知（微信等）必须由**后端**发：q1 裁定「关掉浏览器时只能走频道
+    // 通知」，而本 effect 只在页面存活时执行。后端收到请求后无论页面在不在
+    // 都能投递。浏览器通知仍由前端发（Notification API 只有前端能用）。
+    void notifyManualSurvey(callId, title, pending, chanNow === "off" ? "browser" : chanNow);
     // 依赖只放「判定是否还需要提醒」的量；questions 的内容变化不该重复触发，
     // 真正的去重靠 notifyManualSurvey 内部的 callId 标记。
   }, [effCfg, answered, skippedAll, deadReason, stepSlot]);
@@ -4888,7 +4970,8 @@ function AskUserCard(props: { data?: any }) {
    *  touched — see `reconcileWithPersisted`).  Called at submit/skip time so a
    *  host-driven remount cannot ship an all-empty survey. */
   const authoritativeAnswers = (): Record<string, QA> =>
-    reconcileWithPersisted(answers, loadCardState(callId)?.answers, touchedRef.current);
+    sanitizeOther(reconcileWithPersisted(
+      answers, loadCardState(callId)?.answers, touchedRef.current));
 
   /** True when every visible question is still the pristine initializer (no
    *  value / other / attachment / skip).  Such a submit is almost always a lost
@@ -5269,12 +5352,18 @@ function AskUserCard(props: { data?: any }) {
       } else if (qt === "multi") {
         const opts = (question.options || []) as OptDef[];
         const norm = (x: string) => String(x).replace(/^\s*推荐\s*[·:：\-]\s*/, "").trim();
-        next[key] = { ...base, type: qt, value: choice.split(/[、,，]/)
+        const picked = choice.split(/[、,，]/)
           .map((s) => norm(s)).filter(Boolean)
           .map((tok) => {
             const hit = opts.find((o) => optValue(o) === tok || optLabel(o) === tok);
             return hit ? optValue(hit) : tok;
-          }) };
+          });
+        // 自动填入同样要清「其他」里的用户手写残留（2026-11-14 同族 bug）：
+        // 用户先手填了「其他」，随后 AI/推荐把选项覆盖上去，若不清理就会
+        // 提交出「选了甲（其他：用户手写文字）」这种用户没表达过的组合。
+        next[key] = { ...base, type: qt, value: picked,
+          other: picked.indexOf(OTHER) !== -1 ? base.other : "",
+          attachments: picked.indexOf(OTHER) !== -1 ? base.attachments : [] };
       } else if (qt === "single") {
         // Normalise a single choice onto the option's VALUE.  The model may
         // write the label (or 「推荐 · 乙」) instead of the value, and storing
@@ -5283,7 +5372,10 @@ function AskUserCard(props: { data?: any }) {
         const norm = (x: string) => String(x).replace(/^\s*推荐\s*[·:：\-]\s*/, "").trim();
         const hit = opts.find((o) => optValue(o) === choice || optLabel(o) === choice)
           || opts.find((o) => optValue(o) === norm(choice) || optLabel(o) === norm(choice));
-        next[key] = { ...base, type: qt, value: hit ? optValue(hit) : choice };
+        const filled = hit ? optValue(hit) : choice;
+        next[key] = { ...base, type: qt, value: filled,
+          other: String(filled) === OTHER ? base.other : "",
+          attachments: String(filled) === OTHER ? base.attachments : [] };
       } else {
         // Free-text: fill the generated content verbatim.
         next[key] = { ...base, type: qt, value: choice };
@@ -5628,9 +5720,32 @@ function AskUserCard(props: { data?: any }) {
       const cur = Array.isArray(ans.value) ? ans.value.slice() : [];
       const i = cur.indexOf(val);
       if (i === -1) cur.push(val); else cur.splice(i, 1);
-      setAns({ ...ans, value: cur, other: cur.indexOf(OTHER) !== -1 ? ans.other : "" });
+      const stillOther = cur.indexOf(OTHER) !== -1;
+      // 取消「其他」= 这个自由文本入口不再被选中，用户在里面写过的文字与
+      // 附件都随之失效。只清 other 不清 attachments 会出现「选了甲却带着
+      // 附件」，同样是把用户没表达的内容当成答案发出去。
+      setAns({
+        ...ans, value: cur,
+        other: stillOther ? ans.other : "",
+        attachments: stillOther ? ans.attachments : [],
+      });
     } else {
-      setAns({ ...ans, value: val });
+      // ★ 2026-11-14 用户报障（单选专用的漏清 bug）：
+      // 「点击其他，填入了文字，然后发现不需要选择其他，选了其他选项，但是
+      //  提交后发现问卷的答案里还有其他的文字内容」
+      //
+      // 原实现单选只改 `value`，`other` 原样保留 → 提交时 `q1 [单选] 甲
+      // （其他：我写的文字）`，模型会读成「用户选了甲并补充了这句话」，
+      // 而用户实际并没有补充。多选分支早已做了这个清理，单选漏了。
+      //
+      // 选回「其他」时必须保留已输入的文字（用户可能只是点别处再点回来），
+      // 所以用 `val === OTHER` 而不是无条件清空。
+      const keepOther = val === OTHER;
+      setAns({
+        ...ans, value: val,
+        other: keepOther ? ans.other : "",
+        attachments: keepOther ? ans.attachments : [],
+      });
     }
   };
 
@@ -5788,8 +5903,28 @@ function AskUserCard(props: { data?: any }) {
               title: skipReason,
             }, skipReason)
           : null,
+        // ── 卡片标题（2026-11-14 修复「标题被压成竖排一字一行」）──────────
+        //
+        // 根因：这里曾写 `flex: releasedNote ? 0 : (skipReason ? 0 : 1)`。
+        // `flex: 0` 是**数值简写**，等价 `flex-grow:0; flex-shrink:1;
+        // flex-basis:0%` —— `flex-basis:0%` 直接让宽度基准归零，再配合
+        // 外层 `white-space:nowrap` 就把它压成「钉/钉/提/醒/验/证/方/式」
+        // 一列竖排（用户截图形态）。
+        //
+        // 正确写法：需要「按内容占宽、但空间不足时可收缩」时用
+        // `flex:"0 1 auto"`（grow=0 不抢空间、shrink=1 可收缩、basis=auto
+        // 按内容宽度）。**绝不能写数值 `0`**——那会把 basis 变成 0%。
+        // 同时补 `minWidth:0 + 省略号`：标题极长时该收缩就收缩并打点，
+        // 绝不允许靠"压到 0 宽"这种副作用来腾空间。
         R.createElement("span", {
-          style: { ...titleStyle, flex: releasedNote ? 0 : (skipReason ? 0 : 1), opacity: 0.75 },
+          style: {
+            ...titleStyle,
+            flex: (releasedNote || skipReason) ? "0 1 auto" : 1,
+            minWidth: 0,
+            overflow: "hidden", textOverflow: "ellipsis",
+            whiteSpace: "nowrap", opacity: 0.75,
+          },
+          title,
         }, title),
         releasedNote
           ? R.createElement("span", {
@@ -6344,6 +6479,22 @@ const settingsState: {
   keyTs: Record<string, number>;
   /** 保存后后端回报的「被其它位置修改过」的键（不阻断保存，只标注）。 */
   conflictNote: string;
+  /** 通知频道状态（GET /notify/channels）。
+   *
+   *  2026-11-14 用户裁定：频道可用性由后端判定（enabled + 凭据 + 有真实会话
+   *  三者都要满足），前端只负责渲染与置灰 —— 不在前端重算这套规则，
+   *  否则「面板说可用、发出去失败」两边判断不一致。 */
+  notifyChannels: any[];
+  notifyCurrent: string;
+  /** 测试发送进行中的频道 key（空 = 无）。 */
+  notifyTesting: string;
+  /** 各频道「本次会话内刚测完」的即时文案（失败原因必须立即可见）。 */
+  notifyMsg: Record<string, string>;
+  /** 各频道测试历史（来自后端落盘的 notify_test_log.json）。
+   *
+   *  2026-11-14 用户报缺陷：结果只存内存 → 刷新即丢、切频道看不到。
+   *  改为以后端为准，这里只做渲染缓存。 */
+  notifyLog: Record<string, any[]>;
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
   sessData: null, cfg: null, cfgError: "", chatId: "",
@@ -6353,6 +6504,8 @@ const settingsState: {
   globalCfg: {},
   keyTs: {},
   conflictNote: "",
+  notifyChannels: [], notifyCurrent: "off", notifyTesting: "", notifyMsg: {},
+  notifyLog: {},
 };
 let settingsPanelRoot: any = null;
 
@@ -6498,6 +6651,86 @@ async function loadGlobalCfg(): Promise<void> {
   } catch (_) { /* keep whatever we had */ }
 }
 
+/** 拉取通知频道可用状态（后端判定「enabled + 凭据 + 有真实会话」）。
+ *
+ *  为什么不让前端自己判断（2026-11-14 用户裁定 q2）：这三项数据都在宿主侧
+ *  （agent.json / chats.json），前端拿不到；若前端另写一套判断，就会出现
+ *  「面板显示可用、发出去却失败」的不一致。 */
+async function loadNotifyChannels(): Promise<void> {
+  try {
+    const resp = await fetch(apiUrl("/question-modal/notify/channels"), {
+      headers: authHeaders(),
+    });
+    if (!resp.ok) return;
+    const d = await resp.json();
+    settingsState.notifyChannels = Array.isArray(d && d.channels) ? d.channels : [];
+    settingsState.notifyCurrent = String((d && d.effective) || "off");
+    try { settingsRenderPanel(); } catch (_) { /* closed */ }
+  } catch (_) { /* 探测失败不阻塞面板：保持上次结果 */ }
+}
+
+/** 拉取某频道的测试历史（落盘数据，刷新/换设备仍在）。
+ *
+ *  2026-11-14 用户报缺陷后新增：测试结果必须**可事后查看**，
+ *  而不是测完就随下拉框重渲染消失。
+ */
+async function loadNotifyTestLog(channel: string): Promise<void> {
+  if (!channel || channel === "off") return;
+  try {
+    const resp = await fetch(
+      apiUrl("/question-modal/notify/test-log?channel=" + encodeURIComponent(channel)),
+      { headers: authHeaders() },
+    );
+    if (!resp.ok) return;
+    const d = await resp.json();
+    settingsState.notifyLog = {
+      ...settingsState.notifyLog,
+      [channel]: Array.isArray(d && d.items) ? d.items : [],
+    };
+    try { settingsRenderPanel(); } catch (_) { /* closed */ }
+  } catch (_) { /* 拉不到就保持上次缓存，不影响已显示的最近一条 */ }
+}
+
+/** 测试发送一个频道（q4 闸门：测试通过才允许真正投递）。 */
+async function notifyTest(channel: string): Promise<void> {
+  if (!channel || channel === "off") return;
+  settingsState.notifyTesting = channel;
+  settingsState.notifyMsg = { ...settingsState.notifyMsg, [channel]: "发送中…" };
+  try { settingsRenderPanel(); } catch (_) { /* closed */ }
+
+  let text = "";
+  let d: any = null;
+  try {
+    const resp = await fetch(apiUrl("/question-modal/notify/test"), {
+      method: "POST",
+      headers: { ...authHeaders(), "Content-Type": "application/json" },
+      body: JSON.stringify({ channel }),
+    });
+    d = await resp.json().catch(() => ({}));
+    if (d && d.delivered) {
+      // 上游 wechat 渠道会返回 500 但实际已送达（已知缺陷，用户裁定不改），
+      // 后端已归一化成 delivered:true 并带 note —— 对用户只说「已送达」，
+      // 不把上游的格式问题暴露成"失败"，避免误以为配置错了。
+      text = d.note ? "✓ 已发送（" + d.note + "）" : "✓ 测试消息已送达";
+    } else {
+      text = "✗ " + ((d && (d.error || d.reason)) || "测试失败");
+    }
+  } catch (e: any) {
+    text = "✗ 请求失败：" + String((e && e.message) || e);
+  }
+  settingsState.notifyTesting = "";
+  settingsState.notifyMsg = { ...settingsState.notifyMsg, [channel]: text };
+  // 后端已把这次结果落盘，并随响应带回该频道的历史 —— 直接采纳，
+  // 这样「测试结果」不依赖任何后续请求即可显示且可回看。
+  const hist = (d && Array.isArray(d.history)) ? d.history : null;
+  if (hist) {
+    settingsState.notifyLog = { ...settingsState.notifyLog, [channel]: hist };
+  }
+  await loadNotifyChannels();
+  if (!hist) await loadNotifyTestLog(channel);
+  try { settingsRenderPanel(); } catch (_) { /* closed */ }
+}
+
 /** Persist the draft to the ACTIVE scope.
  *
  *  global  → POST /prefs          (all conversations)
@@ -6637,24 +6870,46 @@ async function cfgSave(): Promise<void> {
     // 全局值变了要重新读，否则全局页还显示旧值
     if (!isSession) void loadGlobalCfg();
 
-    // ── 保存即切换运行模式（2026-11-13 用户裁定）──────────────────────
+    // ── 保存即切换运行模式（2026-11-13 裁定；2026-11-14 收窄到「模式页」）──
     //
     // 用户原话：「切换到对应的模式后，点击保存，应该将当前会话切换到对应
     // 的模式，且右上角的胶囊中展示的模式也一并修改」。
     //
-    // 语义：**保存动作本身 = 把本会话切换到该页签代表的模式**。
+    // 语义：**在「模式页」保存时，保存动作本身 = 把本会话切换到该页代表的
+    // 模式**。
     //   · 在「会话模式」页保存 → 写会话覆盖 → 本会话 = 会话模式（天然成立）
-    //   · 在「默认模式」页保存 → 删掉本会话的整条覆盖 → 本会话回落到跟全局
-    //     = 默认模式
+    //   · 在「默认模式」页保存 → 打 __active_scope__=default 标记 → 本会话
+    //     暂不叠加会话层 = 默认模式（数据保留，切回可恢复）
     //
-    // 为什么必须删覆盖：胶囊的唯一依据是 has_session。只改全局值而不删覆盖，
-    // 本会话仍会按旧覆盖运行，胶囊继续显示「会话模式」—— 用户点了「默认模式」
-    // 保存却没有任何切换，正是他反复反馈的那类问题。
+    // 2026-11-14 用户追加裁定：此切换**仅限模式页**。全局配置页/提示词页
+    // 保存的是"对所有模式生效"的公共项，改它们不得改运行模式（详见下方
+    // isModeTab 处的说明）。
+    // ── 只有「模式页」的保存才允许切换运行模式（2026-11-14 用户裁定）──────
     //
-    // 用户裁定 q0：**删整条**（含会话里自定义过的模型/模板等），并以当前
-    // 默认模式的实际配置为准 —— 明确了"切到默认模式 = 放弃本会话覆盖"。
-    let switchedTo: "session" | "default" | "" = isSession ? "session" : "default";
-    if (!isSession) {
+    // 用户原话：「人工模式提醒 / 单题分析超时 / 等待提示阈值等这些设置，
+    // 不应该跟随默认模式，当前的保存时除了保存之外，还会将当前的运行模式
+    // 直接改成了默认模式，所以是错的。这些是对所有模式生效的，所以如果
+    // 模式数据修改的情况下，修改这些内容不应该修改运行模式」。
+    //
+    // 缺陷（旧代码 `switchedTo = isSession ? "session" : "default"`）：
+    //   「全局配置」页与「提示词」页保存时，isSession=false → 恒判成
+    //   "default" → 无条件 POST set_scope="default" → **只改了个等待阈值，
+    //   就把正在用的会话静默切到默认模式**。这不是用户点的动作。
+    //
+    // 正确语义（用户表格）：
+    //   · 会话模式页 / 默认模式页 = **模式数据**（模式/模型/提示词模板/
+    //     携带上下文/并行分析），保存即把本会话切到该页代表的作用域
+    //   · 全局配置页 / 提示词页 = **对所有模式生效的公共项**，保存只写值，
+    //     绝不触碰运行模式
+    //
+    // 判定依据用「页签」而不是 scope：scope 只有 session/global 两值，
+    // 三个非会话页（default/global/prompt）在它眼里完全一样，分不开。
+    const MODE_TABS = ["session", "default"];
+    const isModeTab = MODE_TABS.indexOf(String(settingsState.tab)) >= 0;
+
+    let switchedTo: "session" | "default" | "" = "";
+    if (isModeTab) switchedTo = isSession ? "session" : "default";
+    if (switchedTo === "default") {
       try {
         const r = await fetch(apiUrl("/question-modal/session-prefs"), {
           method: "POST", headers: authHeaders(),
@@ -6695,13 +6950,24 @@ async function cfgSave(): Promise<void> {
     }
     if (switchedTo === "default") {
       // 与按钮旁「保存为全局默认（对未设会话的会话生效）」同口径：
-      // 本会话的会话覆盖已被标记为不生效（数据仍保留），故现在是跟随全局。
+      // 本会话已被标记为不叠加会话层（数据仍保留），故现在是跟随全局。
       settingsState.saveMsg = "已保存为全局默认；本会话已切换到默认模式"
         + "（跟随全局，原会话设置仍保留，切回会话模式可恢复）。";
     } else if (switchedTo === "session") {
       // 与按钮旁「保存到本会话（只覆盖你改过的项，不改全局）」同口径。
       settingsState.saveMsg = "已保存到本会话；本会话当前按会话模式运行"
         + "（未改动的项仍跟随全局，全局默认未被修改）。";
+    } else {
+      // ── 全局配置页 / 提示词页（对所有模式生效的公共项）──────────────
+      //
+      // 这两页保存**不改运行模式**（2026-11-14 用户裁定），所以不能沿用
+      // 上面两句带"已切换到某模式"的文案 —— 那会谎报一次没发生的切换。
+      // 必须如实告知"值已保存、运行模式未变"，否则用户会以为又被切了。
+      const _what = String(settingsState.tab) === "prompt" ? "提示词模板" : "全局配置";
+      settingsState.saveMsg = "已保存" + _what + "；运行模式未变"
+        + (settingsState.scopeChoice === "session"
+            ? "（本会话仍按「会话模式」运行）"
+            : "（本会话仍按「默认模式」运行）") + "。";
     }
 
     void fetchEffectiveConfig(
@@ -6932,6 +7198,15 @@ function openSettingsPanel(): void {
     if (settingsState.tab === "global" || settingsState.tab === "default") {
       void loadGlobalCfg();
     }
+    // 通知频道状态（可用性 + 测试结果）每次打开面板都刷一次：宿主侧配置
+    // （如微信刚绑定、刚产生第一条会话）会在面板关闭期间变化，缓存会显示
+    // 过期的「不可用」。
+    void loadNotifyChannels().then(() => {
+      // 打开面板即把当前选中频道的历史一并拉齐 —— 用户一进来就能看到
+      // 「上次测试是什么时候、成功还是失败」，不必先点一次测试。
+      const ch = String(settingsState.notifyCurrent || "off");
+      if (ch && ch !== "off") void loadNotifyTestLog(ch);
+    });
   });
 }
 
@@ -7293,9 +7568,194 @@ function setRowLocked(scope: string, itemScope: string): boolean {
   return scope === "session" && itemScope === "global";
 }
 
+/** 「通知频道」设置行（2026-11-14，v3：下拉框 + 常驻测试入口与结果）。
+ *
+ *  ## 演进史（两次用户反馈都要记住，别再走回去）
+ *
+ *  v1：7 个频道纵向逐个列成行（各带状态点/原因/测试按钮）
+ *      → 用户：「选项过多最终导致界面异常」——面板被撑变形。
+ *
+ *  v2：改成单行 `<select>`。**修过头了**：为了让行保持一行，我把测试按钮
+ *      改成「只有未验证时才出现」，结果也放进只对当前选中项可见的内存提示。
+ *      → 用户：「可见测试按钮和测试结果，但切换成下拉后这 2 个内容丢失了，
+ *      无法查看测试和测试结果」。
+ *
+ *  v3（本版）：**下拉框 + 常驻测试区**，两个约束同时满足：
+ *    · 选择器仍是单行 `<select>` —— 不因频道数量增加而变高；
+ *    · 但「测试」按钮**始终显示**（只要选中项是可远程投递频道），
+ *      因为测试不是一次性闸门，而是可反复使用的诊断动作
+ *      （微信 context_token 会过期，必须能随时重测）；
+ *    · 测试结果**常驻**在该行下方（成功/失败 + 时间），数据来自后端落盘的
+ *      `notify_test_log.json`，刷新页面、换设备都能看到。
+ *
+ *  ## v4：按用户裁定去掉「测试历史」展开（2026-11-14）
+ *  用户原话：「去掉测试历史，这块内容不需要」。
+ *  → 只保留**最近一次**结果的常驻展示（成功/失败 + 时间），
+ *    删掉「查看历史（N 条）」入口与历史列表。
+ *    后端 `/notify/test-log` 仍保留（诊断价值），只是 UI 不再展示多条。
+ */
+function notifyChannelRow(R: any, scope: string): any {
+  const list = settingsState.notifyChannels || [];
+  const current = String(settingsState.notifyCurrent || "off");
+  // 读草稿优先（用户刚改还没保存时，下拉要停在新值上）。
+  const picked = String(cfgValue("notify_channel", "off", "global") || current || "off");
+
+  const find = (k: string) => list.filter((c: any) => String(c.channel) === k)[0];
+  const cur = find(picked);
+
+  // 选项文本把状态内联进去：不额外占行高。
+  // 注意：**不要**把「待测试」写成「不可选」——它只是还没验证，仍可选中保存。
+  const options = list.map((c: any) => {
+    const key = String(c.channel || "");
+    const label = String(c.label || key);
+    const ready = c.ready !== false;
+    const verified = c.verified === true || key === "off";
+    let suffix = "";
+    if (!ready) suffix = "（不可用）";
+    else if (!verified) suffix = "（待测试）";
+    return { value: key, label: label + suffix, disabled: !ready };
+  });
+  if (!options.length) {
+    options.push({ value: "off", label: "关闭", disabled: false });
+  }
+
+  const curReady = !cur || cur.ready !== false;
+  const isRemote = picked !== "off" && picked !== "browser";
+  const testing = settingsState.notifyTesting === picked;
+
+  // 常驻结果：优先用后端最近一条（落盘，刷新仍在），退回本次会话内的即时提示。
+  const lastTest = (cur && cur.last_test) || null;
+  const liveMsg = settingsState.notifyMsg[picked] || "";
+
+  // ⚠️ 不要套 `.qm-set-select` —— 该类带 `justify-content:flex-end` 与内边距，
+  // 会让下拉框比同行的说明文字缩进 43px（真机实测 x=79 vs 标签 x=36）。
+  // 直接放 `<select>`，由外层 flex 的左对齐统一决定位置。
+  const top: any[] = [
+    R.createElement("select", {
+      key: "s", className: "qm-set-native",
+      value: picked,
+      "data-qm-notify-select": "1",
+      style: { flex: "0 0 auto" },
+      onChange: (e: any) => {
+        const v = e && e.target ? String(e.target.value) : "off";
+        cfgEdit("notify_channel", v);
+        // 切频道时顺手拉一次该频道的历史，保证切过去就能看到结果。
+        void loadNotifyTestLog(v);
+      },
+    }, options.map((o: any, i: number) => R.createElement("option", {
+      key: "o" + i, value: o.value, disabled: !!o.disabled,
+    }, o.label))),
+  ];
+
+  // 「测试」按钮**始终显示**（可远程投递的频道）——修 v2「测试通过后按钮消失」
+  // 的缺陷：token 过期时必须能随时重测。
+  if (isRemote && curReady) {
+    top.push(R.createElement("button", {
+      key: "test", type: "button", disabled: testing,
+      "data-qm-notify-test": picked,
+      onClick: (e: any) => {
+        if (e && e.stopPropagation) e.stopPropagation();
+        void notifyTest(picked);
+      },
+      style: {
+        marginLeft: 8, padding: "2px 10px", fontSize: 12,
+        border: "1px solid #d9d9d9", borderRadius: 4,
+        background: "#fff", cursor: testing ? "default" : "pointer",
+        whiteSpace: "nowrap",
+      },
+    }, testing ? "发送中…" : "测试"));
+  }
+  // 只读状态说明（不可用原因 / 待测试），紧跟在控件右侧同一行。
+  if (cur && cur.ready === false && cur.reason) {
+    top.push(R.createElement("span", {
+      key: "rs", style: { marginLeft: 8, color: "#bfbfbf", fontSize: 11 },
+    }, cur.reason));
+  }
+  // ⚠️ 2026-11-14 用户裁定（第 5 轮 UI 调整）：
+  //   「将测试结果，和测试记录在一起，而不是分为 2 个展示，这样也能省一些空间」
+  //
+  // 原来这里有一个独立的状态标签（未测试 / 已通过测试 / 上次失败），紧接着
+  // 后面又跟一段「✓ 上次测试成功…」「✗ 微信会话凭证已过期…」——两者讲的是
+  // 同一件事，等于把同一信息显示两遍，还各占一段横向空间。
+  // 现在只保留**结果文案**（它信息更全：状态 + 原因 + 时间），状态词并入
+  // 文案前缀（✓ / ✗），不再单独渲染状态标签。
+  //
+  // 语义未丢失：`data-qm-notify-verified` 挪到结果节点上（见下），
+  // 断言与取样逻辑照旧可用。
+
+  // ── 常驻测试结果：**并入测试那一行**（2026-11-14 用户裁定）──────────
+  //
+  // 用户原话：「测试信息放到测试这一行」。上一版它是独立 div、独占一行并
+  // 跨满整行宽度（截图里那行红字）。现在改为同行内的 span：
+  //   下拉框 · 测试 · 状态标签 · 结果文案
+  // 用 `flex:1 1 240px` 让它占据剩余宽度并在必要时折行，这样既在同一行，
+  // 又不会把下拉框挤走。
+  // 结果/状态合一：一段文案同时承担「是否通过 + 原因 + 时间」。
+  //   未测试            → 「未测试」（黄色，提示先点「测试」）
+  //   成功              → 「✓ 上次测试成功（<note>） · <时间>」
+  //   失败              → 「✗ 微信会话凭证已过期… · <时间>」
+  // 只有「确实没测过」才显示「未测试」，此时最后一笔信息就是它的真实状态。
+  const verifiedFlag = !!(cur && cur.verified === true);
+  const showLast = lastTest || liveMsg;
+  const hasLive = !!liveMsg;
+  if (showLast || (isRemote && curReady && !testing)) {
+    const okFlag = lastTest
+      ? lastTest.delivered === true
+      : (hasLive ? liveMsg.indexOf("✓") === 0 : false);
+    let txt: string;
+    if (hasLive) {
+      txt = liveMsg;                    // 刚测完的即时结果（含失败原因）
+    } else if (lastTest) {
+      txt = okFlag
+        ? "✓ 上次测试成功" + (lastTest.note ? "（" + lastTest.note + "）" : "")
+        : "✗ " + (lastTest.error || lastTest.note || "上次测试失败");
+    } else {
+      txt = "未测试";                    // 从未测过
+    }
+    const when = lastTest && lastTest.at_text ? "  ·  " + lastTest.at_text : "";
+    // 颜色：失败红、成功绿、未测试黄。
+    const color = !showLast ? "#faad14" : (okFlag ? "#52c41a" : "#ff4d4f");
+    top.push(R.createElement("span", {
+      key: "res",
+      "data-qm-notify-result": !showLast ? "none" : (okFlag ? "ok" : "fail"),
+      // 状态锚点保留（原先挂在独立标签上，断言/取样依赖它）。
+      "data-qm-notify-verified": (!showLast ? "0" : (okFlag ? "1" : (verifiedFlag ? "1" : "0"))),
+      style: {
+        flex: "1 1 240px", minWidth: 0, fontSize: 11, lineHeight: "16px", color,
+        // 允许在任意位置断行：失败原因里有很长的中文句子与 URL 形态内容，
+        // 不让它撑破容器（也不要 pre-wrap，那会拒绝折行）。
+        whiteSpace: "normal", overflowWrap: "anywhere", wordBreak: "break-word",
+      },
+    }, txt + when));
+  }
+
+  return setRow(
+    R, "e5", "人工模式提醒频道",
+    R.createElement("div", {
+      key: "nc",
+      // 2026-11-14 用户裁定（第 4 轮 UI 调整）：
+      //   「下拉框应该左对齐，然后测试信息放到测试这一行」
+      //
+      // 上一版把「控件行」和「结果行」拆成上下两块，结果就独占一行并顶到
+      // 边距上（截图里那行红字跨满整行）。现在全部收进**同一行**：
+      //   下拉框 · 测试按钮 · 状态标签 · 结果文案
+      // 空间不够时只让「结果文案」折行（flex-wrap），下拉框与按钮永远排在最左。
+      //
+      // ⚠️ 不要再包 `qm-set-select`（它带 justify-content:flex-end + 内边距），
+      // 那正是上一版下拉框比说明文字缩进 43px 的原因（真机实测 x=79 vs 36）。
+      style: {
+        display: "flex", alignItems: "center", flexWrap: "wrap",
+        justifyContent: "flex-start", gap: "6px 8px", width: "100%", minWidth: 0,
+      },
+    }, top),
+    "弹问卷时提醒一次（仅人工模式）。频道须先「测试」通过才会真正发送；测试结果会保留，可随时重测。",
+    "global", scope, false, true,
+  );
+}
+
 function setRow(
   R: any, key: string, label: string, control: any, note?: string, scope?: string,
-  activeScope?: string, wide?: boolean,
+  activeScope?: string, wide?: boolean, block?: boolean,
 ): any {
   const itemScope = scope || "global";
   const locked = setRowLocked(activeScope || "global", itemScope);
@@ -7319,9 +7779,11 @@ function setRow(
     }, control),
   ];
   return R.createElement("div", {
-    className: "qm-set-row" + (locked ? " qm-set-rowlocked" : ""),
+    className: "qm-set-row" + (locked ? " qm-set-rowlocked" : "")
+      + (block ? " qm-set-rowblock" : ""),
     key,
     "data-qm-locked": locked ? "1" : "0",
+    "data-qm-rowblock": block ? "1" : "0",
   }, kids);
 }
 
@@ -7708,11 +8170,13 @@ function settingsTabBody(
 
     // ── 行为（2026-11-04：从「默认模式」页迁来 —— 默认模式页只保留与
     // 「会话模式」页一致的 5 项，多出的全局专属行为归到这里。）──
-    bodyKids.push(setRow(R, "e5", "人工模式时提醒",
-      setSwitch(R, "s8", !!cfgValue("notify_manual_mode", false, "global"),
-        (v) => cfgEdit("notify_manual_mode", v), false),
-      // 文案保持一行能放下（用户裁定 2026-11-12：位置足够，不要换行）
-      "弹出时系统通知（仅人工模式，每卷一次；首次请求通知权限）", "global", scope));
+    //
+    // 2026-11-14：布尔开关升级为「通知频道」单选 + 测试闸门。
+    // 用户裁定：q6 单选（一次只能选 1 个）；q4 所有频道必须先测试通过才
+    // 允许真正投递；q5 纯全局作用域（不允许会话级覆盖）；q2 不可用频道
+    // 置灰并显示原因。
+    bodyKids.push(notifyChannelRow(R, scope));
+
     bodyKids.push(setRow(R, "e6", "单题分析超时",
       setSelect(R, "sel4", TO_LABEL[Number(cfgValue("model_timeout_sec", 120, "global"))] || "120 秒（默认）",
         ["30 秒", "60 秒", "120 秒（默认）", "300 秒", "600 秒"],
@@ -8020,9 +8484,22 @@ function SettingsPanel(props: {
   // 已经设过会话覆盖的会话不受影响，所以"对所有会话生效"也过头了。
   //
   // 两句统一改成"说清作用范围 + 是否影响全局"的写法，与真实行为一致。
-  const targetLabel = scope === "session"
-    ? "保存到本会话（只覆盖你改过的项，不改全局）"
-    : "保存为全局默认（对未设会话的会话生效）";
+  //
+  // 2026-11-14 追加：全局配置页 / 提示词页保存**不改运行模式**，原先这里
+  // 用 scope 二选一，会把这两页也标成「保存为全局默认」——容易被读成
+  // "保存就会切到默认模式"。按页签再分出一句只说事实的文案。
+  const activeTabForFoot = String(props.tab || "");
+  const isModeTabFoot = activeTabForFoot === "session" || activeTabForFoot === "default";
+  let targetLabel: string;
+  if (!isModeTabFoot) {
+    targetLabel = activeTabForFoot === "prompt"
+      ? "保存提示词模板（对所有模式生效，不改运行模式）"
+      : "保存全局配置（对所有模式生效，不改运行模式）";
+  } else {
+    targetLabel = scope === "session"
+      ? "保存到本会话（只覆盖你改过的项，不改全局）"
+      : "保存为全局默认（对未设会话的会话生效）";
+  }
   const foot = R.createElement("div", { className: "qm-set-foot", key: "foot" }, [
     R.createElement("div", { className: "qm-set-footleft", key: "fl" }, [
       dirty

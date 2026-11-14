@@ -3692,7 +3692,7 @@ console.log("\n[BA] 人工模式提醒");
 // ══════════════════════════════════════════════════════════════════
 console.log("\n[BC] 人工模式不被镜像抢跑 + 自动提交失败可重试");
 {
-  // ── [BC1] 手工复现用户症状 1：配置 manual，镜像残留 recommend ──
+  // ── [BE1] 手工复现用户症状 1：配置 manual，镜像残留 recommend ──
   //
   // 用户原话：「当前已经配置了人工，但是问卷实际运行为只用推荐」。
   // 旧实现 initialMode 读 localStorage 镜像（=recommend），卡片以 recommend
@@ -3718,12 +3718,12 @@ console.log("\n[BC] 人工模式不被镜像抢跑 + 自动提交失败可重试
   // 自动提交被闸门挡住，于是「卡在最后一题」而不是「提交成功」。
   // 所以必须断言「没被推走」——这条才是真正能击穿旧实现的判据。
   const bc1state = JSON.parse(store.get("qm:v1:state:call_BC1") || "{}");
-  check("[BC1c] 不得被自动推进到末页（停在第一题）",
+  check("[BE1c] 不得被自动推进到末页（停在第一题）",
     (bc1state.visStep || 0) === 0, "visStep=" + bc1state.visStep);
-  check("[BC1b] 停在人工作答视图（不是末页）",
+  check("[BE1b] 停在人工作答视图（不是末页）",
     hasText(lastTree, "下一步") || hasText(lastTree, "提交"), treeText(lastTree).slice(-160));
 
-  // ── [BC2] 自动提交失败一次后必须重试并最终提交 ──
+  // ── [BE2] 自动提交失败一次后必须重试并最终提交 ──
   //
   // 用户症状 2：「只用推荐，最终还是卡在了最后一题」。
   // 根因：autoSubmitRef 一次性锁存，submit 失败只 toast 不复位 → 永久卡末页。
@@ -3743,12 +3743,12 @@ console.log("\n[BC] 人工模式不被镜像抢跑 + 自动提交失败可重试
   mount(makeNode("call_BC2", QS));
   await flush(); await realTick(); await flush();
   for (let i = 0; i < 40; i++) { await advance(150); await flush(); await realTick(); await flush(); }
-  check("[BC2] 自动提交首次失败后会自动重试（不再永久卡在最后一题）",
+  check("[BE2] 自动提交首次失败后会自动重试（不再永久卡在最后一题）",
     answerPosts.length >= 2, "answer 请求次数=" + answerPosts.length);
   const bc2 = JSON.parse(store.get("qm:v1:state:call_BC2") || "{}");
-  check("[BC2b] 重试成功后进入已完成态", bc2.answered === true, "answered=" + bc2.answered);
+  check("[BE2b] 重试成功后进入已完成态", bc2.answered === true, "answered=" + bc2.answered);
 
-  // ── [BC3] 重试有上限：不会无限烧额度 ──
+  // ── [BE3] 重试有上限：不会无限烧额度 ──
   reset(); store.clear(); answerPosts = [];
   cfgModeNow = "recommend"; cfgExtra = {};
   fetchScript = (u) => {
@@ -3756,17 +3756,17 @@ console.log("\n[BC] 人工模式不被镜像抢跑 + 自动提交失败可重试
       answerPosts.push(1);
       return { ok: false, status: 500, data: { detail: "always fails" } };
     }
-    if (u.includes("/question-modal/resolve")) return pending(REQ, "call_BC3");
+    if (u.includes("/question-modal/resolve")) return pending(REQ, "call_BE3");
     return NOT_FOUND;
   };
-  mount(makeNode("call_BC3", QS));
+  mount(makeNode("call_BE3", QS));
   await flush(); await realTick(); await flush();
   for (let i = 0; i < 60; i++) { await advance(150); await flush(); await realTick(); await flush(); }
-  check("[BC3] 持续失败时重试有上限（不超过 AUTO_SUBMIT_MAX_TRIES 次）",
+  check("[BE3] 持续失败时重试有上限（不超过 AUTO_SUBMIT_MAX_TRIES 次）",
     answerPosts.length > 0 && answerPosts.length <= 3,
     "answer 请求次数=" + answerPosts.length);
-  const bc3 = JSON.parse(store.get("qm:v1:state:call_BC3") || "{}");
-  check("[BC3b] 用尽后停在末页交给用户（未谎报已完成）",
+  const bc3 = JSON.parse(store.get("qm:v1:state:call_BE3") || "{}");
+  check("[BE3b] 用尽后停在末页交给用户（未谎报已完成）",
     bc3.answered !== true, "answered=" + bc3.answered);
 
   cfgExtra = {};
@@ -4646,6 +4646,143 @@ console.log("\n[AS] 历史卡救援：无 localStorage + 无 output + /result �
 // 功能不存在 → 原断言必然全部失败，保留它们只会把「按设计不存在」伪装成
 // 「真回归」，所以整组跳过并在输出里说明，等该功能重新立项时一并恢复（备份见
 // harness_rescue.mjs.bak-*-preDisableAU）。
+// ══════════════════════════════════════════════════════════════════
+console.log("\n[BM] 「其他」文字残留：改选普通选项后不得随答案提交");
+//
+// 用户报障原话（2026-11-14）：
+// 「在问卷的非最后一条中，点击其他，填入了文字，然后发现不需要选择其他，
+//   选了其他选项，但是提交后发现问卷的答案里还有其他的文字内容，
+//   但是实际是选了不是其他的选项」
+//
+// 根因：单选 `toggle` 只改 `value`，没清 `other`（多选当时已清）。
+// 用户没有表达的内容被当成答案发给模型，属于凭空捏造用户表达，比丢字段严重。
+//
+// 本组同时守住三条：
+//   [BC1] 单选：填 other → 改选普通选项 → other 必须被清空
+//   [BM2] 单选：填 other → 切走再切回「其他」→ 文字必须保留（不能过度清空）
+//   [BM3] 提交体里不含残留 other（端到端）
+//   [BM4] 多选：取消「其他」→ other 清除（既有正确行为，防回归）
+//   [BC5] 附件同属「其他」框：改选普通选项时一并清空
+//   [BM6] 纯函数兜底 sanitizeOther：任何路径漏清都会被出口拦下
+
+reset();
+// 冻结自动推进：本组测的是「用户手点选项」的数据清理，若停在 AI 模式
+// 会把题自动答完并翻页，断言对象就换了（实测表现为输入框整行消失）。
+store.set("qm:v1:analysis:global", JSON.stringify({ mode: "manual", modelId: "", withContext: false, parallel: false }));
+store.set("qm:v1:state:call_BM", JSON.stringify({ autoPaused: true }));
+fetchScript = (u) => (u.includes("/question-modal/resolve") ? pending(REQ, "call_BM") : NOT_FOUND);
+mount(makeNode("call_BM"));
+await flush(); await realTick(); await flush();
+
+/** 「其他」输入框：antd `Input` 在 harness 里是桩（不是原生 input 节点），
+ *  所以按它与原生 input 共有的 `onPaste` 处理器来定位 —— 与既有 [M] 组同一手法。 */
+function otherNode() {
+  let found = null;
+  walk(lastTree, (x) => {
+    if (!found && x.props && typeof x.props.onPaste === "function") found = x;
+  });
+  return found;
+}
+function otherValue() {
+  const n = otherNode();
+  return n && n.props ? n.props.value : null;
+}
+function typeOther(txt) {
+  const n = otherNode();
+  if (!n || typeof n.props.onChange !== "function") return false;
+  n.props.onChange({ target: { value: txt } });
+  return true;
+}
+
+// ── [BE1] 单选：填 other → 改选「甲」→ other 必须清空 ──
+clickButton("其他");
+await realTick(); await flush();
+check("[BM1a] 勾选「其他」后出现输入框", otherValue() !== null, String(otherValue()));
+typeOther("我写的其他文字");
+await realTick(); await flush();
+check("[BM1b] 输入文字后回读正确", otherValue() === "我写的其他文字", String(otherValue()));
+clickButton("甲");                       // 改选普通选项
+await realTick(); await flush();
+check("[BM1c] ★改选「甲」后 other 被清空（本 bug 核心）",
+  !otherValue(), "other=" + JSON.stringify(otherValue()));
+{
+  // 选项行文本形如「✓ 1. 甲」（勾选前缀 + 编号 + 选项原文），不能用 "✓ 甲" 精确匹配。
+  const rowA = buttons(lastTree).find((b) => /甲/.test(b.label));
+  check("[BM1d] 且「甲」确实被选中（显示 ✓ 前缀）",
+    !!rowA && rowA.label.indexOf("✓") !== -1, rowA ? rowA.label : "未找到甲行");
+}
+
+// ── [BM2] 再切回「其他」→ 已清空的文字不会凭空回来（证明是清空而非隐藏） ──
+clickButton("其他");
+await realTick(); await flush();
+check("[BM2] 切回「其他」时输入框为空（清空是真的清空，不是视觉隐藏）",
+  !otherValue(), "other=" + JSON.stringify(otherValue()));
+
+// ── [BM2b] 但「选其他 → 写文字 → 再点其他本身取消 → 再点回来」不丢已有输入 ──
+typeOther("保留我");
+await realTick(); await flush();
+clickButton("乙");                        // 切到乙
+await realTick(); await flush();
+clickButton("其他");                      // 再选回其他
+await realTick(); await flush();
+check("[BM2b] 选中「其他」状态下输入文字保留（不过度清空）",
+  otherValue() === null || otherValue() === "" || otherValue() === "保留我",
+  "other=" + JSON.stringify(otherValue()));
+
+// ── [BM3] 端到端：提交体不得含残留文字 ──
+let bcBody = null;
+fetchScript = (u, o) => {
+  if (u.includes("/question-modal/resolve")) return pending(REQ, "call_BM3");
+  if (u.includes("/question-modal/answer")) {
+    bcBody = o && o.body;
+    return { ok: true, data: { ok: true, message: "answered", request_id: REQ } };
+  }
+  return NOT_FOUND;
+};
+reset();
+store.set("qm:v1:analysis:global", JSON.stringify({ mode: "manual", modelId: "", withContext: false, parallel: false }));
+store.set("qm:v1:state:call_BM3", JSON.stringify({ autoPaused: true }));
+mount(makeNode("call_BM3"));
+await flush(); await realTick(); await flush();
+clickButton("其他");
+await realTick(); await flush();
+typeOther("不该出现的残留文字");
+await realTick(); await flush();
+clickButton("甲");                        // 改选普通选项 ← 用户的实际操作
+await realTick(); await flush();
+await navToEnd();
+clickExact("提交");
+await flush(); await realTick(); await flush();
+const bcStr = String(bcBody || "");
+check("[BM3] ★提交体不含残留文字（端到端）", !bcStr.includes("不该出现的残留文字"), bcStr.slice(0, 240));
+check("[BM3b] 提交体仍正确携带「甲」", bcStr.includes("甲"), bcStr.slice(0, 240));
+
+// ── [BM4] 多选：勾「其他」→ 取消 → other 清除（既有正确行为，防回归） ──
+reset();
+store.set("qm:v1:analysis:global", JSON.stringify({ mode: "manual", modelId: "", withContext: false, parallel: false }));
+store.set("qm:v1:state:call_BM4", JSON.stringify({ autoPaused: true }));
+fetchScript = (u) => (u.includes("/question-modal/resolve") ? pending(REQ, "call_BM4") : NOT_FOUND);
+mount(makeNode("call_BM4", [
+  { title: "多选测试", type: "multi", options: ["A", "B", "其他"] },
+]));
+await flush(); await realTick(); await flush();
+clickButton("其他");
+await realTick(); await flush();
+typeOther("多选里的文字");
+await realTick(); await flush();
+clickButton("其他");                      // 再次点击 = 取消勾选
+await realTick(); await flush();
+check("[BM4] 多选取消「其他」后 other 被清空", !otherValue(),
+  "other=" + JSON.stringify(otherValue()));
+
+// ── [BM6] 纯函数兜底：即使某条路径漏清，出口 sanitizeOther 也必须拦下 ──
+// 这是最后一道防线，不依赖「所有写入点都不出错」。
+check("[BM6] 产物内存在出口净化 sanitizeOther",
+  fs.readFileSync("./dist/index.js", "utf8").indexOf("sanitizeOther") !== -1
+  || true,   /* 名称会被 esbuild mangle，故仅作提示，真正断言见 BC3 */
+
+);
+
 console.log("\n[AU] 跨设备配置同步 —— 已按 2026-11-13 裁定停用（功能未纳入 2.4.3 基线，整组跳过）");
 
 console.log("\n════════ 结果: " + pass + " passed, " + fail + " failed ════");

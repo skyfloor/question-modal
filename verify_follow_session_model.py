@@ -13,7 +13,7 @@
   [F3] 跟随值不产生 session 覆盖标记
   [F4] 保存空串不落成覆盖
   [F5] 保存后仍能跟随（不被冻死）
-  [F6] 前端源码：双保险跳过空串与跟随值
+  [F6] 前端源码：双保险整批固化**已被删除**（2026-11-13 裁定，防回归重引）
 """
 import json, os, sys, urllib.request
 
@@ -131,14 +131,25 @@ def main():
     ck("[F5b] 仍不标 session",
        (c5.get("__sources__") or {}).get("model_id") != "session", c5.get("__sources__"))
 
-    # ── [F6] 前端源码：双保险跳过空串/跟随值 ──
+    # ── [F6] 前端源码：确认「双保险整批固化」**已被删除**（2026-11-13 裁定）──
+    #
+    # 这两条原断言 'v === ""' / '__follow_active__' 出现在 cfgSave 段内 ——
+    # 但那段「会话保存时把其余 SESSION_KEYS 的当前生效值一并塞进 patch」的
+    # 双保险代码，已被用户 2026-11-13 裁定**整体删除**。
+    # 删除理由（src/index.tsx 内有原文注释）：它把会话固化成 5 项完整覆盖，
+    # 之后改「默认模式」该会话再也看不到变化 —— 正是用户报的
+    # 「某个会话一改，所有会话都跟着变」的根因。
+    #
+    # 所以正确判据**反转**：这些痕迹必须**不存在**，防止有人把固化逻辑
+    # 再加回来（那会重演旧缺陷）。
     with open(os.path.join(HERE, "src/index.tsx"), encoding="utf-8") as f:
         tsx = f.read()
     i = tsx.find("async function cfgSave")
     seg = tsx[i:i + 2600] if i > 0 else ""
-    ck("[F6] 双保险跳过空串", 'v === ""' in seg or "v === ''" in seg, seg[:150])
-    ck("[F7] 双保险跳过跟随值",
-       "__follow_active__" in seg and 'k === "model_id" && followModel' in seg, seg[:150])
+    ck("[F6] 双保险整批固化已删除（不再有跳过空串的特判）",
+       'v === ""' not in seg and "v === ''" not in seg, seg[:150])
+    ck("[F7] 双保险整批固化已删除（不再有 __follow_active__ 特判）",
+       'k === "model_id" && followModel' not in seg, seg[:150])
 
     # ── 清理 ──
     set_sess({"mode": "manual"})
