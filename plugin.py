@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 def _resolve_working_dir() -> Path:
     """宿主的 WORKING_DIR —— 唯一来源，不自己拼路径。
 
-    为什么不硬编码 `/app/working`：部署形态可变（compose 挂载点、测试用的
+    为什么不硬编码工作目录字面量：部署形态可变（compose 挂载点、测试用的
     临时目录）。取不到时退回 `Path.cwd()`，并且只在**调用点**降级，
     绝不在模块导入期抛异常（导入期失败会让整个插件装不上）。
     """
@@ -485,8 +485,8 @@ SETTINGS_SCHEMA: dict[str, dict] = {
 def _req_agent_id(request, explicit: str = "") -> str:
     """确定本次请求属于哪个 agent（读通知频道配置的唯一正确来源）。
 
-    2026-11-14 实测缺陷（必须记住）：插件跑在宿主的**单一进程**里，而本机
-    有 3 个 agent（default / QwenPaw_QA_Agent_0.2 / wb74Jn）。若靠「config.json
+    2026-11-14 实测缺陷（必须记住）：插件跑在宿主的**单一进程**里，而一台机器
+    上常配了多个 agent（本机实测 3 个）。若靠「config.json
     里只有一个 agent 就猜它」，猜测返回空串 → 路径退化成不存在的
     ``<WORKING_DIR>/config.json`` → 微信被判「未启用或缺凭据」，而它其实是
     可用的。**隔离探针 ready=True、线上端点 ready=False** 就是这条引起的。
@@ -985,8 +985,8 @@ def _agent_config_path(agent_id: str = "") -> Path:
     """定位某个 agent 的 agent.json。
 
     2026-11-14 修正（决定性）：**必须由调用方传入 agent_id**。此前靠
-    「config.json 里只有一个 agent 就猜它」——本机有 3 个 agent（default /
-    QwenPaw_QA_Agent_0.2 / wb74Jn），猜测直接返回空串，于是路径退化成
+    「config.json 里只有一个 agent 就猜它」——多 agent 机器上猜测直接返回
+    空串，于是路径退化成
     ``<WORKING_DIR>/config.json``（不存在）→ 读不到频道配置 → 微信被判
     「未启用或缺凭据」，而实际上它是可用的。实测症状：隔离探针 ready=True，
     线上端点 ready=False。
@@ -1046,9 +1046,9 @@ def _post_host_api(
     ⚠️ ``agent_id`` 必须由调用方传真实值。2026-11-14 实测踩坑：缺省时用
     ``_current_agent_id() or "default"``，在多 agent 机器上 `_current_agent_id()`
     返回空串 → 请求头变成 ``X-Agent-Id: default`` → 宿主去 **default 那个
-    agent 的 workspace** 找渠道 → 报 ``Channel not found: wechat``（微信渠道
-    实际挂在 wb74Jn 上）。同一次发送，带对的 agent 报「已送达」，带 default
-    报「渠道不存在」——这就是根因。
+    agent 的 workspace** 找渠道 → 报 ``Channel not found: wechat``（渠道
+    实际挂在另一个 agent 上）。同一次发送，带对的 agent 报「已送达」，带
+    default 报「渠道不存在」——这就是根因。
     """
     import urllib.error
     import urllib.request
