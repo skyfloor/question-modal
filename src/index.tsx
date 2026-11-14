@@ -470,8 +470,20 @@ function currentSessionId(): string {
   } catch (_) { /* ignore */ }
   const w = (window as any).currentSessionId;
   if (typeof w === "string" && w) return w;
+  // BUG-2026-1114-01 兜底：frpc/公网域名等特殊接入下，宿主 SDK 可能取不到
+  // 会话（页面 origin 与常规入口不同，sessionStorage 也不可靠）。最后从
+  // pathname 的 /chat/<uuid> 抽取会话 UUID。必须校验标准 UUID 形态
+  // （8-4-4-4-12 十六进制），避免把 /chat/<session_id>（时间戳-随机串形态）
+  // 误当成 chat UUID。
+  try {
+    const m = /\/chat\/([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})(?:[/?#]|$)/
+      .exec((typeof window !== "undefined" && window.location && window.location.pathname) || "");
+    if (m && m[1]) return m[1].toLowerCase();
+  } catch (_) { /* ignore */ }
   return _hostSessionId;                          // learned from /resolve
 }
+// 仅供无头回归（harness_rescue.mjs [T2]）探测寻址结果；生产路径零消费。
+(globalThis as any).__qmSessionProbe = currentSessionId;
 
 /** Agent id for this card's requests.
  *
@@ -506,8 +518,8 @@ const _notifiedCards: Record<string, boolean> = {};
 
 /** Show the reminder for one card.  Returns how it was delivered. */
 async function notifyManualSurvey(
-  callId: string, title: string, count: number, channel?: string,
-): Promise<"system" | "inpage" | "channel" | "skipped"> {
+  callId: string, title: string, count: number,
+): Promise<"system" | "inpage" | "skipped"> {
   if (typeof window === "undefined") return "skipped";
   if (_notifiedCards[callId]) return "skipped";
 
@@ -527,37 +539,12 @@ async function notifyManualSurvey(
     ? ("「" + title + "」有 " + count + " 道题等你作答")
     : ("「" + title + "」等你作答");
 
-  // ── 频道通知（2026-11-14）───────────────────────────────────────────
+  // ── 频道通知已上移到后端（#91 接线，2026-11-14）─────────────────────
   //
-  // 走宿主投递（微信等），由后端完成。这样「关掉浏览器」也能收到 ——
-  // 是 q1 裁定的核心诉求。后端会二次校验「是否已通过测试闸门」，
-  // 前端无需重复判断（判断规则只有一份，在 plugin.py）。
-  const chan = String(channel || "");
-  if (chan && chan !== "off" && chan !== "browser") {
-    try {
-      const resp = await fetch(apiUrl("/question-modal/notify/send"), {
-        method: "POST",
-        headers: { ...authHeaders(), "Content-Type": "application/json" },
-        body: JSON.stringify({ tool_call_id: callId, title, count }),
-      });
-      const d = await resp.json().catch(() => ({}));
-      if (d && d.delivered) return "channel";
-      // 投递失败必须让用户看得见原因（不能静默）——但不要因此打断作答，
-      // 所以只提示一次，不重试。
-      const why = (d && (d.reason || d.error)) || "未知原因";
-      try { console.warn("[question-modal] channel notify failed:", why); } catch (_) {}
-      try {
-        const { message } = (window.QwenPaw.host.antd || {}) as any;
-        if (message && message.warning) {
-          message.warning("问卷提醒未能发送：" + why);
-        }
-      } catch (_) { /* host UI 不可用时忽略 */ }
-      return "inpage";
-    } catch (e) {
-      try { console.warn("[question-modal] channel notify error:", e); } catch (_) {}
-      return "inpage";
-    }
-  }
+  // 问卷创建瞬间由 plugin.py 的 tool 调用 notify_survey_pending 完成
+  // （关掉浏览器也能送达）。本 effect 只在页面存活时执行，若在这里再发
+  // 一遍，同一份问卷会被前端 + 后端各推一次 —— 因此前端**只负责浏览器
+  // Notification**，不再走任何频道通道。
 
   const N = (window as any).Notification;
   if (!N) return "inpage";
@@ -2150,9 +2137,18 @@ async function hostStopFallback(
  *  only be this one; with several we stay hands-off (never guess another
  *  card's survey) but still learn nothing harmful.  Returns null when the
  *  answer is ambiguous, so a wrong survey is never hijacked. */
-async function resolveSolePending(): Promise<PendingItem | null> {
+// REQ-2026-0061 (2026-11-14): fetch the pending list **filtered to this
+// card's session** and require exactly one entry there — not one globally.
+async function resolveSolePending(sessionId?: string): Promise<PendingItem | null> {
   try {
-    const resp = await fetch(apiUrl("/question-modal/pending"),
+    // REQ-2026-0061 (2026-11-14): the fallback used to fetch the *global*
+    // pending list and required exactly one entry worldwide.  With pending
+    // surveys in ≥2 sessions every card's recovery silently died.  The
+    // backend already supports per-session filtering (plugin.py get_pending
+    // session_id query param), so pass the card's session and judge the
+    // count against that filtered set.
+    const qs = sessionId ? ("?session_id=" + encodeURIComponent(sessionId)) : "";
+    const resp = await fetch(apiUrl("/question-modal/pending") + qs,
       { headers: authHeaders() });
     if (!resp.ok) return null;
     const d = await resp.json();
@@ -2539,7 +2535,7 @@ function sanitizeOther(ans: Record<string, QA>): Record<string, QA> {
     if (!a || typeof a !== "object") { next[k] = a; return; }
     const v = (a as any).value;
     const usesOther = Array.isArray(v)
-      ? v.indexOf(OTHER) !== -1
+      ? v.length === 1 && v[0] === OTHER      // 多选互斥：仅「只选了其他」才保留文字
       : String(v ?? "") === OTHER;
     if (usesOther) { next[k] = a; return; }   // 真的选了「其他」→ 原样保留
     next[k] = { ...a, other: "", attachments: [] };
@@ -4648,7 +4644,7 @@ function AskUserCard(props: { data?: any }) {
         // absent → we may simply have had nothing to ask with (no call id and
         // no host-provided session).  Try the sole-pending fallback before
         // concluding anything.
-        resolveSolePending().then((sole) => {
+        resolveSolePending(cardSessionId(callId)).then((sole) => {
           if (!alive) return;
           if (sole) {
             // Refuse a survey that belongs to a *different* tool call: that is
@@ -4872,10 +4868,11 @@ function AskUserCard(props: { data?: any }) {
     // 避免另造一套判定导致两处结论不一致。
     const pending = visibleIndices(questions, answers)
       .filter((i: number) => !filledAnswer(answers[`q${i}`])).length;
-    // 频道通知（微信等）必须由**后端**发：q1 裁定「关掉浏览器时只能走频道
-    // 通知」，而本 effect 只在页面存活时执行。后端收到请求后无论页面在不在
-    // 都能投递。浏览器通知仍由前端发（Notification API 只有前端能用）。
-    void notifyManualSurvey(callId, title, pending, chanNow === "off" ? "browser" : chanNow);
+    // 频道通知由**后端**在问卷创建时发（#91 接线，2026-11-14）：q1 裁定
+    // 「关掉浏览器时只能走频道通知」，而本 effect 只在页面存活时执行。
+    // 前端这里只做浏览器 Notification（Notification API 只有前端能用），
+    // 避免与后端频道提醒重复推送同一份问卷。
+    void notifyManualSurvey(callId, title, pending);
     // 依赖只放「判定是否还需要提醒」的量；questions 的内容变化不该重复触发，
     // 真正的去重靠 notifyManualSurvey 内部的 callId 标记。
   }, [effCfg, answered, skippedAll, deadReason, stepSlot]);
@@ -5358,12 +5355,12 @@ function AskUserCard(props: { data?: any }) {
             const hit = opts.find((o) => optValue(o) === tok || optLabel(o) === tok);
             return hit ? optValue(hit) : tok;
           });
-        // 自动填入同样要清「其他」里的用户手写残留（2026-11-14 同族 bug）：
-        // 用户先手填了「其他」，随后 AI/推荐把选项覆盖上去，若不清理就会
-        // 提交出「选了甲（其他：用户手写文字）」这种用户没表达过的组合。
+        // 自动填入同样遵守「其他」互斥（2026-11-14 boss 裁定：单选+多选都
+        // 互斥清理）：只有「仅选了其他」时才保留用户手写残留，选中任何
+        // 普通选项都清空，避免提交出用户没表达过的组合。
         next[key] = { ...base, type: qt, value: picked,
-          other: picked.indexOf(OTHER) !== -1 ? base.other : "",
-          attachments: picked.indexOf(OTHER) !== -1 ? base.attachments : [] };
+          other: picked.length === 1 && picked[0] === OTHER ? base.other : "",
+          attachments: picked.length === 1 && picked[0] === OTHER ? base.attachments : [] };
       } else if (qt === "single") {
         // Normalise a single choice onto the option's VALUE.  The model may
         // write the label (or 「推荐 · 乙」) instead of the value, and storing
@@ -5720,14 +5717,17 @@ function AskUserCard(props: { data?: any }) {
       const cur = Array.isArray(ans.value) ? ans.value.slice() : [];
       const i = cur.indexOf(val);
       if (i === -1) cur.push(val); else cur.splice(i, 1);
-      const stillOther = cur.indexOf(OTHER) !== -1;
+      // 「其他」与普通选项互斥（2026-11-14 boss 裁定：单选+多选都做互斥清理，
+      // 不再允许「选项 + 其他」并存）。只要选中了任一普通选项，「其他」里
+      // 的文字与附件就一并失效；仅当只选了「其他」本身时才保留输入。
       // 取消「其他」= 这个自由文本入口不再被选中，用户在里面写过的文字与
       // 附件都随之失效。只清 other 不清 attachments 会出现「选了甲却带着
       // 附件」，同样是把用户没表达的内容当成答案发出去。
+      const keepOther = cur.length === 1 && cur[0] === OTHER;
       setAns({
         ...ans, value: cur,
-        other: stillOther ? ans.other : "",
-        attachments: stillOther ? ans.attachments : [],
+        other: keepOther ? ans.other : "",
+        attachments: keepOther ? ans.attachments : [],
       });
     } else {
       // ★ 2026-11-14 用户报障（单选专用的漏清 bug）：

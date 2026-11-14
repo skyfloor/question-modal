@@ -1,7 +1,7 @@
 {
   "id": "question-modal",
   "name": "Question Modal 问卷弹窗",
-  "version": "2.4.5",
+  "version": "2.4.6",
   "type": "tool",
   "description": "文字作答改为多页点选问卷，支持单选、多选、问答及条件联动，内置 AI 推荐；系统支持自动分析、只用推荐及人工模式，前两者由服务端后台推进（关闭页面仍可作答），人工模式需在页面操作，答案统一结构化返回。",
   "author": "skyfloor",

@@ -3705,6 +3705,27 @@ class QuestionModalMiddleware(_MiddlewareBase):
         # right pending record by tool_call_id instead of guessing.
         _register_question(pending.request_id, session_id, questions)
 
+        # ── 频道提醒（#91 接线，2026-11-14）───────────────────────────
+        # 问卷创建的瞬间由后端主动提醒一次。前端 effect 只在页面存活时才跑
+        # （关掉浏览器即失效），频道通知（钉钉/微信）必须由后端发才能覆盖
+        # 「页面已关」的场景 —— 这是 #91 q1 裁定的核心诉求。
+        # 仅 manual 模式发：ai/recommend 会自己推进，提醒「等你作答」会误导
+        # （与前端 effect 的 mode 判定保持同一口径）。显式传 agent_id：
+        # _current_agent_id() 在多 agent 环境会返回空串导致选错 workspace
+        # （Channel not found 假象），svc.create 的作用域里已有权威 agent_id。
+        if _mode == "manual":
+            try:
+                await notify_survey_pending(
+                    call_id=pending.tool_call_id,
+                    title=title,
+                    count=len(questions),
+                    agent_id=agent_id,
+                )
+            except Exception:  # noqa: BLE001 — 提醒失败绝不能阻挡问卷本身
+                logger.warning(
+                    "could not send survey pending notification", exc_info=True,
+                )
+
         # ── 阶段 1：给这份问卷挂看门狗（只对自动模式生效）────────────
         # 用户裁定（2026-11-07）：手动释放 + 看门狗 60s 无进展释放。
         # 判据在 question_service._watchdog_loop 里按 mode 二次过滤：

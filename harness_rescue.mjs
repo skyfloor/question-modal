@@ -1128,6 +1128,38 @@ global.window.QwenPaw.host.getCurrentSessionId = hostBackup.sid;
 global.window.QwenPaw.host.getSelectedAgentId = hostBackup.aid;
 
 // ══════════════════════════════════════════════════════════════════
+// [T2] BUG-2026-1114-01：session 寻址兜底 —— 宿主 API 返回空时，从
+//      pathname 的 /chat/<uuid> 抽取标准 UUID 形态的会话标识。
+console.log("\n[T2] session 寻址兜底（BUG-2026-1114-01）");
+{
+  const hostBackup3 = { sid: global.window.QwenPaw.host.getCurrentSessionId };
+  // 场景 A：pathname 是 /chat/<uuid>（frpc/公网域名形态）→ 应抽取 UUID。
+  delete global.window.QwenPaw.host.getCurrentSessionId;
+  const CHAT_UUID = "11111111-2222-3333-4444-555555555555";
+  global.window.location = { href: "https://pm.example.com/chat/" + CHAT_UUID, pathname: "/chat/" + CHAT_UUID };
+  reset();
+  const t2uuid = globalThis.__qmSessionProbe();
+  check("[T2-A] /chat/<uuid> 路径下抽到标准 UUID", t2uuid === CHAT_UUID,
+    "got=" + JSON.stringify(t2uuid));
+  // 场景 B：pathname 是 /chat/<session_id>（时间戳-随机串，非 UUID）→ 不误取。
+  global.window.location = { href: "https://pm.example.com/chat/1794643315350-5bhblvm",
+                             pathname: "/chat/1794643315350-5bhblvm" };
+  reset();
+  const t2nonuuid = globalThis.__qmSessionProbe();
+  check("[T2-B] /chat/<session_id>（非 UUID 形态）不被误当成 chat UUID",
+    t2nonuuid !== "1794643315350-5bhblvm" && t2nonuuid !== CHAT_UUID.toLowerCase(),
+    "got=" + JSON.stringify(t2nonuuid));
+  // 场景 C：宿主恢复注入 + /resolve 学习照旧优先（回归保护，不许倒退）。
+  global.window.location = { href: "http://host/console", pathname: "/console" };
+  global.window.QwenPaw.host.getCurrentSessionId = () => SESSION;
+  reset();
+  const t2normal = globalThis.__qmSessionProbe();
+  check("[T2-C] 宿主正常注入时优先用宿主值（不倒退）", t2normal === SESSION,
+    "got=" + JSON.stringify(t2normal));
+  global.window.QwenPaw.host.getCurrentSessionId = hostBackup3.sid;
+}
+
+// ══════════════════════════════════════════════════════════════════
 // [U] 根治回归③：拿不到工具调用标识时，附件必须明确报错（绝不静默丢弃）
 //
 // 现场故障：题内「其他」框的附件从未成功过（所有 q* 的 attachments 全为 0），
@@ -4681,10 +4713,31 @@ function otherNode() {
   walk(lastTree, (x) => {
     if (!found && x.props && typeof x.props.onPaste === "function") found = x;
   });
+  if (!found) {
+    // 「其他」被互斥清空后，受控输入可能整个不渲染（placeholder 消失）；
+    // 此时退而求其次，用 label 识别对应的 TextArea 节点。
+    walk(lastTree, (x) => {
+      if (!found && x.props && typeof x.props.onChange === "function"
+          && x.props.value !== undefined && !x.props.onPaste) found = x;
+    });
+  }
   return found;
 }
 function otherValue() {
   const n = otherNode();
+  return n && n.props ? n.props.value : null;
+}
+// 仅探测「其他」输入框的当前值：与 otherValue() 的区别是不用 onChange 回调
+// 节点兜底（那会把其他控件误判成 other），只认带 onPaste 的真实 other 输入框。
+function otherNodeStrict() {
+  let found = null;
+  walk(lastTree, (x) => {
+    if (!found && x.props && typeof x.props.onPaste === "function") found = x;
+  });
+  return found;
+}
+function otherValueStrict() {
+  const n = otherNodeStrict();
   return n && n.props ? n.props.value : null;
 }
 function typeOther(txt) {
@@ -4697,14 +4750,14 @@ function typeOther(txt) {
 // ── [BE1] 单选：填 other → 改选「甲」→ other 必须清空 ──
 clickButton("其他");
 await realTick(); await flush();
-check("[BM1a] 勾选「其他」后出现输入框", otherValue() !== null, String(otherValue()));
+check("[BM1a] 勾选「其他」后出现输入框", otherValueStrict() !== null, String(otherValueStrict()));
 typeOther("我写的其他文字");
 await realTick(); await flush();
-check("[BM1b] 输入文字后回读正确", otherValue() === "我写的其他文字", String(otherValue()));
+check("[BM1b] 输入文字后回读正确", otherValueStrict() === "我写的其他文字", String(otherValueStrict()));
 clickButton("甲");                       // 改选普通选项
 await realTick(); await flush();
 check("[BM1c] ★改选「甲」后 other 被清空（本 bug 核心）",
-  !otherValue(), "other=" + JSON.stringify(otherValue()));
+  otherValueStrict() === "" || otherValueStrict() === null, "other=" + JSON.stringify(otherValueStrict()));
 {
   // 选项行文本形如「✓ 1. 甲」（勾选前缀 + 编号 + 选项原文），不能用 "✓ 甲" 精确匹配。
   const rowA = buttons(lastTree).find((b) => /甲/.test(b.label));
@@ -4716,18 +4769,20 @@ check("[BM1c] ★改选「甲」后 other 被清空（本 bug 核心）",
 clickButton("其他");
 await realTick(); await flush();
 check("[BM2] 切回「其他」时输入框为空（清空是真的清空，不是视觉隐藏）",
-  !otherValue(), "other=" + JSON.stringify(otherValue()));
+  otherValueStrict() === "" || otherValueStrict() === null, "other=" + JSON.stringify(otherValueStrict()));
 
-// ── [BM2b] 但「选其他 → 写文字 → 再点其他本身取消 → 再点回来」不丢已有输入 ──
+// ── [BM2b] 新口径（2026-11-14 互斥裁定）：切到普通选项「乙」后，此前写在
+//    「其他」里的文字应被清空；再切回「其他」时不凭空恢复（清空是真的清空）。
 typeOther("保留我");
 await realTick(); await flush();
-clickButton("乙");                        // 切到乙
+clickButton("乙");                        // 切到乙 → 互斥清理，other 文字失效
 await realTick(); await flush();
+check("[BM2b] 切到普通选项「乙」后 other 被清空（互斥裁定）", !otherValueStrict(),
+  "other=" + JSON.stringify(otherValueStrict()));
 clickButton("其他");                      // 再选回其他
 await realTick(); await flush();
-check("[BM2b] 选中「其他」状态下输入文字保留（不过度清空）",
-  otherValue() === null || otherValue() === "" || otherValue() === "保留我",
-  "other=" + JSON.stringify(otherValue()));
+check("[BM2b2] 再切回「其他」时输入框为空（不凭空恢复旧文字）",
+  otherValueStrict() === null || otherValueStrict() === "", "other=" + JSON.stringify(otherValueStrict()));
 
 // ── [BM3] 端到端：提交体不得含残留文字 ──
 let bcBody = null;
@@ -4772,8 +4827,32 @@ typeOther("多选里的文字");
 await realTick(); await flush();
 clickButton("其他");                      // 再次点击 = 取消勾选
 await realTick(); await flush();
-check("[BM4] 多选取消「其他」后 other 被清空", !otherValue(),
-  "other=" + JSON.stringify(otherValue()));
+check("[BM4] 多选取消「其他」后 other 被清空", !otherValueStrict(),
+  "other=" + JSON.stringify(otherValueStrict()));
+
+// ── [BM5] 多选「选项 + 其他」互斥（2026-11-14 boss 裁定：单选+多选都互斥） ──
+// 旧行为：多选允许「A + 其他 + 文字」并存提交；新裁定：选中任何普通选项，
+// other 文字与附件一律失效。先勾「其他」写文字，再勾「A」，other 必须被清空。
+reset();
+store.set("qm:v1:analysis:global", JSON.stringify({ mode: "manual", modelId: "", withContext: false, parallel: false }));
+store.set("qm:v1:state:call_BM5", JSON.stringify({ autoPaused: true }));
+fetchScript = (u) => (u.includes("/question-modal/resolve") ? pending(REQ, "call_BM5") : NOT_FOUND);
+mount(makeNode("call_BM5", [
+  { title: "多选互斥测试", type: "multi", options: ["A", "B", "其他"] },
+]));
+await flush(); await realTick(); await flush();
+clickButton("其他");
+await realTick(); await flush();
+typeOther("多选里不该残留的文字");
+await realTick(); await flush();
+clickButton("A");                         // 勾选普通选项 → 互斥清理生效点
+await realTick(); await flush();
+check("[BM5] ★多选勾选普通选项后 other 被清空（互斥裁定核心）", !otherValueStrict(),
+  "other=" + JSON.stringify(otherValueStrict()));
+clickButton("其他");                      // 再勾回「其他」→ 此时只有「其他」被选中
+await realTick(); await flush();
+check("[BM5b] 只剩「其他」时输入框为空（文字已失效，不凭空恢复）",
+  !otherValueStrict(), "other=" + JSON.stringify(otherValueStrict()));
 
 // ── [BM6] 纯函数兜底：即使某条路径漏清，出口 sanitizeOther 也必须拦下 ──
 // 这是最后一道防线，不依赖「所有写入点都不出错」。

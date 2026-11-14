@@ -158,6 +158,11 @@ _SURVEY_EVENT_BUFFER = 200
 # 进展**。旧实现只在答案落地时推进 `progress_at`，于是"模型慢"和"循环死"
 # 在判据上长得一模一样，任何阈值都只是碰运气。
 _SURVEY_WATCHDOG_SEC = 300.0
+# REQ-2026-0060 (2026-11-14): manual 问卷同样必须有兜底超时，否则 agent 的
+# Future 会永久挂起（实测卡 61 分钟）。阈值远大于自动模式——人可能在思考或
+# 离开，30 分钟内没有任何作答/跳过动作才由系统超时释放；释放原因如实标注
+# 为系统超时，绝不伪造用户跳过意愿。
+_SURVEY_MANUAL_WATCHDOG_SEC = 1800.0
 _SURVEY_WATCHDOG_TICK = 5.0
 # 设置项非法 / 读不到时的兜底值（与上面的常量保持单一真相源）。
 _WATCHDOG_SEC_DEFAULT = _SURVEY_WATCHDOG_SEC
@@ -1294,7 +1299,8 @@ class QuestionService:
             task.cancel()
 
     async def _watchdog_loop(self, tool_call_id: str) -> None:
-        """Release a survey whose AUTOMATED driver stopped making progress."""
+        """Release a survey whose driver stopped making progress."""
+        last_mode: str | None = None
         try:
             while True:
                 await asyncio.sleep(_SURVEY_WATCHDOG_TICK)
@@ -1303,20 +1309,28 @@ class QuestionService:
                     return
                 if st.status != "pending" or st.orphan:
                     return
-                if st.mode not in ("ai", "recommend"):
-                    # 用户随时可能把模式切回自动，所以不要退出循环 —— 只是本轮
-                    # 不判卡死。切回自动后从那一刻起重新计时（见下面的基线）。
-                    st.progress_at = time.time()
-                    continue
                 now = time.time()
+                if last_mode is not None and st.mode != last_mode:
+                    # 模式切换（manual <-> ai/recommend）后从切换时刻重新计时，
+                    # 保留旧实现「切回自动重新计时」的语义；manual 期间不再像
+                    # 旧实现那样每 tick 刷新 progress_at（那会让 manual 永不超时）。
+                    st.progress_at = time.time()
+                last_mode = st.mode
                 base = st.progress_at or st.created_at or now
                 idle = now - base
-                if idle < _SURVEY_WATCHDOG_SEC:
+                if st.mode in ("ai", "recommend"):
+                    limit = _SURVEY_WATCHDOG_SEC
+                    reason = f"自动推进 {int(idle)}s 无进展，已自动释放"
+                else:
+                    # REQ-2026-0060: manual 问卷兜底超时——用户长时间没有
+                    # 作答/跳过等实质操作时自动释放，避免 agent 永久挂起。
+                    # 这是系统超时释放，不是用户跳过；skip_reason 如实标注。
+                    limit = _SURVEY_MANUAL_WATCHDOG_SEC
+                    reason = f"等待作答超时 {int(idle)}s，已自动释放"
+                if idle < limit:
                     continue
                 # 看着像卡死 → 真的释放它（resolve Future），并明确告知模型。
-                st.watchdog_reason = (
-                    f"自动推进 {int(idle)}s 无进展，已自动释放"
-                )
+                st.watchdog_reason = reason
                 logger.warning(
                     "survey watchdog released %s after %.0fs idle (mode=%s)",
                     tool_call_id[:16], idle, st.mode,
