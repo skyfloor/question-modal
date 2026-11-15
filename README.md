@@ -49,7 +49,7 @@
 在控制台的插件页安装，或执行：
 
 ```bash
-qwenpaw plugin install question-modal-2.4.3.zip
+qwenpaw plugin install question-modal-2.4.7.zip
 ```
 
 安装（含重装）后，宿主会以**禁用**状态创建工具条目，需为要使用它的智能体手动启用

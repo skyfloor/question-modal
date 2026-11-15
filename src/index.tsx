@@ -177,6 +177,34 @@ function injectStyles(): void {
       "color:var(--app-text-secondary,#64748b)}",
       ".qm-set-runtime{font-size:12px;font-weight:500;color:#3b82f6;",
       "background:#eff6ff;padding:6px 12px;border-radius:20px;white-space:nowrap}",
+      // 头部右侧组：模式胶囊 + ✕ 左右排列（boss 2026-11-15 四轮：间隔 4 → 6px）
+      ".qm-set-right{display:flex;align-items:center;flex:0 0 auto;gap:6px;}",
+      // ── 入口图标尺寸（boss 2026-11-15 六轮，红框标注「高度不对」）──
+      // 真凶（已从宿主 console CSS 实证）：入口按钮位于 ChatActionGroup
+      // 容器内，而宿主有一条命中它的规则——
+      //   .ChatActionGroup-module__actionGroup__JK6ht button svg{
+      //     width:var(--app-icon-md)!important;    /* = calc(16px*font-scale) */
+      //     height:var(--app-icon-md)!important;
+      //     stroke-width:1.75 }
+      // 该规则 specificity=(0,1,2) 且带 !important，因此：
+      //   ① SVG 的 width/height **属性**（最低优先级表现属性）无效；
+      //   ② 单类名 .qm-entry-icon(0,1,0)+!important 也压不过它。
+      // 于是图标被强制按 16px 渲染，永远比按钮文字(12px)高出一截——
+      // 这正是红框里看到的现象。
+      // 解法：重复类名把 specificity 提到 (0,2,0)+!important > (0,1,2)，
+      // 尺寸取 1em → 恒等于按钮 font-size（12px），与文字等高。
+      ".qm-entry-icon.qm-entry-icon.qm-entry-icon{",
+      "width:1em!important;height:1em!important;",
+      "flex:0 0 1em!important;display:inline-block!important;",
+      "vertical-align:-0.125em;margin:0!important;padding:0!important;",
+      "box-shadow:none!important;background:none}",
+      ".qm-set-close{flex:0 0 auto;width:26px;height:26px;",
+      "display:inline-flex;align-items:center;justify-content:center;border:0;",
+      "border-radius:8px;background:transparent;cursor:pointer;font-size:14px;",
+      "line-height:1;padding:0;color:var(--app-text-tertiary,#94a3b8);",
+      "transition:background .15s ease,color .15s ease}",
+      ".qm-set-close:hover{background:var(--app-fill-subtle,rgba(127,127,127,0.12));",
+      "color:var(--app-text-primary,#1e293b)}",
       // 2026-11-13：胶囊改为纯展示（不可点），toggle 相关样式已移除。
       ".qm-set-title{font-size:20px;font-weight:600;line-height:1.3;letter-spacing:-0.5px}",
       ".qm-set-badge{font-size:11px;padding:2px 9px;border-radius:999px;",
@@ -7445,22 +7473,31 @@ function SettingsButton(props: { R: any; onOpen: () => void }): any {
   const style = { fontSize: 12, padding: "2px 6px", height: 28 };
   const a11y = { title: LABEL, "aria-label": LABEL };
 
-  // 图标：与卡片标题同源，外加齿轮兜底。
-  let iconNode: any = null;
-  try {
-    const icons = iconLib();
-    const names = TITLE_ICON_NAMES.concat(["SettingOutlined"]);
-    for (const name of names) {
-      const Cmp = icons[name];
-      if (Cmp) {
-        // 图标尺寸 15→13→12（2026-11-13 用户两次要求缩小）。
-        // 只缩图形，不动按钮的 height:28 / padding：点击热区保持不变，
-        // 避免为了美观牺牲可点性。
-        iconNode = R.createElement(Cmp, { style: { fontSize: 12 } });
-        break;
-      }
-    }
-  } catch (_) { /* 图标库不可用 → 回落文字 */ }
+  // ── 图标：内联 SVG（boss 2026-11-15 需求 4 + 问卷选定）────────────
+  // boss 从 6 个候选中选定「6 · 文档 file-text」（表单/文字语义）。
+  // 尺寸口径（boss 2026-11-15 五轮，附截图）：**高度与按钮文字大小一致**
+  // ——按钮文字 fontSize 为 12，故图标也取 12×12（此前 8px 过小）。
+  // 参照对象是宿主「优化」按钮旁的文档图标：图形与字符等高、无阴影无
+  // 背景、颜色随文本（currentColor）。strokeWidth 1.75 保持细线，
+  // 避免小尺寸下笔画糊成一团。内联 path，不依赖外网。
+  // 按钮 height:28 / padding 不动，点击热区不变。
+  const QM_SVG_PROPS = {
+    width: 12, height: 12, viewBox: "0 0 24 24", fill: "none",
+    stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round",
+    strokeLinejoin: "round", "aria-hidden": "true", className: "qm-entry-icon",
+    style: {
+      display: "block", boxShadow: "none", background: "none",
+      flex: "0 0 auto",
+    },
+  };
+  const iconNode: any = R.createElement("svg", QM_SVG_PROPS, [
+    R.createElement("path", { key: 1,
+      d: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" }),
+    R.createElement("polyline", { key: 2, points: "14 2 14 8 20 8" }),
+    R.createElement("line", { key: 3, x1: 16, y1: 13, x2: 8, y2: 13 }),
+    R.createElement("line", { key: 4, x1: 16, y1: 17, x2: 8, y2: 17 }),
+    R.createElement("polyline", { key: 5, points: "10 9 9 9 8 9" }),
+  ]);
 
   if (!iconNode) {
     // 宿主没给图标 → 保持原样文本按钮，绝不渲染空白按钮。
@@ -8395,26 +8432,41 @@ function SettingsPanel(props: {
   const hasSess = !!(props.cfg && (props.cfg as any).has_session);
   const currentScope = hasSess ? "session" : "default";
   const runtimeLabel = hasSess ? "会话模式" : "默认模式";
+  // 「当前模式：」前缀放在胶囊**外面**（2026-11-13 用户裁定）：
+  // 胶囊内只保留「会话模式」/「默认模式」四个字，语义标签独立成一个
+  // 普通文本节点，避免把说明性文字也算进"状态值"里。
+  const runtimeWrap = R.createElement("div", {
+    className: "qm-set-runtime-wrap", key: "rtw",
+    "data-qm-runtime-wrap": "1",
+    title: "本会话实际生效的配置层（有会话覆盖→会话模式，无→默认模式）",
+  }, [
+    R.createElement("span", {
+      className: "qm-set-runtime-label", key: "rtl",
+    }, "当前模式："),
+    // 纯展示元素（div 而非 button）：不可点、无 onClick、无 hover。
+    // 用 div 而不是 disabled button，避免被当成"禁用控件"而显得可点。
+    R.createElement("div", {
+      className: "qm-set-runtime", key: "rt",
+      "data-qm-runtime": currentScope,
+      "data-qm-scope-badge": currentScope,
+    }, runtimeLabel),
+  ]);
+  // ── 右上角关闭按钮（boss 2026-11-15 需求 2）──────────────────────
+  // 头部行内独立按钮，点击走 onClose，未保存修改的确认逻辑保持不变。
+  const closeBtn = R.createElement("button", {
+    key: "close", type: "button",
+    className: "qm-set-close", "data-qm-close": "1",
+    title: "关闭", "aria-label": "关闭设置",
+    onClick: () => { try { onClose(); } catch (_) {} },
+  }, "✕");
   const head = R.createElement("div", { className: "qm-set-head", key: "h" }, [
     R.createElement("div", { className: "qm-set-title", key: "t" }, "问卷设置"),
-    // 「当前模式：」前缀放在胶囊**外面**（2026-11-13 用户裁定）：
-    // 胶囊内只保留「会话模式」/「默认模式」四个字，语义标签独立成一个
-    // 普通文本节点，避免把说明性文字也算进"状态值"里。
-    R.createElement("div", {
-      className: "qm-set-runtime-wrap", key: "rtw",
-      "data-qm-runtime-wrap": "1",
-      title: "本会话实际生效的配置层（有会话覆盖→会话模式，无→默认模式）",
-    }, [
-      R.createElement("span", {
-        className: "qm-set-runtime-label", key: "rtl",
-      }, "当前模式："),
-      // 纯展示元素（div 而非 button）：不可点、无 onClick、无 hover。
-      // 用 div 而不是 disabled button，避免被当成"禁用控件"而显得可点。
-      R.createElement("div", {
-        className: "qm-set-runtime", key: "rt",
-        "data-qm-runtime": currentScope,
-        "data-qm-scope-badge": currentScope,
-      }, runtimeLabel),
+    // ── 右侧组（boss 2026-11-15 二轮裁定）────────────────────────
+    // 模式胶囊与关闭按钮「左右排列、中间不留间隔」：包进同一个无 gap 的
+    // right 组，整组靠右与标题形成两端布局。
+    R.createElement("div", { className: "qm-set-right", key: "rgt" }, [
+      runtimeWrap,
+      closeBtn,
     ]),
   ]);
 
@@ -8511,12 +8563,20 @@ function SettingsPanel(props: {
       R.createElement("span", { className: "qm-set-scopetarget", key: "t" }, targetLabel),
     ]),
     R.createElement("div", { className: "qm-set-footbtns", key: "fb" }, [
-      R.createElement("button", {
-        key: "cancel", type: "button",
-        className: "qm-set-btn", "data-qm-cancel": "1",
-        disabled: !dirty || !!props.saving,
-        onClick: () => { cfgDiscard(); settingsRenderPanel(); },
-      }, "取消"),
+      // ── 撤销按钮（boss 2026-11-15 需求 3，第二轮重做）──────────────
+      // 取代原「取消」按钮。只要有未保存的修改（dirty>0）就出现，
+      // 不需要先保存过。点击 = 放弃本次全部未保存修改，界面立即恢复为
+      // 上一次保存的参数（清空 draft 后 cfgValue 直接回落到已保存值），
+      // 纯前端恢复、不发任何保存请求；要落库必须再手动点「保存」。
+      (dirty > 0)
+        ? R.createElement("button", {
+            key: "undo", type: "button",
+            className: "qm-set-btn", "data-qm-undo": "1",
+            disabled: !!props.saving,
+            title: "放弃未保存的修改，恢复到上一次保存的参数",
+            onClick: () => { cfgDiscard(); settingsRenderPanel(); },
+          }, "撤销")
+        : null,
       R.createElement("button", {
         key: "save", type: "button",
         className: "qm-set-btn qm-set-btnprimary", "data-qm-save": "1",
@@ -8576,7 +8636,11 @@ function SettingsPanel(props: {
     ]);
   }
   return R.createElement(Modal, {
-    open: true, centered: true, footer: null, title: null, closeIcon: null,
+    open: true, centered: true, footer: null, title: null,
+    // 关闭入口在头部行内（.qm-set-close，见 head）。这里必须保持 null：
+    // antd 默认 closeIcon 绝对定位在弹窗角落，会与「当前模式」胶囊挤在一起
+    //（boss 2026-11-15 反馈的位置问题），且会与头部按钮形成双 ✕。
+    closeIcon: null,
     onCancel: onClose, destroyOnClose: true,
     // 小屏适配（2026-11-13 用户反馈）：固定 680 在窄屏会贴边/溢出。
     // min() 让宽度随视口收缩，92vw 两侧各留 4% 呼吸位。
