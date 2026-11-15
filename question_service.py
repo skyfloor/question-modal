@@ -1369,14 +1369,23 @@ class QuestionService:
             return False            # 真的放行过了 → 幂等返回
         pq = await self.get_by_tool_call(tool_call_id)
 
+        # ★ 必须在 `if pq is not None` 之前算好：下面「写 skip_reason」那一段
+        #   是**无条件**执行的，若把它留在分支内，pq is None（pending 记录
+        #   已丢失、只剩 survey_state 的孤儿问卷）时会抛
+        #   `UnboundLocalError: cannot access local variable '_reason'`。
+        #   2026-11-15 实测复现：watchdog 明明已判定「等待作答超时」并调用
+        #   release_survey，却在这里崩溃 → 问卷永远停在 pending、会话一直
+        #   409，而日志只有一行 "survey watchdog crashed"。修复方式是把
+        #   这个纯计算提前，语义与原来完全一致（skip 拿到的仍是同一个值）。
+        _reason = str(reason or "") or (
+            (st.watchdog_reason if st is not None else "") or "")
+
         if pq is not None:
             try:
                 # ★ 把释放者与原因一并交给 skip()，让它写进回传给模型的
                 #   payload（用户裁定 2026-11-08 第 1 项）。此前这里只传
                 #   request_id，`by`/原因在释放那一刻被丢弃，卡片与模型都
                 #   只能看到「跳过」，无从判断是谁、为什么。
-                _reason = str(reason or "") or (
-                    (st.watchdog_reason if st is not None else "") or "")
                 await self.skip(pq.request_id, reason=_reason, by=by or "user")
             except Exception:  # noqa: BLE001
                 logger.debug("release skip failed", exc_info=True)

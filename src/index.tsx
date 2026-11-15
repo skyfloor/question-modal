@@ -349,6 +349,36 @@ function injectStyles(): void {
       ".qm-set-fallbackclose:hover{opacity:1;background:rgba(127,127,127,.14)}",
       ".qm-set-fallback{position:fixed}",
       ".qm-set-tabbody{display:flex;flex-direction:column;gap:2px;padding:0 28px}",
+      // ── 挂起清理页签（2026-11-15）────────────────────────────────
+      // 表格用和 .qm-set-row 同一套「固定网格」思路：列宽固定，行与行才对得齐。
+      ".qm-set-stalehead{display:flex;flex-direction:column;gap:10px;padding:4px 0 12px}",
+      ".qm-set-stalehint{font-size:12px;line-height:1.6;",
+      "color:var(--app-text-secondary,#64748b)}",
+      ".qm-set-stalebtns{display:flex;gap:8px;align-items:center}",
+      ".qm-set-stalemsg{font-size:12px;line-height:1.5;padding:8px 12px;border-radius:8px;",
+      "margin:0 0 10px;word-break:break-all}",
+      ".qm-set-stalemsg[data-qm-stale-msg=ok]{background:#ecfdf5;color:#047857}",
+      ".qm-set-stalemsg[data-qm-stale-msg=warn]{background:#fffbeb;color:#b45309}",
+      ".qm-set-stalemsg[data-qm-stale-msg=error]{background:#fef2f2;color:#b91c1c}",
+      ".qm-set-stalemsg[data-qm-stale-msg=info]{background:var(--app-fill-subtle,#f8fafc);",
+      "color:var(--app-text-secondary,#64748b)}",
+      ".qm-set-staleempty{font-size:12px;padding:24px 0;text-align:center;",
+      "color:var(--app-text-tertiary,#94a3b8)}",
+      ".qm-set-staletable{border-top:1px solid var(--app-border,#e5e7eb)}",
+      ".qm-set-stalerow{display:grid;grid-template-columns:minmax(0,1fr) 190px 96px 132px;",
+      "gap:12px;align-items:center;padding:10px 0;",
+      "border-bottom:1px solid var(--app-border,#eef1f5);font-size:12px}",
+      ".qm-set-staleheader{font-size:11px;font-weight:600;padding:8px 0;",
+      "color:var(--app-text-tertiary,#94a3b8)}",
+      ".qm-set-stalec1{display:flex;flex-direction:column;gap:3px;min-width:0}",
+      ".qm-set-staletitle{font-size:12px;overflow:hidden;text-overflow:ellipsis;",
+      "white-space:nowrap;color:var(--app-text-primary,#1e293b)}",
+      ".qm-set-staletag{font-size:10px;line-height:1;padding:3px 6px;border-radius:4px;",
+      "background:#fef3c7;color:#b45309;align-self:flex-start;white-space:nowrap}",
+      ".qm-set-stalec2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
+      "font-size:11px;color:var(--app-text-secondary,#64748b)}",
+      ".qm-set-stalec3{font-size:12px;color:var(--app-text-primary,#1e293b);white-space:nowrap}",
+      ".qm-set-stalec4{display:flex;gap:6px;justify-content:flex-end}",
       // ── 行布局：固定网格，彻底消除「控件宽度不同 → 每行错位」──
       // label 列弹性、控件列右对齐；行距与分隔线对齐参考稿（实线浅分隔）。
       ".qm-set-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;",
@@ -1225,6 +1255,147 @@ async function fetchSessionPrefs(): Promise<{ items: any[]; count: number; ok: b
     const items = (d && Array.isArray(d.sessions)) ? d.sessions : [];
     return { items, count: (d && d.count) || items.length, ok: true };
   } catch (_) { return { items: [], count: 0, ok: false }; }
+}
+
+// ══════════ 挂起问卷清理（2026-11-15）══════════
+//
+// 三件事分开：扫描（只读）/ 释放（收尾 state）/ 终止会话（兜底停 chat）。
+// 后端返回的 `terminable` / `reason_code` 是唯一判据，前端只渲染与置灰，
+// 不重算阈值或可终止性 —— 否则「面板说能终止、点下去没对象」会两边打架。
+
+/** 扫描静默超过 30 分钟的挂起问卷。只读，不改变任何状态。 */
+async function fetchStaleSurveys(): Promise<any> {
+  const url = apiUrl("/question-modal/stale-surveys") + "?older_than_sec=1800";
+  const resp = await fetch(url, { headers: authHeaders() });
+  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  return await resp.json();
+}
+
+/** 释放指定（或全部）挂起问卷。`all=true` 时后端只取当前扫描结果那一批。 */
+async function postStaleRelease(body: any): Promise<any> {
+  const resp = await fetch(apiUrl("/question-modal/stale-surveys/release"), {
+    method: "POST", headers: authHeaders(), body: JSON.stringify(body),
+  });
+  const d = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((d && d.detail) || ("HTTP " + resp.status));
+  return d;
+}
+
+/** 终止会话（兜底）。实测常见 stopped=false —— 会话往往早已不存在。 */
+async function postStaleTerminate(ids: string[]): Promise<any> {
+  const resp = await fetch(apiUrl("/question-modal/stale-surveys/terminate"), {
+    method: "POST", headers: authHeaders(),
+    body: JSON.stringify({ tool_call_ids: ids }),
+  });
+  const d = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error((d && d.detail) || ("HTTP " + resp.status));
+  return d;
+}
+
+/** 扫描并重绘。失败时把原因写进 msg（不静默、不假装空列表）。 */
+async function staleScan(): Promise<void> {
+  settingsState.stale.busy = true;
+  settingsState.stale.msg = "";
+  settingsRenderPanel();
+  try {
+    const d = await fetchStaleSurveys();
+    settingsState.stale.rows = (d && d.items) || [];
+    settingsState.stale.scanned = true;
+    settingsState.stale.msgKind = "info";
+  } catch (e: any) {
+    // 扫描失败 ≠ 没有挂起项。必须区分：否则用户会把「请求失败」当成「很干净」。
+    settingsState.stale.rows = [];
+    settingsState.stale.scanned = false;
+    settingsState.stale.msgKind = "error";
+    settingsState.stale.msg = "扫描失败：" + (e && e.message ? e.message : String(e))
+      + "（这不代表没有挂起项，请重试）";
+  } finally {
+    settingsState.stale.busy = false;
+    settingsRenderPanel();
+  }
+}
+
+/** 释放一批问卷，然后重扫。把「失败条数」如实报出来，绝不当成全部成功。 */
+async function staleRelease(ids: string[]): Promise<void> {
+  settingsState.stale.busy = true;
+  settingsState.stale.msg = "";
+  settingsRenderPanel();
+  try {
+    const d = await postStaleRelease({ tool_call_ids: ids, older_than_sec: 1800 });
+    // 只用后端的分层计数：released=本次新收尾、already=本来就终态、failed=没成功。
+    // 不能把 already 算进「已释放」，否则重复点一次会显示「又释放了 1 条」。
+    const released = Number(d && d.released) || 0;
+    const already = Number(d && d.already) || 0;
+    const failed = Number(d && d.failed) || 0;
+    settingsState.stale.msgKind = failed > 0 ? "warn" : "ok";
+    settingsState.stale.msg = failed > 0
+      ? `释放 ${released} 条，${failed} 条未成功（见日志）`
+        + (already ? `；${already} 条此前已释放` : "")
+      : released > 0
+        ? `已释放 ${released} 条问卷` + (already ? `；${already} 条此前已释放` : "")
+        : `无需释放：${already || ids.length} 条此前已释放`;
+    const fresh = await fetchStaleSurveys();
+    settingsState.stale.rows = (fresh && fresh.items) || [];
+    settingsState.stale.scanned = true;
+  } catch (e: any) {
+    settingsState.stale.msgKind = "error";
+    settingsState.stale.msg = "释放失败：" + (e && e.message ? e.message : String(e));
+  } finally {
+    settingsState.stale.busy = false;
+    settingsRenderPanel();
+  }
+}
+
+/** 批量释放：后端按「当前扫描结果」重取目标，避免清掉阈值外的 pending。 */
+async function staleReleaseAll(): Promise<void> {
+  settingsState.stale.busy = true;
+  settingsState.stale.msg = "";
+  settingsRenderPanel();
+  try {
+    const d = await postStaleRelease({ all: true, older_than_sec: 1800 });
+    const released = Number(d && d.released) || 0;
+    const failed = Number(d && d.failed) || 0;
+    const already = Number(d && d.already) || 0;
+    const req = Number(d && d.requested) || 0;
+    settingsState.stale.msgKind = failed > 0 ? "warn" : "ok";
+    settingsState.stale.msg = req === 0
+      ? "当前没有可释放项"
+      : failed > 0
+        ? `释放 ${released}/${req} 条，${failed} 条未成功（见日志）`
+        : `已释放 ${released} 条问卷` + (already ? `；${already} 条此前已释放` : "");
+    const fresh = await fetchStaleSurveys();
+    settingsState.stale.rows = (fresh && fresh.items) || [];
+    settingsState.stale.scanned = true;
+  } catch (e: any) {
+    settingsState.stale.msgKind = "error";
+    settingsState.stale.msg = "批量释放失败：" + (e && e.message ? e.message : String(e));
+  } finally {
+    settingsState.stale.busy = false;
+    settingsRenderPanel();
+  }
+}
+
+/** 终止会话（兜底）。stopped=false 时如实说明「会话已不存在」，不谎报成功。 */
+async function staleTerminate(ids: string[]): Promise<void> {
+  settingsState.stale.busy = true;
+  settingsState.stale.msg = "";
+  settingsRenderPanel();
+  try {
+    const d = await postStaleTerminate(ids);
+    const res = (d && d.results) || [];
+    const stopped = res.filter((r: any) => r && r.stopped).length;
+    const gone = res.filter((r: any) => r && !r.stopped).length;
+    settingsState.stale.msgKind = stopped > 0 ? "ok" : "warn";
+    settingsState.stale.msg = stopped > 0
+      ? `已终止 ${stopped} 个会话` + (gone ? `；${gone} 个会话已不存在` : "")
+      : `${gone} 个会话已不存在或已空闲，无需终止（问卷数据仍可用「释放」清理）`;
+  } catch (e: any) {
+    settingsState.stale.msgKind = "error";
+    settingsState.stale.msg = "终止会话失败：" + (e && e.message ? e.message : String(e));
+  } finally {
+    settingsState.stale.busy = false;
+    settingsRenderPanel();
+  }
 }
 
 /** Create/update a custom template.  Resolves to {ok,error?,items?} so the
@@ -6523,6 +6694,19 @@ const settingsState: {
    *  2026-11-14 用户报缺陷：结果只存内存 → 刷新即丢、切频道看不到。
    *  改为以后端为准，这里只做渲染缓存。 */
   notifyLog: Record<string, any[]>;
+  /** 挂起清理页签（2026-11-15 新增）。
+   *
+   *  只存「渲染所需」，判断全在后端：哪些算挂起、能不能终止、时长多少，
+   *  都由 `GET /stale-surveys` 决定。前端不再重算一套阈值，否则两边口径
+   *  会分叉（与 notifyChannels 同一处理原则）。
+   */
+  stale: {
+    rows: any[];
+    scanned: boolean;
+    busy: boolean;
+    msg: string;
+    msgKind: string;
+  };
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
   sessData: null, cfg: null, cfgError: "", chatId: "",
@@ -6534,6 +6718,7 @@ const settingsState: {
   conflictNote: "",
   notifyChannels: [], notifyCurrent: "off", notifyTesting: "", notifyMsg: {},
   notifyLog: {},
+  stale: { rows: [], scanned: false, busy: false, msg: "", msgKind: "info" },
 };
 let settingsPanelRoot: any = null;
 
@@ -7546,6 +7731,12 @@ const SETTINGS_TABS: Array<{ key: string; label: string; hint: string }> = [
   { key: "global", label: "全局配置", hint: "" },
   // 参考稿提示词页没有顶部说明行，第一行就是「模板库共享范围」。
   { key: "prompt", label: "提示词", hint: "" },
+  // 2026-11-15 新增：挂起问卷清理。背景是 manual 问卷本该 30 分钟自动释放，
+  // 但 release_survey 的 _reason UnboundLocalError 让 watchdog 释放失败，
+  // 问卷永远停在 pending、对应会话一直 409。bug 已修，但历史残骸不会自愈
+  // （pending 记录可能已丢失、只剩 survey_state；会话文件也早已不存在），
+  // 所以需要一个能「先看清、再手动处置」的页签。
+  { key: "stale", label: "挂起清理", hint: "" },
 ];
 
 /** Keys a per-session override may hold.
@@ -8371,6 +8562,109 @@ function settingsTabBody(
     }
 
 
+  } else if (tab === "stale") {
+    // ═══════════════ 挂起清理（2026-11-15 新增）═══════════════
+    //
+    // 只读扫描 → 逐条列出 → 两个动作分开给（用户裁定）：
+    //   · 释放       = 让插件不再认为它在等人（永远可做）
+    //   · 终止会话   = 兜底，让宿主 chat 真正停下（多数情况无对象，如实置灰）
+    //
+    // 阈值固定 30 分钟，与 question_service._SURVEY_MANUAL_WATCHDOG_SEC
+    // 保持一致 —— 低于它的问卷 watchdog 自己会处理，不需要人工介入。
+    const STALE_THRESHOLD_SEC = 1800;
+    const st = settingsState.stale;
+    const rows = (st && st.rows) || [];
+
+    bodyKids.push(R.createElement("div", { className: "qm-set-stalehead", key: "sh" }, [
+      R.createElement("div", { className: "qm-set-stalehint", key: "h" },
+        "列出静默超过 30 分钟仍未处理的问卷。这类问卷会让对应会话一直处于"
+        + "「等待作答」状态（发新消息会 409）。先扫描、再按需释放；"
+        + "「终止会话」仅在问卷仍真正挂着时才有对象。"),
+      R.createElement("div", { className: "qm-set-stalebtns", key: "b" }, [
+        R.createElement("button", {
+          type: "button", className: "qm-set-btn", key: "scan",
+          "data-qm-stale-scan": "1",
+          disabled: !!(st && st.busy),
+          onClick: () => { void staleScan(); },
+        }, (st && st.busy) ? "扫描中…" : "扫描"),
+        R.createElement("button", {
+          type: "button", className: "qm-set-btn qm-set-btnprimary", key: "all",
+          "data-qm-stale-release-all": "1",
+          // 没有可释放项就禁用：避免点出一个「成功 0 条」的空操作。
+          disabled: !!(st && st.busy) || rows.length === 0,
+          title: rows.length ? `释放全部 ${rows.length} 条挂起问卷` : "当前没有可释放项",
+          onClick: () => { void staleReleaseAll(); },
+        }, "全部释放"),
+      ]),
+    ]));
+
+    if (st && st.msg) {
+      bodyKids.push(R.createElement("div", {
+        className: "qm-set-stalemsg", key: "sm",
+        "data-qm-stale-msg": st.msgKind || "info",
+      }, st.msg));
+    }
+
+    if (st && st.scanned && rows.length === 0) {
+      bodyKids.push(R.createElement("div", {
+        className: "qm-set-staleempty", key: "se", "data-qm-stale-empty": "1",
+      }, "没有超过 30 分钟仍未处理的问卷。"));
+    }
+
+    if (rows.length) {
+      const head = R.createElement("div", {
+        className: "qm-set-stalerow qm-set-staleheader", key: "rh",
+      }, [
+        R.createElement("span", { className: "qm-set-stalec1", key: "c1" }, "问卷"),
+        R.createElement("span", { className: "qm-set-stalec2", key: "c2" }, "归属"),
+        R.createElement("span", { className: "qm-set-stalec3", key: "c3" }, "挂起"),
+        R.createElement("span", { className: "qm-set-stalec4", key: "c4" }, "操作"),
+      ]);
+      const body = rows.map((r: any) => {
+        const canTerm = !!r.terminable;
+        return R.createElement("div", {
+          className: "qm-set-stalerow", key: r.tool_call_id,
+          "data-qm-stale-row": r.tool_call_id,
+        }, [
+          R.createElement("span", { className: "qm-set-stalec1", key: "c1" }, [
+            R.createElement("span", { className: "qm-set-staletitle", key: "t" },
+              r.title || "(无标题)"),
+            // 把「为什么它没被自动释放」直接写在行上，省得再去翻日志。
+            R.createElement("span", { className: "qm-set-staletag", key: "g" },
+              r.reason_code === "orphan-no-pending" ? "孤儿·无待答记录"
+                : r.reason_code === "orphan-future-dead" ? "孤儿·唤醒已失效"
+                : r.reason_code === "no-future" ? "无唤醒句柄"
+                : r.reason_code === "future-done" ? "已结束未收尾"
+                : "静默挂起"),
+          ]),
+          R.createElement("span", { className: "qm-set-stalec2", key: "c2" },
+            (r.agent_id || "-") + (r.session_id ? " · " + r.session_id : "")),
+          R.createElement("span", { className: "qm-set-stalec3", key: "c3" },
+            r.idle_text),
+          R.createElement("span", { className: "qm-set-stalec4", key: "c4" }, [
+            R.createElement("button", {
+              type: "button", className: "qm-set-mini", key: "rel",
+              "data-qm-stale-release": r.tool_call_id,
+              disabled: !!(st && st.busy),
+              onClick: () => { void staleRelease([r.tool_call_id]); },
+            }, "释放"),
+            R.createElement("button", {
+              type: "button", className: "qm-set-mini", key: "term",
+              "data-qm-stale-terminate": r.tool_call_id,
+              // 置灰而不是隐藏：让用户知道这个动作存在、以及为什么此刻不能用。
+              disabled: !!(st && st.busy) || !canTerm,
+              title: canTerm
+                ? "终止该会话并取消其前台工具调用"
+                : "该问卷已无活跃等待，对应会话通常也已不存在，无需终止",
+              onClick: () => { void staleTerminate([r.tool_call_id]); },
+            }, "终止会话"),
+          ]),
+        ]);
+      });
+      bodyKids.push(R.createElement("div", {
+        className: "qm-set-staletable", key: "tbl", "data-qm-stale-table": "1",
+      }, [head].concat(body)));
+    }
   }
 
   return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);

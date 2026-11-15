@@ -1067,6 +1067,41 @@ def _post_host_api(
             "X-Agent-Id": aid,
         },
     )
+    return _send_host_request(req, timeout)
+
+
+def _post_host_api_query(
+    path: str, params: dict, agent_id: str = "", timeout: float = 20.0,
+) -> tuple[int, Any]:
+    """POST 到宿主 API，参数走 **query string** 而非 JSON body。
+
+    为什么需要这一支：宿主有些端点只声明 query 参数（如
+    `POST /console/chat/stop?chat_id=...&cancel_reason=...`），给它发 JSON
+    body 会因缺必填 query 而 422。复用 `_post_host_api_query` 的其余约定
+    （回环地址、X-Agent-Id、只用标准库、返回 ``(status, body)``）。
+
+    body 显式给空字节：`urllib` 在 data 为 None 时会把方法降级成 GET。
+    """
+    import urllib.parse
+    import urllib.request
+
+    aid = agent_id or _current_agent_id()
+    if not aid:
+        return 0, "无法确定 agent_id（多 agent 环境下必须显式传入）"
+    qs = urllib.parse.urlencode({k: v for k, v in params.items() if v != ""})
+    url = _host_api_base() + path + (("?" + qs) if qs else "")
+    req = urllib.request.Request(
+        url, data=b"", method="POST",
+        headers={"Content-Type": "application/json", "X-Agent-Id": aid},
+    )
+    return _send_host_request(req, timeout)
+
+
+def _send_host_request(req: Any, timeout: float) -> tuple[int, Any]:
+    """执行一次宿主请求，统一异常翻译成 ``(status, body)``（不抛）。"""
+    import urllib.error
+    import urllib.request
+
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
             return resp.status, resp.read().decode("utf-8", "replace")
@@ -2578,6 +2613,258 @@ def build_router() -> APIRouter:
             "removed": len(removed),
             "removed_sample": removed[:10],
         }
+
+    # ── 挂起问卷扫描 / 释放 / 终止会话（2026-11-15 新增）─────────────
+    #
+    # 背景（实测，非推测）：manual 问卷本该 30 分钟自动释放
+    # （question_service._SURVEY_MANUAL_WATCHDOG_SEC=1800），但
+    # `release_survey` 的 `_reason` UnboundLocalError 使 watchdog
+    # 「判定超时 → 调用释放 → 崩溃」三段式走不完，问卷永远停在 pending。
+    # bug 已修，但**历史残骸**不会自己好：
+    #   · pending_questions.json 记录已丢失、只剩 survey_states 的孤儿；
+    #   · 对应的会话文件早已不存在，没有任何对象可「终止」。
+    # 故需要一组端点把残骸显式扫出来并手动处置。
+    #
+    # 与 `/survey-prune` 的关系：那个按「有没有 request_id / 前缀」批量删；
+    # 这里按「是否 pending 且静默超阈值」逐条列出，**先看清再动手**。
+
+    def _stale_rows(older_than_sec: float) -> list[dict]:
+        """汇总所有静默超过阈值的 pending 问卷（只读，不改任何状态）。
+
+        数据源有两份，缺一不可：
+          · `svc._surveys()`  —— 内存表，含 state 全貌（status/mode/title…）
+          · `svc._pending`    —— 内存 pending 表，决定「还有没有活 Future」
+
+        只读 `survey_states.json` 不够：那只是落盘快照，标签/askuser 的
+        实时状态以内存为准；而只读 pending 又会漏掉全部孤儿（它们的
+        pending 记录已经没了）。两份合并才能既看到孤儿、又看到活体。
+        """
+        svc = get_question_service()
+        now = time.time()
+        states = svc._surveys()
+        # request_id / tool_call_id 双索引，孤儿可能只有其中一个能对上
+        pending_by_tcid: dict[str, Any] = {}
+        pending_by_rid: dict[str, Any] = {}
+        for pq in list(svc._pending.values()):
+            if getattr(pq, "tool_call_id", ""):
+                pending_by_tcid[str(pq.tool_call_id)] = pq
+            pending_by_rid[str(pq.request_id)] = pq
+
+        rows: list[dict] = []
+        for tcid, st in list(states.items()):
+            if getattr(st, "status", "") != "pending":
+                continue
+            if getattr(st, "released", False):
+                continue
+            base = (getattr(st, "progress_at", 0) or 0) or (
+                getattr(st, "created_at", 0) or 0) or now
+            idle = now - base
+            if idle < older_than_sec:
+                continue
+            pq = pending_by_tcid.get(str(tcid)) or pending_by_rid.get(
+                str(getattr(st, "request_id", "") or ""))
+            future = getattr(pq, "future", None) if pq is not None else None
+            has_live = bool(pq is not None and future is not None
+                            and not future.done()
+                            and not getattr(pq, "orphan", False))
+            if pq is None:
+                code = "orphan-no-pending"
+            elif getattr(pq, "orphan", False):
+                code = "orphan-future-dead"
+            elif future is None:
+                code = "no-future"
+            elif future.done():
+                code = "future-done"
+            else:
+                code = "stale-pending"
+            rows.append({
+                "tool_call_id": str(tcid),
+                "request_id": str(getattr(st, "request_id", "") or ""),
+                "session_id": str(getattr(st, "session_id", "") or ""),
+                "agent_id": str(getattr(st, "agent_id", "") or ""),
+                "title": str(getattr(st, "title", "") or ""),
+                "mode": str(getattr(st, "mode", "") or ""),
+                "idle_sec": round(idle, 1),
+                "idle_text": _hm(idle),
+                "created_at": getattr(st, "created_at", None),
+                "progress_at": getattr(st, "progress_at", None),
+                "has_pending": pq is not None,
+                "has_live_future": has_live,
+                "reason_code": code,
+                # 「释放」永远可做（就是把这个 state 收尾）；
+                # 「终止会话」只有存在活 Future（真要唤醒/杀掉什么）时才有意义，
+                # 其余情况宿主会返回 stopped=false，前端据此置灰并说明原因。
+                "releasable": True,
+                "terminable": has_live and bool(
+                    getattr(st, "session_id", "") or getattr(pq, "chat_id", "")),
+            })
+        rows.sort(key=lambda r: r["idle_sec"], reverse=True)
+        return rows
+
+    def _hm(sec: float) -> str:
+        """秒 → 「1天2小时」这类人读文本（只用于展示，不参与判断）。"""
+        sec = int(max(0, sec))
+        if sec < 60:
+            return f"{sec} 秒"
+        if sec < 3600:
+            return f"{sec // 60} 分钟"
+        if sec < 86400:
+            return f"{sec // 3600} 小时 {sec % 3600 // 60} 分钟"
+        return f"{sec // 86400} 天 {sec % 86400 // 3600} 小时"
+
+    @router.get("/stale-surveys")
+    async def get_stale_surveys(
+        older_than_sec: float = Query(default=1800.0),
+    ):
+        """列出静默超过阈值的 pending 问卷（默认 30 分钟，与 watchdog 一致）。
+
+        **只读**：不释放、不清数据、不改任何 state。先看清再决定动哪条。
+        """
+        rows = _stale_rows(older_than_sec)
+        return {
+            "ok": True,
+            "older_than_sec": older_than_sec,
+            "count": len(rows),
+            "releasable": sum(1 for r in rows if r["releasable"]),
+            "terminable": sum(1 for r in rows if r["terminable"]),
+            "items": rows,
+        }
+
+    @router.post("/stale-surveys/release")
+    async def post_stale_release(body: dict | None = None):
+        """释放指定（或全部）挂起问卷：收尾 state + 清 pending + 唤醒 Future。
+
+        与「终止会话」是**两件事**（用户 2026-11-15 裁定分开给）：
+          · 释放 = 让插件这边不再认为它在等人，会话可以继续；
+          · 终止 = 让宿主的 chat 真正停下来（见下一个端点）。
+
+        幂等：已 released 的直接返回 already，不重复写盘。
+        """
+        payload = body if isinstance(body, dict) else {}
+        ids = [str(x) for x in (payload.get("tool_call_ids") or []) if str(x)]
+        want_all = bool(payload.get("all"))
+        older_than = float(payload.get("older_than_sec") or 1800.0)
+        svc = get_question_service()
+
+        if not ids and not want_all:
+            raise HTTPException(
+                status_code=400,
+                detail="必须传 tool_call_ids 或 all=true，拒绝无目标操作",
+            )
+        if want_all:
+            # 只取**当前扫描结果**里的那一批，避免把阈值外的 pending 也清掉。
+            ids = [r["tool_call_id"] for r in _stale_rows(older_than)]
+
+        results = []
+        for tcid in ids:
+            st = svc.get_survey(tcid)
+            if st is None:
+                results.append({"tool_call_id": tcid, "ok": False,
+                                "result": "state-not-found"})
+                continue
+            if getattr(st, "released", False):
+                results.append({"tool_call_id": tcid, "ok": True,
+                                "result": "already"})
+                continue
+            try:
+                changed = await svc.release_survey(
+                    tcid, "manual-admin",
+                    reason="管理员在「挂起清理」页签手动释放",
+                )
+                results.append({"tool_call_id": tcid,
+                                "ok": bool(changed),
+                                "result": "released" if changed else "no-change"})
+            except Exception as exc:  # noqa: BLE001
+                # 单条失败不能中断整批，但必须如实回报，不许吞成成功。
+                logger.warning("stale release failed for %s", tcid[:16],
+                               exc_info=True)
+                results.append({"tool_call_id": tcid, "ok": False,
+                                "result": f"{type(exc).__name__}: {exc}"})
+        ok_n = sum(1 for r in results if r["ok"])
+        # ★ 「本次真正释放」与「本来就是终态」必须分开计数。
+        #   实测踩坑：重复释放同一条时返回 result=already，而 released 仍按
+        #   ok_n 计成 1 → 前端显示「已释放 1 条」，用户会以为这次又清掉一条。
+        #   判据分三层：released=本次新收尾的；already=之前就收过尾的；
+        #   failed=没成功（含 state-not-found 与异常），三者之和 = requested。
+        changed_n = sum(1 for r in results if r["result"] == "released")
+        already_n = sum(1 for r in results if r["result"] == "already")
+        failed_n = len(results) - changed_n - already_n
+        logger.info(
+            "stale-surveys release: changed=%d already=%d failed=%d (all=%s)",
+            changed_n, already_n, failed_n, want_all,
+        )
+        return {
+            "ok": True,
+            "requested": len(ids),
+            "released": changed_n,
+            "already": already_n,
+            "failed": failed_n,
+            "ok_count": ok_n,
+            "results": results,
+        }
+
+    @router.post("/stale-surveys/terminate")
+    async def post_stale_terminate(body: dict | None = None):
+        """兜底：调宿主 `/console/chat/stop` 真正终止会话进程。
+
+        ⚠️ 实测常见结果是 **stopped=false**：orphan 问卷对应的会话往往早已
+        不存在（3/3 条实测如此），此时没有任何东西可停。**必须如实返回**，
+        绝不能因为「反正数据也清了」就报成功——那会让后继排障建立在假事实上。
+        """
+        payload = body if isinstance(body, dict) else {}
+        ids = [str(x) for x in (payload.get("tool_call_ids") or []) if str(x)]
+        if not ids:
+            raise HTTPException(
+                status_code=400, detail="必须传 tool_call_ids，拒绝无目标操作",
+            )
+        svc = get_question_service()
+        results = []
+        for tcid in ids:
+            st = svc.get_survey(tcid)
+            if st is None:
+                results.append({"tool_call_id": tcid, "ok": False,
+                                "stopped": False, "result": "state-not-found"})
+                continue
+            session_id = str(getattr(st, "session_id", "") or "")
+            agent_id = str(getattr(st, "agent_id", "") or "")
+            # 优先用 chat_id；orphan 记录 chat_id 常为空串，宿主支持用
+            # session_id 兜底反查（console.py:605-618），故两者任一都可。
+            chat_id = str(payload.get("chat_id") or "") or session_id
+            if not chat_id:
+                results.append({"tool_call_id": tcid, "ok": False,
+                                "stopped": False, "result": "no-session-id"})
+                continue
+            try:
+                status, text = await asyncio.to_thread(
+                    _post_host_api_query,
+                    "/api/console/chat/stop",
+                    {"chat_id": chat_id, "cancel_reason": "user",
+                     "initiator": "question-modal:stale-cleanup"},
+                    agent_id,
+                )
+            except Exception as exc:  # noqa: BLE001
+                results.append({"tool_call_id": tcid, "ok": False,
+                                "stopped": False,
+                                "result": f"{type(exc).__name__}: {exc}"})
+                continue
+            stopped = False
+            try:
+                stopped = bool(json.loads(text or "{}").get("stopped"))
+            except Exception:  # noqa: BLE001
+                stopped = False
+            results.append({
+                "tool_call_id": tcid,
+                "ok": status == 200,
+                "http": status,
+                "stopped": stopped,
+                # 如实把「没停到」翻译成一句人话，前端直接展示。
+                "result": ("stopped" if stopped
+                           else "session-gone-or-idle"),
+            })
+        logger.info("stale-surveys terminate: %s",
+                    [(r["tool_call_id"][:12], r.get("stopped")) for r in results])
+        return {"ok": True, "requested": len(ids), "results": results}
+
 
     @router.get("/decisions")
     async def get_decisions(
