@@ -154,20 +154,57 @@ _SURVEY_EVENT_BUFFER = 200
 # **正在正常重试的问卷**判成卡死并整卷释放。实测（2026-11-07/08 四例：
 # chatcmpl-tool-97 / b5 / 9f / a6）每题尝试间隔 51~58s，全部死在这条上。
 #
-# 但真正根治的不是数字，而是下面的 `_note_inflight`：**"分析在飞"本身就是
-# 进展**。旧实现只在答案落地时推进 `progress_at`，于是"模型慢"和"循环死"
-# 在判据上长得一模一样，任何阈值都只是碰运气。
+# 但真正根治的不是数字，而是 `inflight_at`（P0-5，2026-11-15 已实现）：
+# **"分析在飞"本身就是进展**。旧实现只在答案落地时推进 `progress_at`，于是
+# "模型慢"和"循环死"在判据上长得一模一样，任何阈值都只是碰运气。
+#
+# ⚠️ 历史订正：本节注释曾声称机制名 `_note_inflight`，但全仓从未有过该函数
+#    （属假注释，违反「别留假代码」纪律）。真实实现落在两处：
+#      · 打标 — `_ai_analyse_one()` 里 await 前 `st.inflight_at = time.time()`，
+#              finally 里清零；
+#      · 折算 — `_inflight_at()` 把它折算成带硬上限的保护时刻，由
+#              `_watchdog_base()` 参与静默时长判定。
 _SURVEY_WATCHDOG_SEC = 300.0
-# REQ-2026-0060 (2026-11-14): manual 问卷同样必须有兜底超时，否则 agent 的
-# Future 会永久挂起（实测卡 61 分钟）。阈值远大于自动模式——人可能在思考或
-# 离开，30 分钟内没有任何作答/跳过动作才由系统超时释放；释放原因如实标注
-# 为系统超时，绝不伪造用户跳过意愿。
+# REQ-2026-0060 (2026-11-14)：manual 问卷同样必须有兜底超时，否则 agent 的
+# Future 会永久挂起（实测卡 61 分钟）。
+#
+# ⚠️ 2026-11-15 起本常量**不再是运行期阈值** —— manual/自动模式的释放阈值
+#    统一由设置项 `release_after_sec` 决定（默认 1800 = 本常量的历史值，
+#    boss 可在「挂起清理」页改成 0/1h/4h/8h，0 = 关闭自动释放）。
+#    保留它是为了两处历史引用仍可读，以及 `_WATCHDOG_SEC_DEFAULT` 的语义锚点。
+#    新增代码请用 `QuestionService._release_after_sec()`，不要直接用本常量。
 _SURVEY_MANUAL_WATCHDOG_SEC = 1800.0
+# ⚠️ 同上，已被 `_SWEEP_HOT_INTERVAL` 取代（全局巡检的 hot 档粒度）。
 _SURVEY_WATCHDOG_TICK = 5.0
+# ── 全局巡检分档（P0-2，2026-11-15）───────────────────────────────
+#
+# HOT = 有页面正在看，或 ai/recommend 模式（后台在推进）：5s 粒度，
+#       与旧 per-survey tick 一致，响应速度不退化。
+# COLD = manual 模式且**无人订阅**：30s 粒度。
+#        这不是省 CPU（单条巡检是微秒级），而是消掉「1800s 阈值配 5s tick
+#        = 每份问卷白醒 360 次」的浪费。
+#
+# ★ 分档只看「有没有 SSE 订阅」，绝不看 mode 决定是否降到 cold ——
+#   ai/recommend 必须恒 hot。2026-11-07/08 四例事故就是"正在正常重试
+#   （每题 51~58s、一次超时+重试 240s）的问卷被判卡死整卷释放"。
+_SWEEP_HOT_INTERVAL = 5.0
+_SWEEP_COLD_INTERVAL = 30.0
+# orphan（reload 后 Future 已死的残骸）自动收尾时限。独立于用户配置：
+# 这是"清理垃圾"而非"释放策略"，不应该因为用户关掉自动释放就一直留着。
+_ORPHAN_RELEASE_AFTER_SEC = 86400.0
+# P0-5（2026-11-15）：单题模型调用允许的尝试次数，用于折算「在飞保护」的硬上限。
+# 与 recommend.py 的 `AI_MAX_ATTEMPTS_PER_QUESTION = 2` 保持一致 ——
+# 这里只做上界估算（保护窗口偏大无害、偏小会误杀），故不反向 import
+# recommend 模块（那会在插件加载期引入循环依赖风险）。
+_AI_ATTEMPTS_PER_QUESTION = 2
 # 设置项非法 / 读不到时的兜底值（与上面的常量保持单一真相源）。
+# ⚠️ 注意：`_WATCHDOG_SEC_DEFAULT` 是「读取失败」时的回落值，**不是**用户
+#    默认值 —— 用户默认值在 plugin.py 的 SETTINGS_SCHEMA 里（1800）。
+#    这里刻意用 300（自动模式旧阈值）作保守回落，因为读取失败通常意味着
+#    配置层有问题，宁可释放得更早也不要让它卡死。
 _WATCHDOG_SEC_DEFAULT = _SURVEY_WATCHDOG_SEC
 _WATCHDOG_SEC_MIN = 30.0
-_WATCHDOG_SEC_MAX = 1800.0
+_WATCHDOG_SEC_MAX_HARD = 28800.0     # 8 小时，与 SETTINGS_SCHEMA.max 一致
 
 # Where the process-wide *state* lives.  Deliberately NOT prefixed with the
 # plugin's module name (``plugin_question_modal``), so it survives the loader's
@@ -256,6 +293,29 @@ class _SharedState:
             value: dict[str, Any] = {}
             self.__dict__["survey_runners"] = value
             return value
+        # ── P0-2/P0-3/P0-5：全局巡检设施（2026-11-15）──────────────
+        #
+        # ⚠️ 同上：旧容器没有这些字段，必须按需创建，否则热重载后
+        #    AttributeError → 端点 500（阶段 0 的 `surveys` 就这么踩过）。
+        #
+        # sweep_task/sweep_generation 承载「唯一一个巡检循环」：
+        # 每代 reload 必须先 cancel 旧代再起新代，否则两代并行 ——
+        # 旧 task 跑的是旧代码对象（见 `_prune_stale_runners` 的同类事故：
+        # 僵尸 task 并发 persist 曾让 survey_states.json 整个消失）。
+        if name == "sweep_task":
+            self.__dict__["sweep_task"] = None
+            return None
+        if name == "sweep_generation":
+            self.__dict__["sweep_generation"] = 0
+            return 0
+        if name == "sweep_last_checked":
+            value: dict[str, float] = {}
+            self.__dict__["sweep_last_checked"] = value
+            return value
+        if name == "gc_warned":
+            value: set[str] = set()
+            self.__dict__["gc_warned"] = value
+            return value
         raise AttributeError(
             f"{type(self).__name__!r} object has no attribute {name!r}"
         )
@@ -276,6 +336,11 @@ _GC_PENDING_MAX_AGE_SECONDS = 365 * 24 * 3600.0
 # plenty for that, and keeps the file from growing without bound.
 _GC_ORPHAN_MAX_AGE_SECONDS = 7 * 24 * 3600.0
 _GC_MAX_PENDING = 100
+# D6（2026-11-15 boss 裁定）：pending 跨过每 50 条档位时告警一次（不阻断）。
+# 关闭自动释放（release_after_sec=0）后 pending 不再有实际硬上限 ——
+# 容量裁剪只裁无活 Future 的记录 —— 所以「正在堆积」必须能被日志发现，
+# 否则要等到某个会话卡死 409 才察觉。
+_GC_PENDING_WARN_AT = 50
 
 
 @dataclass
@@ -352,6 +417,14 @@ _STATE_FIELD_DEFAULTS: dict = {
     "submitted_at": None, "orphan": False, "rev": 0, "submitted_by": "",
     "progress_at": 0.0, "watchdog_reason": "", "skip_reason": "",
     "released": False, "prefs": dict,
+    # P0-5（2026-11-15）：在飞分析标记。放进这张表后，
+    # `get_survey()` 会自动为跨代际旧实例补齐，无需在每个读取点写 getattr。
+    "inflight_at": 0.0,
+    # P0-2（2026-11-15）：全局巡检看到的上一轮 mode。
+    # 旧 per-survey 循环用局部变量 `last_mode` 实现「模式切换后重新计时」；
+    # 全局循环没有每卷局部状态，改由 state 字段承担。
+    # 不持久化（to_json 不写）：重启后从 None 起算，语义正确。
+    "sweep_seen_mode": None,
 }
 
 
@@ -415,6 +488,25 @@ class SurveyState:
     # 判据就会误判"已释放"而**永不唤醒 agent**（2026-11-07 实测踩到，Future
     # 一直挂着，chat 永久 409）。两者是不同的事：state 终态 ≠ agent 被放行。
     released: bool = False
+    # ── 在飞分析标记（P0-5，2026-11-15）────────────────────────────
+    #
+    # 「分析在飞」本身就是进展 —— 这是本文件顶部 :157 注释长期声称、
+    # 但此前**从未实现**的机制（全仓只存在于那句注释里，属假注释）。
+    #
+    # 为什么必须补：巡检只看 progress_at 时，"模型慢"与"循环死"在判据上
+    # 长得一模一样。2026-11-07/08 四例事故（chatcmpl-tool-97/b5/9f/a6）
+    # 就是正在正常重试（每题 51~58s、一次超时+重试需 240s）的问卷被判
+    # 卡死整卷释放。有了这个标记，慢模型不再被误判。
+    #
+    # ★ 语义：> 0 = 有模型调用正在进行，值为该次调用**开始**的时刻。
+    #   0 = 无在飞调用。消费者必须经 `_inflight_grace()` 折算，不能直接
+    #   拿它当"永不超时"的保护 —— 网络黑洞下调用可能永不返回。
+    inflight_at: float = 0.0
+
+    # P0-2（2026-11-15）：全局巡检上一轮看到的 mode（None = 尚未观察）。
+    # 用于「模式切换后从切换时刻重新计时」，等价于旧 per-survey 循环里
+    # `_watchdog_loop` 的局部变量 `last_mode`。**不持久化**。
+    sweep_seen_mode: str | None = None
 
     def to_json(self) -> dict:
         return {
@@ -1149,17 +1241,32 @@ class QuestionService:
                 # 若同时出现两行（via=runner 和 via=analyze-http），就是重复分析。
                 logger.info("analyze-request: tcid=%s q=%s (via=runner)",
                             tool_call_id[:24], real_idx)
-                res = await _load_analysis_engine().analyze_survey(
-                    questions=st.questions,
-                    title=st.title or "",
-                    model_id=str(_prefs.get("model_id") or ""),
-                    with_context=bool(_prefs.get("with_context")),
-                    session_id=st.session_id,
-                    agent_id=st.agent_id,
-                    question_index=real_idx,
-                    answers=st.answers or {},
-                    timeout_sec=float(_prefs.get("model_timeout_sec") or 0),
-                )
+                # P0-5：标记「分析在飞」。巡检看到它就知道模型正在工作，
+                # 不把慢模型误判成循环卡死（2026-11-07/08 四例事故）。
+                # 用 try 包住：跨代际旧实例可能没有该属性（见 :1130 同类坑）。
+                try:
+                    st.inflight_at = time.time()
+                except Exception:  # noqa: BLE001
+                    pass
+                try:
+                    res = await _load_analysis_engine().analyze_survey(
+                        questions=st.questions,
+                        title=st.title or "",
+                        model_id=str(_prefs.get("model_id") or ""),
+                        with_context=bool(_prefs.get("with_context")),
+                        session_id=st.session_id,
+                        agent_id=st.agent_id,
+                        question_index=real_idx,
+                        answers=st.answers or {},
+                        timeout_sec=float(_prefs.get("model_timeout_sec") or 0),
+                    )
+                finally:
+                    # 无论成功、失败还是被取消，都必须清标记 ——
+                    # 残留会让巡检一直认为"在飞"，反而永不释放。
+                    try:
+                        st.inflight_at = 0.0
+                    except Exception:  # noqa: BLE001
+                        pass
                 per = (res or {}).get("per_question") or []
                 mine = per[0] if per else None
                 if mine and not mine.get("failed") and mine.get("choice"):
@@ -1268,85 +1375,251 @@ class QuestionService:
             self.stop_runner(tool_call_id)
         self.ensure_runner(tool_call_id)
 
-    def _watchdogs(self) -> dict[str, Any]:
-        shared = self._shared()
-        table = getattr(shared, "__dict__", {}).get("survey_watchdogs")
-        if not isinstance(table, dict):
-            table = {}
-            shared.survey_watchdogs = table
-        return table
+    # ── 全局巡检（P0-2，2026-11-15）──────────────────────────────────
+    #
+    # 旧形态：每份问卷一个 `_watchdog_loop` 协程，5s tick，释放后 return。
+    # 三个问题：
+    #   ① 协程数随 pending 线性增长，且关闭自动释放后**永不退出**
+    #      （100 条挂起 = 100 个协程空转到底）；
+    #   ② manual 阈值 1800s 却按 5s tick 检查 = 每份问卷白醒 360 次；
+    #   ③ `ensure_watchdog` 只在 create 时调用 → reload 后恢复出来的
+    #      orphan 记录**完全无人纳管**，要等 7 天 GC 才消失
+    #      （这正是「挂起清理」页签必须存在的原因）。
+    #
+    # 新形态：进程内**唯一一个** `_sweep_loop`，遍历全部 pending，
+    # 按「是否被 SSE 订阅」分档节流（D2）。无迁移、无组成员维护。
+    def _sweep_state(self) -> _SharedState:
+        return self._shared()
 
-    def ensure_watchdog(self, tool_call_id: str) -> None:
-        """Start a watchdog for this survey if one is not already running."""
-        if not tool_call_id:
-            return
-        table = self._watchdogs()
-        if tool_call_id in table:
-            cur = table.get(tool_call_id)
-            if cur is not None and not cur.done():
-                return
+    def set_release_provider(self, fn: Any) -> None:
+        """注入「读取挂起自动释放阈值」的读取器（由 plugin.py 在注册时调用）。
+
+        ★ 为什么用注入而不是直接 import：`plugin.py` 顶层 import 了本模块，
+          本模块若反过来 import plugin 就是循环依赖 —— 加载期直接炸。
+          而设置解析（`resolve_effective`）与落盘（`_load_prefs`）都在
+          plugin 侧，所以让它把读取器推进来。
+
+        ★ 读不到时**返回默认 1800**（= 保持既有行为），绝不留 0。
+          0 表示"关闭自动释放"，把"读取失败"误当成 0 会让系统静默停掉
+          所有兜底释放 —— 那是把配置故障升级成会话永久 409。
+        """
+        self._shared().release_provider = fn
+
+    def _release_after_sec(self) -> float:
+        """当前生效的自动释放阈值（秒）。0 = 关闭；读取失败 → 默认 1800。"""
+        fn = getattr(self._shared(), "release_provider", None)
+        if fn is None:
+            return _WATCHDOG_SEC_DEFAULT
+        try:
+            raw = fn()
+        except Exception:  # noqa: BLE001 — 读取器坏了也不能让巡检停摆
+            logger.warning("sweep: release_provider failed, fallback default",
+                           exc_info=True)
+            return _WATCHDOG_SEC_DEFAULT
+        try:
+            val = float(raw) if raw is not None else _WATCHDOG_SEC_DEFAULT
+        except (TypeError, ValueError):
+            return _WATCHDOG_SEC_DEFAULT
+        # 0 是合法值（关闭），负数是脏数据 → 按关闭处理太危险，回默认。
+        if val < 0:
+            return _WATCHDOG_SEC_DEFAULT
+        if val > _WATCHDOG_SEC_MAX_HARD:
+            return _WATCHDOG_SEC_MAX_HARD
+        return val
+
+    def ensure_sweep(self) -> None:
+        """确保全局巡检循环在跑（幂等；每代 reload 只保留一个）。
+
+        ★ R3（契约 v3）：必须先 cancel 旧代 task 再起新代。
+          旧代 task 跑的是**旧版的代码对象** —— 这是 `_prune_stale_runners`
+          记录过的事故同源（僵尸 task 并发 persist 曾让
+          survey_states.json 整个文件消失）。两代巡检并行还会双重释放。
+        """
+        shared = self._shared()
+        prev = shared.sweep_task
+        if prev is not None and not prev.done():
+            prev.cancel()
+            logger.info("sweep:pruned previous generation (gen=%s)",
+                        shared.sweep_generation)
         try:
             loop = asyncio.get_running_loop()
         except RuntimeError:
-            return          # 没有事件循环（纯同步上下文）→ 无看门狗，不报错
-        table[tool_call_id] = loop.create_task(
-            self._watchdog_loop(tool_call_id),
-        )
+            return          # 无事件循环（纯同步上下文）→ 无巡检，不报错
+        shared.sweep_generation = int(shared.sweep_generation or 0) + 1
+        shared.sweep_task = loop.create_task(self._sweep_loop())
+        logger.info("sweep:started gen=%s", shared.sweep_generation)
 
-    def stop_watchdog(self, tool_call_id: str) -> None:
-        task = self._watchdogs().pop(tool_call_id, None)
-        if task is not None and not task.done():
-            task.cancel()
+    def _sweep_alive(self) -> bool:
+        task = self._shared().sweep_task
+        return task is not None and not task.done()
 
-    async def _watchdog_loop(self, tool_call_id: str) -> None:
-        """Release a survey whose driver stopped making progress."""
-        last_mode: str | None = None
+    async def _sweep_loop(self) -> None:
+        """全局巡检循环（进程内唯一一个）。
+
+        ★ 代际自检（R3，2026-11-15）：热重载后旧代 task 不会立刻死 ——
+          `task.cancel()` 只是**请求**取消，协程要到下一个 await 点才真正
+          退出；若那个 await 卡住（比如巡检正等 release_survey 里的锁），
+          两代会短暂并行。旧代跑的是**旧版代码对象**，与
+          `_prune_stale_runners` 记录的事故同源（僵尸 task 并发 persist
+          曾让 survey_states.json 整个文件消失）。
+
+          修法不是靠"等它死"，而是让它**自己发现已不是当前代就退出**：
+          每轮醒来先比对 `sweep_task is 自己`，不等就 return。
+          即使 cancel 请求被吞掉，也不会出现两代长期并行。
+        """
+        my_task = asyncio.current_task()
+        while True:
+            await asyncio.sleep(_SWEEP_HOT_INTERVAL)
+            # 代际自检：我已不是当前代 → 静默退出（不打日志，避免刷屏；
+            # 新代启动时那条 `sweep:started gen=N` 已足够定位）
+            if self._shared().sweep_task is not my_task:
+                return
+            try:
+                await self._sweep_once()
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 — 巡检自身绝不能拖垮问卷
+                logger.warning("sweep crashed", exc_info=True)
+
+    async def _sweep_once(self) -> None:
+        """一轮巡检：orphan 收敛 + 超阈值释放 + 堆积告警。"""
+        now = time.time()
+        shared = self._shared()
+        last_checked = shared.sweep_last_checked
+        limit = self._release_after_sec()
+
+        # 清掉已不存在的 tcid，避免 last_checked 无界增长
         try:
-            while True:
-                await asyncio.sleep(_SURVEY_WATCHDOG_TICK)
-                st = self.get_survey(tool_call_id)
-                if st is None:
-                    return
-                if st.status != "pending" or st.orphan:
-                    return
-                now = time.time()
-                if last_mode is not None and st.mode != last_mode:
-                    # 模式切换（manual <-> ai/recommend）后从切换时刻重新计时，
-                    # 保留旧实现「切回自动重新计时」的语义；manual 期间不再像
-                    # 旧实现那样每 tick 刷新 progress_at（那会让 manual 永不超时）。
-                    st.progress_at = time.time()
-                last_mode = st.mode
-                base = st.progress_at or st.created_at or now
+            alive_ids = set(self._surveys().keys())
+        except Exception:  # noqa: BLE001
+            alive_ids = set()
+        for stale_id in [k for k in last_checked if k not in alive_ids]:
+            last_checked.pop(stale_id, None)
+
+        for tcid, st in list(self._surveys().items()):
+            try:
+                if st.status != "pending":
+                    continue
+
+                # ── orphan 分支（P0-4）──────────────────────────────
+                # reload 后恢复的记录 Future 已死（新旧进程不共享事件循环），
+                # 释放它对活会话毫无影响，纯粹是让滞留卡片与磁盘收敛。
+                # 此项不读用户配置：它不是"策略"而是"清理残骸"。
+                if getattr(st, "orphan", False):
+                    age = now - float(getattr(st, "created_at", 0.0) or 0.0)
+                    if age >= _ORPHAN_RELEASE_AFTER_SEC:
+                        logger.warning(
+                            "sweep:orphan-release %s idle=%.0fs (>%.0fs)",
+                            tcid[:16], age, _ORPHAN_RELEASE_AFTER_SEC,
+                        )
+                        await self.release_survey(
+                            tcid, "sweep",
+                            reason="重启残留已超 24 小时，自动收尾",
+                        )
+                    continue
+
+                if getattr(st, "released", False):
+                    continue
+
+                # ── 关闭模式：只统计，不释放（D1）───────────────────
+                if limit <= 0:
+                    continue
+
+                # ── R1：分档只按 SSE 订阅；ai/recommend 强制 hot ─────
+                #
+                # ★ 绝不可按 mode 把 ai 降为 cold。2026-11-07/08 四例事故
+                #   （chatcmpl-tool-97/b5/9f/a6）就是"正在正常重试的问卷被判
+                #   卡死"：每题尝试间隔 51~58s，一次超时+重试需 240s。
+                #   ai 恒走 hot 档，冷档只服务 manual 的"无人看"场景。
+                subscribed = bool(self._subs().get(tcid))
+                hot = subscribed or st.mode in ("ai", "recommend")
+                if not hot:
+                    prev_at = last_checked.get(tcid, 0.0)
+                    if (now - prev_at) < _SWEEP_COLD_INTERVAL:
+                        continue
+                last_checked[tcid] = now
+
+                base = self._watchdog_base(st, now)
                 idle = now - base
-                if st.mode in ("ai", "recommend"):
-                    limit = _SURVEY_WATCHDOG_SEC
-                    reason = f"自动推进 {int(idle)}s 无进展，已自动释放"
-                else:
-                    # REQ-2026-0060: manual 问卷兜底超时——用户长时间没有
-                    # 作答/跳过等实质操作时自动释放，避免 agent 永久挂起。
-                    # 这是系统超时释放，不是用户跳过；skip_reason 如实标注。
-                    limit = _SURVEY_MANUAL_WATCHDOG_SEC
-                    reason = f"等待作答超时 {int(idle)}s，已自动释放"
+                # 模式切换后从切换时刻重新计时（保留旧语义：切回自动重新计时）。
+                # 旧实现靠 `_watchdog_loop` 的局部变量 last_mode；全局循环没有
+                # 每卷局部状态，故用 st 上的字段承担（见下方 `_sweep_seen_mode`）。
+                seen = getattr(st, "sweep_seen_mode", None)
+                if seen is not None and seen != st.mode:
+                    st.progress_at = now
+                    idle = 0.0
+                st.sweep_seen_mode = st.mode
+
                 if idle < limit:
                     continue
-                # 看着像卡死 → 真的释放它（resolve Future），并明确告知模型。
+
+                # ★ reason 必须带上阈值与实测静默时长：模型与卡片据此判断
+                #   "是被谁按什么规则放掉的"。旧实现只写时长，改了阈值后
+                #   无法从 payload 反推用了哪个阈值（契约 A3 的判据也依赖它）。
+                if subscribed:
+                    reason = (
+                        f"静默 {int(idle)}s 超过阈值 {int(limit)}s，"
+                        "已自动释放（释放时有页面正在查看）"
+                    )
+                elif st.mode in ("ai", "recommend"):
+                    reason = (
+                        f"自动推进 {int(idle)}s 超过阈值 {int(limit)}s 无进展，"
+                        "已自动释放"
+                    )
+                else:
+                    reason = f"等待作答超时 {int(idle)}s 超过阈值 {int(limit)}s，已自动释放"
+
                 st.watchdog_reason = reason
                 logger.warning(
-                    "survey watchdog released %s after %.0fs idle (mode=%s)",
-                    tool_call_id[:16], idle, st.mode,
+                    "sweep:release %s idle=%.0fs limit=%.0fs mode=%s "
+                    "subscribed=%s hot=%s",
+                    tcid[:16], idle, limit, st.mode, subscribed, hot,
                 )
-                # 把原因一并交给 release_survey → skip() 会写进 Future payload
-                # 与 SurveyState.skip_reason，卡片和模型才能看到「为什么」。
-                # 不传的话原因只留在 watchdog_reason，前端卡片读不到。
-                await self.release_survey(
-                    tool_call_id, "watchdog", reason=st.watchdog_reason,
-                )
-                return
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001 — 看门狗自身绝不能拖垮问卷
-            logger.warning("survey watchdog crashed for %s",
-                           tool_call_id[:16], exc_info=True)
+                await self.release_survey(tcid, "sweep", reason=reason)
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 — 单条失败不能拖垮整轮
+                logger.warning("sweep:item-failed %s", tcid[:16], exc_info=True)
+
+    def _inflight_at(self, st: Any) -> float:
+        """在飞分析的有效时刻（0 = 无在飞 / 已超出保护上限）。
+
+        P0-5（2026-11-15）：把「分析在飞」折算成巡检可直接用的时间基准。
+
+        ★ 为什么必须带硬上限，不能直接返回 inflight_at：
+          若 ``analyze_survey`` 永远不返回（网络黑洞、上游挂死且无超时），
+          `inflight_at` 会一直 > 0，巡检永远认为"还在工作" → 问卷永不释放，
+          等于把一个 bug 换成另一个 bug（"永不释放"正是本轮要避免的形态）。
+
+          上限取 `model_timeout_sec × 每题尝试次数 + 120s` 余量，下限 300s。
+          超出上限即视为**失效的在飞**，不再保护，交回正常超时判定。
+        """
+        try:
+            started = float(getattr(st, "inflight_at", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+        if started <= 0:
+            return 0.0
+        try:
+            per_call = float(
+                (getattr(st, "prefs", None) or {}).get("model_timeout_sec") or 0
+            )
+        except (TypeError, ValueError):
+            per_call = 0.0
+        if per_call <= 0:
+            per_call = 120.0          # analysis.py 的 `_MODEL_TIMEOUT_SECS` 默认值
+        cap = max(per_call * _AI_ATTEMPTS_PER_QUESTION + 120.0, 300.0)
+        if (time.time() - started) > cap:
+            return 0.0                # 超上限 → 视为失效在飞，不再保护
+        return started
+
+    def _watchdog_base(self, st: Any, now: float) -> float:
+        """巡检判定「静默多久」时用的时间基准（取三者最新）。"""
+        return max(
+            float(getattr(st, "progress_at", 0.0) or 0.0),
+            float(getattr(st, "created_at", 0.0) or 0.0),
+            self._inflight_at(st),
+        ) or now
 
     async def release_survey(
         self, tool_call_id: str, by: str = "user", origin: str = "",
@@ -1408,7 +1681,6 @@ class QuestionService:
         self._surveys()[tool_call_id] = st
         self._persist_surveys()
         self._bump_rev(tool_call_id, st, f"release:{by}", origin)
-        self.stop_watchdog(tool_call_id)
         return True
 
     #
@@ -1829,7 +2101,6 @@ class QuestionService:
             except Exception:  # noqa: BLE001 — 语义镜像失败不影响提交
                 logger.warning("could not mirror submit into survey state",
                                exc_info=True)
-            self.stop_watchdog(pq.tool_call_id)
             self.stop_runner(pq.tool_call_id)
         return pq
 
@@ -1908,7 +2179,6 @@ class QuestionService:
             except Exception:  # noqa: BLE001
                 logger.warning("could not mirror skip into survey state",
                                exc_info=True)
-            self.stop_watchdog(pq.tool_call_id)
             self.stop_runner(pq.tool_call_id)
 
         logger.info(
@@ -2059,14 +2329,62 @@ class QuestionService:
         for rid in to_remove:
             self._pending.pop(rid, None)
 
-        # Hard cap
+        # ── Hard cap（P0-3 修订，2026-11-15）────────────────────────
+        #
+        # ★ 旧实现直接删最旧的若干条，**不检查有没有活等待者**。
+        #
+        # 真实危害（关闭自动释放后必然发生）：pending 会持续堆积，到第 101 条
+        # 时最老那条被静默 `pop` + 写盘 → 该 agent 的 Future 永远没人 resolve
+        # （会话永久 409），而记录已从盘上消失，连「挂起清理」页签都查不到。
+        # 这不是"手动释放"那么轻，是**不可见的数据丢失**，比不清理危险得多。
+        #
+        # 判据：只裁「无活 Future」的记录。有活等待者的一律保留 ——
+        # 宁可内存与磁盘涨，也不能让一个正在等答复的会话凭空消失。
         if len(self._pending) > _GC_MAX_PENDING:
             sorted_oldest = sorted(
                 self._pending.items(), key=lambda x: x[1].created_at,
             )
-            for rid, _ in sorted_oldest[: len(self._pending) - _GC_MAX_PENDING]:
+            for rid, pq in sorted_oldest:
+                if len(self._pending) <= _GC_MAX_PENDING:
+                    break
+                fut = getattr(pq, "future", None)
+                if fut is not None and not fut.done():
+                    # 有活等待者 → 保留，并让「超容量」这件事可见（去重，不刷屏）。
+                    self._warn_once(
+                        f"gc-keep-live:{rid}",
+                        "pending 超过上限 %d 仍保留活 Future %s（不裁剪）",
+                        _GC_MAX_PENDING, rid[:8],
+                    )
+                    continue
                 self._pending.pop(rid, None)
             self._persist_locked()
+
+        # ── 容量告警（D6，2026-11-15）────────────────────────────────
+        # 关闭自动释放后 pending 不再有硬上限，堆积只能靠人发现。
+        # 每跨过一个 50 条档位告警一次（不阻断、不清理），让「正在堆积」
+        # 在日志里可见，而不是等到会话卡死才被察觉。
+        if len(self._pending) >= _GC_PENDING_WARN_AT:
+            tier = len(self._pending) // _GC_PENDING_WARN_AT
+            self._warn_once(
+                f"pending-warn-tier:{tier}",
+                "pending 已达 %d 条（第 %d 个 %d 条档位）——若自动释放已关闭，"
+                "请到「挂起清理」页签处置",
+                len(self._pending), tier, _GC_PENDING_WARN_AT,
+            )
+
+    def _warn_once(self, key: str, msg: str, *args: Any) -> None:
+        """按 ``key`` 去重地打一条 WARNING（同一 key 在一个进程内只打一次）。"""
+        try:
+            seen = self._shared().__dict__.get("gc_warned")
+            if not isinstance(seen, set):
+                seen = set()
+                self._shared().gc_warned = seen
+            if key in seen:
+                return
+            seen.add(key)
+            logger.warning(msg, *args)
+        except Exception:  # noqa: BLE001 — 告警失败绝不能拖垮 GC
+            logger.debug("gc warn failed", exc_info=True)
 
 
 def get_question_service() -> QuestionService:

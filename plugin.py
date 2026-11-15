@@ -479,6 +479,29 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "default": 200, "type": "int", "min": 0, "max": 1000, "scope": "global",
         "batch": 4, "label": "拦截记录条数",
     },
+    # ── 挂起自动释放（P0-1，2026-11-15）────────────────────────────
+    #
+    # 用户裁定（2026-11-15）：把原本硬编码的 30 分钟兜底超时做成可配，
+    # 并**保留「关闭」**（= 0，永不自动释放）。boss 明确知情并接受代价：
+    # 关闭后挂起问卷会一直保留，对应会话发新消息持续 409，只能到
+    # 「挂起清理」页签手动释放。
+    #
+    # 为什么 scope 是 global 而非 both：释放策略是"这台机器怎么对待所有
+    # 挂起问卷"的运维决策，不是单个会话的作答偏好；会话级覆盖会让
+    # 「同一个后台循环对不同问卷用不同阈值」，排查时无法用一句话解释。
+    #
+    # 为什么 max 是 28800（8 小时）而非更大：正常一天内必然有人值守。
+    # 超过 8 小时仍未处理，说明是人主动放着，此时手动释放比自动更好
+    # —— 自动释放反而是替用户做了他没做的决定。
+    "release_after_sec": {
+        "default": 1800, "type": "int", "min": 0, "max": 28800,
+        "scope": "global", "batch": 4, "label": "挂起自动释放",
+        # ★ 越界拒绝而不是夹紧：min=0 且 0 表示「关闭」，把 -5 夹成 0
+        #   等于把一次输错静默升级为"永不释放"。见 `_coerce_setting` 注释。
+        "clamp": False,
+        # 只允许 UI 提供的五个档位；1.5 之类的值在区间内但无意义，直接拒。
+        "choices": (0, 1800, 3600, 14400, 28800),
+    },
 }
 
 
@@ -559,10 +582,36 @@ def _coerce_setting(key: str, value: Any) -> tuple[bool, Any]:
         except (TypeError, ValueError):
             return False, None
         lo, hi = spec.get("min"), spec.get("max")
+        # ── `clamp: False` 语义（2026-11-15，为 release_after_sec 引入）──
+        #
+        # 默认行为是「越界夹紧」（用户输 5 到超时框 → 得到 30 秒下限，
+        # 而不是一个坏掉的运行）。但对**边界值本身有强语义**的设置项，
+        # 夹紧是危险的：
+        #
+        #   release_after_sec: min=0 且 0 = 「关闭自动释放」
+        #   脏数据 -5 → 夹到 0 → **静默变成最危险的档位**
+        #   （永不释放 → 会话可能永久 409）。
+        #
+        # 把「一次输错」静默升级成「系统永久改变行为」是典型的兜底陷阱
+        # （工作区纪律：该报错就报错，别让失败以成功的样子出现）。
+        # 故此类项一律**越界即拒绝**，由调用方看到 ok=False 并回报错误。
+        if spec.get("clamp", True) is False:
+            if (lo is not None and num < lo) or (hi is not None and num > hi):
+                return False, None
+            allowed = spec.get("choices")
+            if allowed is not None and num not in allowed:
+                return False, None
+            return True, num
         if lo is not None and num < lo:
             num = lo
         if hi is not None and num > hi:
             num = hi
+        # 可选：限定只能取这几个值（如挂起释放的 0/1800/3600/14400/28800）。
+        # 与 `clamp: False` 配合时，落在区间内但不属于允许集合的值也会被拒
+        # （例如 1.5 → int 1，在 [0,28800] 内却不是一个有意义的档位）。
+        allowed = spec.get("choices")
+        if allowed is not None and num not in allowed:
+            return False, None
         return True, num
     if kind == "str":
         if not isinstance(value, str):
@@ -2628,16 +2677,17 @@ def build_router() -> APIRouter:
     # 与 `/survey-prune` 的关系：那个按「有没有 request_id / 前缀」批量删；
     # 这里按「是否 pending 且静默超阈值」逐条列出，**先看清再动手**。
 
-    def _stale_rows(older_than_sec: float) -> list[dict]:
-        """汇总所有静默超过阈值的 pending 问卷（只读，不改任何状态）。
+    def _stale_rows_all() -> list[dict]:
+        """**不去重阈值**的全部 pending 行（P1-b 分组用，2026-11-15）。
 
-        数据源有两份，缺一不可：
-          · `svc._surveys()`  —— 内存表，含 state 全貌（status/mode/title…）
-          · `svc._pending`    —— 内存 pending 表，决定「还有没有活 Future」
+        与 `_stale_rows(older_than_sec)` 的区别只在过滤时机：本函数一次性
+        把所有「仍在等答复」的行算好（含 idle 与在场判据），由调用方按阈值
+        切成「已超阈值 / 未超阈值」两组。
 
-        只读 `survey_states.json` 不够：那只是落盘快照，标签/askuser 的
-        实时状态以内存为准；而只读 pending 又会漏掉全部孤儿（它们的
-        pending 记录已经没了）。两份合并才能既看到孤儿、又看到活体。
+        ★ 为什么要重构而不是让前端自己过滤：`idle_sec` 的算法（base 取
+          progress_at/created_at/now 三者）、`has_live_future` 的判定、
+          `reason_code` 的分类都在后端一处实现；前端再算一遍必然漂移，
+          而「哪条能释放」是安全判据，漂移一次就是替用户交卷。
         """
         svc = get_question_service()
         now = time.time()
@@ -2650,6 +2700,7 @@ def build_router() -> APIRouter:
                 pending_by_tcid[str(pq.tool_call_id)] = pq
             pending_by_rid[str(pq.request_id)] = pq
 
+        subs = svc._subs()
         rows: list[dict] = []
         for tcid, st in list(states.items()):
             if getattr(st, "status", "") != "pending":
@@ -2659,8 +2710,6 @@ def build_router() -> APIRouter:
             base = (getattr(st, "progress_at", 0) or 0) or (
                 getattr(st, "created_at", 0) or 0) or now
             idle = now - base
-            if idle < older_than_sec:
-                continue
             pq = pending_by_tcid.get(str(tcid)) or pending_by_rid.get(
                 str(getattr(st, "request_id", "") or ""))
             future = getattr(pq, "future", None) if pq is not None else None
@@ -2684,12 +2733,19 @@ def build_router() -> APIRouter:
                 "agent_id": str(getattr(st, "agent_id", "") or ""),
                 "title": str(getattr(st, "title", "") or ""),
                 "mode": str(getattr(st, "mode", "") or ""),
-                "idle_sec": round(idle, 1),
+                # `idle_sec` 参与分组判定，必须是**未取整**的原值；
+                # 展示用 `idle_text`。取整会让"卡在阈值上一秒"的问卷
+                # 在两组之间抖动。
+                "idle_sec": idle,
                 "idle_text": _hm(idle),
                 "created_at": getattr(st, "created_at", None),
                 "progress_at": getattr(st, "progress_at", None),
                 "has_pending": pq is not None,
                 "has_live_future": has_live,
+                # P1-b：有页面正在看这份问卷（SSE 订阅非空）。
+                # 前端据此标红「正在作答」，避免用户把别人正在答的问卷释放掉。
+                "has_live_subscriber": bool(subs.get(str(tcid))),
+                "in_flight": float(getattr(st, "inflight_at", 0.0) or 0.0) > 0,
                 "reason_code": code,
                 # 「释放」永远可做（就是把这个 state 收尾）；
                 # 「终止会话」只有存在活 Future（真要唤醒/杀掉什么）时才有意义，
@@ -2700,6 +2756,38 @@ def build_router() -> APIRouter:
             })
         rows.sort(key=lambda r: r["idle_sec"], reverse=True)
         return rows
+
+    def _stale_split(
+        threshold_sec: float,
+    ) -> tuple[list[dict], list[dict]]:
+        """按阈值切成 ``(已超阈值, 未超阈值)`` 两组（P1-b，2026-11-15）。
+
+        ★ `threshold_sec <= 0`（自动释放关闭）时**不分组**：全部归入
+          「未超阈值」，已超阈值组恒为空。理由（boss 2026-11-15 裁定 D11）：
+          关闭后"超阈值"没有意义 —— 没有任何东西会在阈值处被释放，
+          把它们标成"已超阈值"会让用户以为后台要动手。
+          此时前端用橙色警示条说明"永不自动释放"，而不是靠分组表达。
+        """
+        rows = _stale_rows_all()
+        if threshold_sec <= 0:
+            return [], rows
+        exceeded = [r for r in rows if r["idle_sec"] >= threshold_sec]
+        within = [r for r in rows if r["idle_sec"] < threshold_sec]
+        return exceeded, within
+
+    def _stale_rows(older_than_sec: float) -> list[dict]:
+        """汇总所有静默超过阈值的 pending 问卷（只读，不改任何状态）。
+
+        ★ 2026-11-15 起降级为薄封装：真正实现移到 `_stale_rows_all()`
+          （一次性算全量，由 `_stale_split` 切组）。保留本函数是为了不动
+          既有调用点与返回结构（`items` 字段仍向后兼容）。
+
+        ★ 判据只允许有一份实现。`idle` 基准（progress_at/created_at/now
+          三者取最大）、`has_live_future`、`reason_code` 都是"哪条能释放"
+          的安全判据 —— 前端或第二份后端实现再算一遍必然漂移，漂移一次
+          就是替用户交卷。
+        """
+        return [r for r in _stale_rows_all() if r["idle_sec"] >= older_than_sec]
 
     def _hm(sec: float) -> str:
         """秒 → 「1天2小时」这类人读文本（只用于展示，不参与判断）。"""
@@ -2714,20 +2802,45 @@ def build_router() -> APIRouter:
 
     @router.get("/stale-surveys")
     async def get_stale_surveys(
-        older_than_sec: float = Query(default=1800.0),
+        older_than_sec: float = Query(default=-1.0),
     ):
-        """列出静默超过阈值的 pending 问卷（默认 30 分钟，与 watchdog 一致）。
+        """列出挂起问卷，按「已超阈值 / 未超阈值」分两组（P1-b，2026-11-15）。
 
         **只读**：不释放、不清数据、不改任何 state。先看清再决定动哪条。
+
+        参数 `older_than_sec`：
+          · 不传（-1）→ 用生效设置 `release_after_sec`（单一真相源）；
+          · 显式传数值 → 覆盖设置，用于"我想看看若阈值是 X 会怎样"。
+            `older_than_sec=0` 会列出全部 pending（用于排查）。
+
+        ★ 为什么默认值不再是 1800：硬编码 1800 会在用户把阈值改成 1 小时
+          后仍然按 30 分钟分组 —— 用户改了设置、页面却按旧值说话，
+          属于「检查目标的影子」。默认必须读设置。
         """
-        rows = _stale_rows(older_than_sec)
+        if older_than_sec is None or older_than_sec < 0:
+            raw = resolve_effective("").get("release_after_sec")
+            if raw is None:
+                raw = SETTINGS_SCHEMA["release_after_sec"]["default"]
+            threshold = float(raw)
+        else:
+            threshold = float(older_than_sec)
+
+        exceeded, within = _stale_split(threshold)
+        rows = exceeded + within
         return {
             "ok": True,
-            "older_than_sec": older_than_sec,
+            "threshold_sec": threshold,
+            "threshold_disabled": threshold <= 0,
+            "older_than_sec": threshold,     # 向后兼容旧字段
             "count": len(rows),
+            "exceeded_count": len(exceeded),
+            "within_count": len(within),
+            "exceeded": exceeded,
+            "within": within,
+            # 向后兼容：旧调用方只读 items / count / releasable / terminable
+            "items": rows,
             "releasable": sum(1 for r in rows if r["releasable"]),
             "terminable": sum(1 for r in rows if r["terminable"]),
-            "items": rows,
         }
 
     @router.post("/stale-surveys/release")
@@ -2743,7 +2856,6 @@ def build_router() -> APIRouter:
         payload = body if isinstance(body, dict) else {}
         ids = [str(x) for x in (payload.get("tool_call_ids") or []) if str(x)]
         want_all = bool(payload.get("all"))
-        older_than = float(payload.get("older_than_sec") or 1800.0)
         svc = get_question_service()
 
         if not ids and not want_all:
@@ -2752,8 +2864,40 @@ def build_router() -> APIRouter:
                 detail="必须传 tool_call_ids 或 all=true，拒绝无目标操作",
             )
         if want_all:
-            # 只取**当前扫描结果**里的那一批，避免把阈值外的 pending 也清掉。
-            ids = [r["tool_call_id"] for r in _stale_rows(older_than)]
+            # ── D10（boss 2026-11-15 裁定）：批量释放**只作用于已超阈值组** ──
+            #
+            # ★ 绝不把观察期内的问卷一起释放。历史依据
+            #   （question_service.py:821 注释原文）：
+            #     「强制释放等于替用户交卷（违反上一轮『manual 无页面时
+            #       保持等待』的裁定）」
+            #   观察期内的问卷很可能正被另一个标签页作答（has_live_subscriber），
+            #   批量把它释放 = 替人交卷 + 把用户正在填的答案丢掉。
+            #
+            # ★ 阈值不读请求体（旧实现读 payload.older_than_sec，默认 1800）：
+            #   那样前端传个 0 就能把未超阈值的也一并释放，等于把安全约束
+            #   交给调用方。此处一律用服务端生效设置。
+            raw = resolve_effective("").get("release_after_sec")
+            if raw is None:
+                raw = SETTINGS_SCHEMA["release_after_sec"]["default"]
+            threshold = float(raw)
+            if threshold <= 0:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "自动释放已关闭（release_after_sec=0），"
+                        "无法批量释放；请逐条指定 tool_call_ids"
+                    ),
+                )
+            exceeded, _within = _stale_split(threshold)
+            ids = [r["tool_call_id"] for r in exceeded]
+            if not ids:
+                return {
+                    "ok": True,
+                    "released": 0,
+                    "failed": 0,
+                    "results": [],
+                    "note": "当前没有超过阈值的挂起问卷（观察期内的不参与批量释放）",
+                }
 
         results = []
         for tcid in ids:
@@ -2925,6 +3069,24 @@ def build_router() -> APIRouter:
             info["runners_live"] = len(svc._runners())
         except Exception:  # noqa: BLE001
             info["runners_live"] = -1
+        # ── P0-2/P0-3 可见性（2026-11-15）────────────────────────────
+        # 巡检与 pending 堆积必须能被外部查询到：
+        #   · `sweep_alive`      —— 全局巡检循环是否在跑（false = 后台不释放了）
+        #   · `sweep_generation` —— 第几代循环（热重载后应 +1；不增 = 旧代还在）
+        #   · `pending_count`    —— 挂起堆积量（关闭自动释放后无上限，只能靠看）
+        #   · `release_after_sec`—— 当前生效阈值（0 = 关闭）
+        try:
+            svc = get_question_service()
+            info["sweep_alive"] = bool(svc._sweep_alive())
+            info["sweep_generation"] = int(
+                getattr(svc._shared(), "sweep_generation", 0) or 0)
+            info["pending_count"] = len(svc._pending)
+            info["release_after_sec"] = float(svc._release_after_sec())
+        except Exception:  # noqa: BLE001
+            info["sweep_alive"] = False
+            info["sweep_generation"] = -1
+            info["pending_count"] = -1
+            info["release_after_sec"] = -1.0
         return info
 
     @router.post("/prefs")
@@ -4013,15 +4175,15 @@ class QuestionModalMiddleware(_MiddlewareBase):
                     "could not send survey pending notification", exc_info=True,
                 )
 
-        # ── 阶段 1：给这份问卷挂看门狗（只对自动模式生效）────────────
-        # 用户裁定（2026-11-07）：手动释放 + 看门狗 60s 无进展释放。
-        # 判据在 question_service._watchdog_loop 里按 mode 二次过滤：
-        # manual 不干预（人工作答本来就会停顿），只有 ai/recommend
-        # 这种「本该自己动」的模式卡住才回收。
+        # ── 阶段 1：全局巡检（P0-2，2026-11-15 取代 per-survey watchdog）──
+        # 旧形态每份问卷起一个协程，关闭自动释放后永不退出、manual 按 5s
+        # 空转 360 次、reload 后的 orphan 完全无人纳管。
+        # 现在是进程内唯一一个 `_sweep_loop`，幂等调用（`ensure_sweep`
+        # 内部先 cancel 旧代再起新代，见 R3）。
         try:
-            svc.ensure_watchdog(pending.tool_call_id)
-        except Exception:  # noqa: BLE001 — 看门狗起不来不能阻挡问卷弹出
-            logger.warning("could not start survey watchdog", exc_info=True)
+            svc.ensure_sweep()
+        except Exception:  # noqa: BLE001 — 巡检起不来不能阻挡问卷弹出
+            logger.warning("could not start sweep loop", exc_info=True)
 
         # ── 阶段 2：recommend 模式的后端推进 ─────────────────────────
         # 用户裁定（2026-11-07）：recommend 模式下由**后端**逐题推进并广播，
@@ -4127,6 +4289,35 @@ class QuestionModalPlugin:
             get_question_service()._prune_stale_runners()
         except Exception:  # noqa: BLE001
             logger.warning("could not prune stale runners", exc_info=True)
+
+        # ── 全局巡检接线（P0-2，2026-11-15）───────────────────────────
+        # ① 注入「读阈值」读取器：设置解析在 plugin 侧，question_service
+        #    不能反向 import（循环依赖）。读取失败由 service 侧回落默认值。
+        # ② 启动巡检：`ensure_sweep` 幂等，且会先 cancel 上一代 task
+        #    （热重载后旧 task 跑的是旧代码对象，两代并行会双重释放）。
+        try:
+            _svc = get_question_service()
+
+            def _release_provider() -> float:
+                """当前生效的挂起自动释放阈值（秒）；0 = 关闭。
+
+                ⚠️ 不能用 `cfg.get(k) or default`：那是 falsy 判断，会把
+                合法的 0（= 关闭）吞成默认值，用户选「关闭」后后台照样释放。
+                反之用 `or 0` 又会在 key 缺失时**误判为关闭**，静默停掉所有
+                兜底释放（会话永久 409）。所以必须显式区分「缺 key/None」与 0。
+                `resolve_effective` 从 `schema_defaults()` 起算，key 一定存在；
+                这里的 None 判断只是防御未知的写入路径。
+                """
+                cfg = resolve_effective("")
+                raw = cfg.get("release_after_sec")
+                if raw is None:
+                    return float(SETTINGS_SCHEMA["release_after_sec"]["default"])
+                return float(raw)
+
+            _svc.set_release_provider(_release_provider)
+            _svc.ensure_sweep()
+        except Exception:  # noqa: BLE001 — 巡检起不来不能拖垮整个插件加载
+            logger.warning("could not wire sweep loop", exc_info=True)
 
         # ── 0. 引擎自检：确认 recommend 推进引擎在**生产加载方式**下可用 ──
         #

@@ -352,6 +352,18 @@ function injectStyles(): void {
       // ── 挂起清理页签（2026-11-15）────────────────────────────────
       // 表格用和 .qm-set-row 同一套「固定网格」思路：列宽固定，行与行才对得齐。
       ".qm-set-stalehead{display:flex;flex-direction:column;gap:10px;padding:4px 0 12px}",
+      // 设置行：**必须复用 .qm-set-row 的网格与字号基准**，不能借表格行类。
+      // 2026-11-15 用户报「挂起超时自动释放：这个文字与整体文字不一致」——
+      // 根因是我最初把这一行写成 `.qm-set-stalerow`（4 列 1fr/190/96/132px
+      // 的表格网格），标签被塞进第一列 `minmax(0,1fr)` 的窄格子里被迫换行，
+      // 同时没有继承任何字号（浏览器默认 16px），于是又大又折行，与同行
+      // 12px 的下拉框、下方 12px 的说明文字都不一致。
+      // 修法：改用 `.qm-set-row`（label 弹性列 + 控件右对齐 auto 列，
+      // 标签 14px/500、说明 12px），与本页其它设置项完全同构。
+      ".qm-set-stalerowset{margin:0}",
+      // 下拉宽度收窄：全局配置页的 `.qm-set-input{width:100%}` 是为整行输入框
+      // 设计的，放在 auto 列里会把控件列撑到整行，破坏右对齐竖线。
+      ".qm-set-stalerowset .qm-set-rowctl select{width:auto;min-width:150px}",
       ".qm-set-stalehint{font-size:12px;line-height:1.6;",
       "color:var(--app-text-secondary,#64748b)}",
       ".qm-set-stalebtns{display:flex;gap:8px;align-items:center}",
@@ -1268,12 +1280,37 @@ async function fetchSessionPrefs(): Promise<{ items: any[]; count: number; ok: b
 // 后端返回的 `terminable` / `reason_code` 是唯一判据，前端只渲染与置灰，
 // 不重算阈值或可终止性 —— 否则「面板说能终止、点下去没对象」会两边打架。
 
-/** 扫描静默超过 30 分钟的挂起问卷。只读，不改变任何状态。 */
+/** 扫描挂起问卷并分组。只读，不改变任何状态。
+ *
+ *  ★ 2026-11-15 起**不再传 older_than_sec**：阈值由后端读生效设置
+ *    `release_after_sec`（单一真相源）。此前这里硬编码 1800，用户把阈值
+ *    改成 1 小时后页面仍按 30 分钟分组 —— 「检查目标的影子」。
+ */
 async function fetchStaleSurveys(): Promise<any> {
-  const url = apiUrl("/question-modal/stale-surveys") + "?older_than_sec=1800";
-  const resp = await fetch(url, { headers: authHeaders() });
+  const resp = await fetch(apiUrl("/question-modal/stale-surveys"),
+                           { headers: authHeaders() });
   if (!resp.ok) throw new Error("HTTP " + resp.status);
   return await resp.json();
+}
+
+/** 把后端返回写成模块状态。两组与拼接后的 rows 一起更新。 */
+function applyStaleResult(d: any): void {
+  const st = settingsState.stale;
+  st.exceeded = (d && d.exceeded) || [];
+  st.within = (d && d.within) || [];
+  // rows 保持"两组拼接"，分页与既有渲染逻辑不用改
+  st.rows = (d && d.items) || (st.exceeded.concat(st.within));
+  st.threshold = (d && typeof d.threshold_sec === "number")
+    ? d.threshold_sec : null;
+  st.scanned = true;
+}
+
+/** 阈值文案：唯一入口，避免"30 分钟"这类字面量散落在多处后与设置漂移。 */
+function staleThresholdText(sec: number | null): string {
+  if (sec === null || sec === undefined) return "加载中…";
+  if (sec <= 0) return "已关闭自动释放";
+  if (sec % 3600 === 0) return `${sec / 3600} 小时`;
+  return `${Math.round(sec / 60)} 分钟`;
 }
 
 /** 释放指定（或全部）挂起问卷。`all=true` 时后端只取当前扫描结果那一批。 */
@@ -1297,6 +1334,52 @@ async function postStaleTerminate(ids: string[]): Promise<any> {
   return d;
 }
 
+/** 修改「挂起超时自动释放」阈值并立即保存（P1-a，2026-11-15）。
+ *
+ *  ★ 为什么不用 `cfgSave`：那个函数读 `settingsState.draft`，而本页签
+ *    是"改即保存"语义（下拉一变就落盘），不走草稿 → 保存两条路径。
+ *    复用 `POST /prefs`（`resolve_effective` 的 ② 全局层），与其它全局
+ *    设置项同一通道，不新增端点。
+ *
+ *  ★ 0 是合法值（= 关闭），绝不能用 `if (!val)` 之类的 falsy 判断挡掉。
+ *
+ *  ★ 保存失败必须显红字并**回滚下拉显示**：否则用户看到「已选关闭」
+ *    而实际后端还是 1800，是典型的"界面说谎"（历史事故同族）。
+ */
+async function staleSetThreshold(sec: number): Promise<void> {
+  if (settingsState.stale.thrBusy) return;
+  const prev = settingsState.stale.threshold;
+  settingsState.stale.thrBusy = true;
+  settingsRenderPanel();
+  try {
+    const resp = await fetch(apiUrl("/question-modal/prefs"), {
+      method: "POST", headers: authHeaders(),
+      body: JSON.stringify({ release_after_sec: sec }),
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error((d && d.detail) || ("HTTP " + resp.status));
+    settingsState.stale.threshold = sec;
+    // 生效值变了 → 分组必须重取（否则界面还按旧阈值分组）
+    invalidateConfigCache();
+    settingsState.stale.msgKind = "ok";
+    settingsState.stale.msg = sec <= 0
+      ? "已关闭自动释放：挂起问卷将一直保留，需在本页手动释放"
+      : `自动释放已设为：静默超过 ${staleThresholdText(sec)} 自动释放`;
+    try {
+      applyStaleResult(await fetchStaleSurveys());
+    } catch { /* 重取失败不影响设置已保存这一事实 */ }
+  } catch (e: any) {
+    // 回滚显示到保存前的值，避免"界面显示关闭、后端仍是 1800"
+    settingsState.stale.threshold = prev;
+    settingsState.stale.msgKind = "error";
+    settingsState.stale.msg = "设置保存失败："
+      + (e && e.message ? e.message : String(e));
+  } finally {
+    settingsState.stale.thrBusy = false;
+    settingsRenderPanel();
+  }
+}
+
 /** 扫描并重绘。失败时把原因写进 msg（不静默、不假装空列表）。 */
 async function staleScan(): Promise<void> {
   settingsState.stale.busy = true;
@@ -1310,22 +1393,28 @@ async function staleScan(): Promise<void> {
   const startedAt = Date.now();
   try {
     const d = await fetchStaleSurveys();
-    settingsState.stale.rows = (d && d.items) || [];
-    settingsState.stale.scanned = true;
+    applyStaleResult(d);
     // 重新扫描 = 新一批结果，页码回到第一页。不重置的话，上一批在第 3 页
     // 而新结果只有 1 页时，会渲染出「有数据但一片空白」（越界）。
     settingsState.stale.page = 0;
     const n = settingsState.stale.rows.length;
+    const nEx = settingsState.stale.exceeded.length;
+    const nWi = settingsState.stale.within.length;
     const cost = Date.now() - startedAt;
     settingsState.stale.msgKind = "ok";
     // 明确写出「扫了几条、阈值多少、耗时多少」——这三项齐了才能区分
     // 「确实没有挂起项」与「接口返回了但内容为空」这类看起来一样的现象。
+    // 分组后还要说清"几条已超阈值（可批量释放）、几条还在观察期"。
+    const thr = staleThresholdText(settingsState.stale.threshold);
     settingsState.stale.msg = n > 0
-      ? `扫描完成：发现 ${n} 条超过 30 分钟未处理的问卷（耗时 ${cost}ms）`
-      : `扫描完成：没有超过 30 分钟未处理的问卷（耗时 ${cost}ms）`;
+      ? `扫描完成：共 ${n} 条挂起（已超阈值 ${nEx} 条、观察期内 ${nWi} 条；`
+        + `阈值 ${thr}，耗时 ${cost}ms）`
+      : `扫描完成：没有挂起的问卷（阈值 ${thr}，耗时 ${cost}ms）`;
   } catch (e: any) {
     // 扫描失败 ≠ 没有挂起项。必须区分：否则用户会把「请求失败」当成「很干净」。
     settingsState.stale.rows = [];
+    settingsState.stale.exceeded = [];
+    settingsState.stale.within = [];
     settingsState.stale.scanned = false;
     settingsState.stale.msgKind = "error";
     settingsState.stale.msg = "扫描失败：" + (e && e.message ? e.message : String(e))
@@ -1342,7 +1431,8 @@ async function staleRelease(ids: string[]): Promise<void> {
   settingsState.stale.msg = "";
   settingsRenderPanel();
   try {
-    const d = await postStaleRelease({ tool_call_ids: ids, older_than_sec: 1800 });
+    // ★ 不传 older_than_sec：目标已由调用方逐条指定，阈值不该参与。
+    const d = await postStaleRelease({ tool_call_ids: ids });
     // 只用后端的分层计数：released=本次新收尾、already=本来就终态、failed=没成功。
     // 不能把 already 算进「已释放」，否则重复点一次会显示「又释放了 1 条」。
     const released = Number(d && d.released) || 0;
@@ -1356,8 +1446,7 @@ async function staleRelease(ids: string[]): Promise<void> {
         ? `已释放 ${released} 条问卷` + (already ? `；${already} 条此前已释放` : "")
         : `无需释放：${already || ids.length} 条此前已释放`;
     const fresh = await fetchStaleSurveys();
-    settingsState.stale.rows = (fresh && fresh.items) || [];
-    settingsState.stale.scanned = true;
+    applyStaleResult(fresh);
   } catch (e: any) {
     settingsState.stale.msgKind = "error";
     settingsState.stale.msg = "释放失败：" + (e && e.message ? e.message : String(e));
@@ -1367,13 +1456,19 @@ async function staleRelease(ids: string[]): Promise<void> {
   }
 }
 
-/** 批量释放：后端按「当前扫描结果」重取目标，避免清掉阈值外的 pending。 */
+/** 批量释放：**只作用于已超阈值组**（boss 2026-11-15 裁定 D10）。
+ *
+ *  ★ 后端已强制该作用域（不读请求体阈值、关闭时直接 400），前端这里
+ *    只做两件事：不发会误导的参数、按实情描述结果。
+ *  ★ 观察期内的问卷不参与批量释放 —— 它们很可能正被另一个标签页作答，
+ *    批量释放等于替用户交卷（历史裁定原文见后端的对应注释）。
+ */
 async function staleReleaseAll(): Promise<void> {
   settingsState.stale.busy = true;
   settingsState.stale.msg = "";
   settingsRenderPanel();
   try {
-    const d = await postStaleRelease({ all: true, older_than_sec: 1800 });
+    const d = await postStaleRelease({ all: true });
     const released = Number(d && d.released) || 0;
     const failed = Number(d && d.failed) || 0;
     const already = Number(d && d.already) || 0;
@@ -1385,8 +1480,7 @@ async function staleReleaseAll(): Promise<void> {
         ? `释放 ${released}/${req} 条，${failed} 条未成功（见日志）`
         : `已释放 ${released} 条问卷` + (already ? `；${already} 条此前已释放` : "");
     const fresh = await fetchStaleSurveys();
-    settingsState.stale.rows = (fresh && fresh.items) || [];
-    settingsState.stale.scanned = true;
+    applyStaleResult(fresh);
   } catch (e: any) {
     settingsState.stale.msgKind = "error";
     settingsState.stale.msg = "批量释放失败：" + (e && e.message ? e.message : String(e));
@@ -6736,6 +6830,17 @@ const settingsState: {
      *    「模块状态 + 整树重绘」写法，任何局部变量都会在重绘后归零。
      */
     page: number;
+    /** 后端返回的两组（P1-b，2026-11-15）。`rows` 仍保留为两组拼接，
+     *  兼容既有分页渲染；分组只影响「全部释放」的作用域与警示位置。 */
+    exceeded: any[];
+    within: any[];
+    /** 生效阈值（秒）。0 = 自动释放已关闭。
+     *  ★ 必须是 `number | null`：null 表示**尚未取到**，与 0（已关闭）
+     *    语义完全不同。若把 null 也渲染成 0，用户会看到"自动释放已关闭"
+     *    的假象（历史事故同族：首帧 effCfg 缺失 → 回落旧值 → 显示与事实不符）。 */
+    threshold: number | null;
+    /** 阈值切换中（防连点导致两次保存互相覆盖）。 */
+    thrBusy: boolean;
   };
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
@@ -6748,7 +6853,8 @@ const settingsState: {
   conflictNote: "",
   notifyChannels: [], notifyCurrent: "off", notifyTesting: "", notifyMsg: {},
   notifyLog: {},
-  stale: { rows: [], scanned: false, busy: false, msg: "", msgKind: "info", page: 0 },
+  stale: { rows: [], scanned: false, busy: false, msg: "", msgKind: "info", page: 0,
+           exceeded: [], within: [], threshold: null, thrBusy: false },
 };
 let settingsPanelRoot: any = null;
 
@@ -8602,17 +8708,82 @@ function settingsTabBody(
     //   · 释放       = 让插件不再认为它在等人（永远可做）
     //   · 终止会话   = 兜底，让宿主 chat 真正停下（多数情况无对象，如实置灰）
     //
-    // 阈值固定 30 分钟，与 question_service._SURVEY_MANUAL_WATCHDOG_SEC
-    // 保持一致 —— 低于它的问卷 watchdog 自己会处理，不需要人工介入。
-    const STALE_THRESHOLD_SEC = 1800;
+    // 阈值不再固定 30 分钟：由生效设置 `release_after_sec` 决定
+    // （0 = 关闭，永不自动释放）。低于阈值的问卷巡检自己会处理，
+    // 需要人工介入的是「已超阈值」那一组。
+    //
+    // ⚠️ `threshold === null` 表示**还没取到**（首帧/扫描未完成），
+    //    绝不能渲染成 0 —— 那会显示"已关闭自动释放"的假象。
     const st = settingsState.stale;
     const rows = (st && st.rows) || [];
+    const exceeded = (st && st.exceeded) || [];
+    const within = (st && st.within) || [];
+    const thr = st ? st.threshold : null;
+    const thrText = staleThresholdText(thr);
+    const thrDisabled = thr !== null && thr <= 0;
+    const allDisabled = !!(st && (st.busy || st.thrBusy))
+      || exceeded.length === 0 || thrDisabled;
 
-    bodyKids.push(R.createElement("div", { className: "qm-set-stalehead", key: "sh" }, [
+    bodyKids.push(R.createElement("div", {
+      className: "qm-set-stalehead", key: "sh",
+    }, [
+      // ── 自动释放设置（P1-a）──────────────────────────────
+      // 改即保存：与「全局配置」页其它设置项同一语义，不另设"保存"按钮。
+      //
+      // ★ 结构沿用全局配置页的 `.qm-set-row`（label 弹性列 + 控件 auto 列右对齐），
+      //   不自己拼 flex。2026-11-15 用户反馈「挂起超时自动释放：这个文字与
+      //   整体文字不一致」——上一版这里用了表格行网格 + 行内 fontSize:11px，
+      //   既被窄列挤成两行，字号又与其它设置项（14px 标签 / 12px 说明）不符。
+      R.createElement("div", {
+        className: "qm-set-row qm-set-stalerowset", key: "thr",
+      }, [
+        R.createElement("div", { className: "qm-set-rowlabel", key: "l" }, [
+          R.createElement("span", { key: "t" }, "挂起超时自动释放"),
+          R.createElement("span", { className: "qm-set-rownote", key: "n" },
+            thrDisabled
+              ? "当前已关闭：挂起的问卷不会被自动释放"
+              : `静默超过 ${thrText} 仍无进展时，由后台自动释放`),
+        ]),
+        R.createElement("div", { className: "qm-set-rowctl", key: "c" },
+          R.createElement("select", {
+            "data-qm-stale-threshold": "1",
+            className: "qm-set-input",
+            disabled: !!(st && st.thrBusy),
+            value: thr === null ? "" : String(thr),
+            onChange: (e: any) => { void staleSetThreshold(Number(e.target.value)); },
+          }, [
+            // 未取到时不渲染任何具体档位，避免默认高亮误导
+            thr === null
+              ? R.createElement("option", { key: "na", value: "" }, "加载中…")
+              : null,
+            R.createElement("option", { key: "0", value: "0" }, "关闭（不自动释放）"),
+            R.createElement("option", { key: "1800", value: "1800" }, "30 分钟（默认）"),
+            R.createElement("option", { key: "3600", value: "3600" }, "1 小时"),
+            R.createElement("option", { key: "14400", value: "14400" }, "4 小时"),
+            R.createElement("option", { key: "28800", value: "28800" }, "8 小时"),
+          ])),
+      ]),
+      // 关闭状态必须醒目：代价是会话可能永久 409，只能在本页手动释放。
+      //
+      // ★ 分工（2026-11-15 改）：上一版这里、下方 hint、以及操作后的绿条
+      //   **三处都在说"已关闭自动释放"**，同一句话重复三遍，把真正的信息
+      //  （该怎么办）淹没了。现在只保留这一处橙色警示承担"状态 + 后果"，
+      //   下方 hint 只讲通用说明（怎么做），不再重复状态。
+      thrDisabled
+        ? R.createElement("div", {
+            className: "qm-set-stalenote", key: "off",
+            "data-qm-stale-off": "1",
+            style: { fontSize: "12px", lineHeight: "1.6",
+                     padding: "8px 12px", borderRadius: "6px",
+                     background: "rgba(230,126,34,.1)",
+                     borderLeft: "3px solid #e67e22",
+                     color: "var(--app-text-primary,#1e293b)" },
+          }, "已关闭自动释放：挂起问卷会一直保留，对应会话发新消息会持续 409，"
+             + "需在本页手动释放。")
+        : null,
       R.createElement("div", { className: "qm-set-stalehint", key: "h" },
-        "列出静默超过 30 分钟仍未处理的问卷。这类问卷会让对应会话一直处于"
-        + "「等待作答」状态（发新消息会 409）。先扫描、再按需释放；"
-        + "「终止会话」仅在问卷仍真正挂着时才有对象。"),
+        "挂起问卷会让对应会话一直处于「等待作答」状态（发新消息会 409）。"
+        + "先扫描、再按需释放；「终止会话」仅在问卷仍真正挂着时才有对象。"),
       R.createElement("div", { className: "qm-set-stalebtns", key: "b" }, [
         R.createElement("button", {
           type: "button", className: "qm-set-btn", key: "scan",
@@ -8623,11 +8794,18 @@ function settingsTabBody(
         R.createElement("button", {
           type: "button", className: "qm-set-btn qm-set-btnprimary", key: "all",
           "data-qm-stale-release-all": "1",
-          // 没有可释放项就禁用：避免点出一个「成功 0 条」的空操作。
-          disabled: !!(st && st.busy) || rows.length === 0,
-          title: rows.length ? `释放全部 ${rows.length} 条挂起问卷` : "当前没有可释放项",
+          // ★ 只作用于「已超阈值」组：观察期内的问卷很可能正被另一个
+          //   标签页作答，批量释放等于替用户交卷（boss 裁定 D10）。
+          disabled: allDisabled,
+          title: thrDisabled
+            ? "自动释放已关闭，请逐条释放"
+            : exceeded.length
+              ? `释放全部 ${exceeded.length} 条已超阈值的问卷（观察期内 ${within.length} 条不参与）`
+              : "当前没有已超阈值的问卷",
           onClick: () => { void staleReleaseAll(); },
-        }, "全部释放"),
+        }, exceeded.length
+          ? `全部释放（仅已超阈值 ${exceeded.length} 条）`
+          : "全部释放"),
       ]),
     ]));
 
@@ -8641,7 +8819,7 @@ function settingsTabBody(
     if (st && st.scanned && rows.length === 0) {
       bodyKids.push(R.createElement("div", {
         className: "qm-set-staleempty", key: "se", "data-qm-stale-empty": "1",
-      }, "没有超过 30 分钟仍未处理的问卷。"));
+      }, "没有挂起的问卷。"));
     }
 
     // 还没扫过：给出明确指引，否则页签是一片空白，用户不知道要不要点。
@@ -8649,26 +8827,30 @@ function settingsTabBody(
       if (!(st && st.msg)) {
         bodyKids.push(R.createElement("div", {
           className: "qm-set-staleempty", key: "sn", "data-qm-stale-idle": "1",
-        }, "点「扫描」列出静默超过 30 分钟仍未处理的问卷。"));
+        }, "点「扫描」列出挂起的问卷。"));
       }
     }
 
     if (rows.length) {
-      // ── 分页（2026-11-15 用户需求：结果多时避免页面异常）──────────
+      // ── 两组分区（P1-b，2026-11-15）──────────────────────────
       //
-      // 每页 5 条。为什么固定 5 而不是"自适应高度"：
-      //   · 弹窗高度是固定尺寸（min(680, 92vw)），自适应需要测量 DOM，
-      //     在「模块状态 + 整树重绘」下既复杂又易抖；
-      //   · 5 条 × 约 44px ≈ 220px，加上表头与按钮仍在弹窗可视区内，
-      //     一屏看全，不用内部滚动 —— 内部滚动条在弹窗里体验很差。
-      // 页码越界必须夹紧：释放/重扫后总数会变小，若直接沿用旧页码，
-      // 会出现「明明有数据却是空白」（本轮的同类缺陷就是这么来的）。
+      // 「已超阈值」= 后台本该已经释放它（或即将释放），是真正需要人工关注的；
+      // 「观察期内」= 还在等，很可能正被另一个标签页作答。
+      //
+      // ★ 两组共用同一套分页：合并渲染再按页切，避免"两组各自分页"
+      //   导致总条数与页码对不上。组内顺序沿用后端排序（idle 降序），
+      //   而 rows 就是 exceeded + within 的拼接，天然满足"先看该处理的"。
       const PAGE_SIZE = 5;
       const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
       const curPage = Math.min(Math.max(0, Number(st && st.page) || 0),
         totalPages - 1);
       const pageRows = rows.slice(curPage * PAGE_SIZE,
         curPage * PAGE_SIZE + PAGE_SIZE);
+
+      // 每一行属于哪一组：用 tool_call_id 集合判断（顺序不能依赖，
+      // 因为排序是后端给的，前端不重算）。
+      const exIds: Record<string, boolean> = {};
+      exceeded.forEach((r: any) => { exIds[r.tool_call_id] = true; });
 
       const head = R.createElement("div", {
         className: "qm-set-stalerow qm-set-staleheader", key: "rh",
@@ -8680,9 +8862,24 @@ function settingsTabBody(
       ]);
       const body = pageRows.map((r: any) => {
         const canTerm = !!r.terminable;
+        const isExceeded = !!exIds[r.tool_call_id];
+        // 观察期内的释放是"替人交卷"，必须二次确认 + 标出正在作答。
+        // 用与既有代码一致的防御式写法：宿主环境未必有 window.confirm
+        // （非浏览器/被禁用的沙箱里它会 undefined），裸调用会抛 TypeError。
+        const askConfirm = () => {
+          if (typeof window === "undefined"
+              || typeof window.confirm !== "function") return;
+          const tail = r.has_live_subscriber
+            ? "，且**正在被其他页面作答**" : "";
+          const ok = window.confirm(
+            `该问卷仍在观察期内（已挂起 ${r.idle_text}，阈值 ${thrText}）${tail}。\n\n`
+            + "强制释放等于替用户交卷，其正在填写的内容将丢失。确定继续？");
+          if (ok) void staleRelease([r.tool_call_id]);
+        };
         return R.createElement("div", {
           className: "qm-set-stalerow", key: r.tool_call_id,
           "data-qm-stale-row": r.tool_call_id,
+          "data-qm-stale-group": isExceeded ? "exceeded" : "within",
         }, [
           R.createElement("span", { className: "qm-set-stalec1", key: "c1" }, [
             R.createElement("span", { className: "qm-set-staletitle", key: "t" },
@@ -8693,7 +8890,21 @@ function settingsTabBody(
                 : r.reason_code === "orphan-future-dead" ? "孤儿·唤醒已失效"
                 : r.reason_code === "no-future" ? "无唤醒句柄"
                 : r.reason_code === "future-done" ? "已结束未收尾"
-                : "静默挂起"),
+                : isExceeded ? "已超阈值" : "观察期内"),
+            // 正在被作答 —— 这是"不能批量释放"的直接依据，必须可见。
+            r.has_live_subscriber
+              ? R.createElement("span", {
+                  className: "qm-set-staletag", key: "sub",
+                  "data-qm-stale-live": "1",
+                  style: { marginLeft: "6px", color: "#e67e22" },
+                }, "正在作答")
+              : null,
+            r.in_flight
+              ? R.createElement("span", {
+                  className: "qm-set-staletag", key: "fl",
+                  style: { marginLeft: "6px" },
+                }, "模型分析中")
+              : null,
           ]),
           R.createElement("span", { className: "qm-set-stalec2", key: "c2" },
             (r.agent_id || "-") + (r.session_id ? " · " + r.session_id : "")),
@@ -8704,8 +8915,12 @@ function settingsTabBody(
               type: "button", className: "qm-set-mini", key: "rel",
               "data-qm-stale-release": r.tool_call_id,
               disabled: !!(st && st.busy),
-              onClick: () => { void staleRelease([r.tool_call_id]); },
-            }, "释放"),
+              title: isExceeded ? "释放该问卷" : "仍在观察期内，点击需二次确认",
+              onClick: () => {
+                if (isExceeded) void staleRelease([r.tool_call_id]);
+                else askConfirm();
+              },
+            }, isExceeded ? "释放" : "强制释放"),
             R.createElement("button", {
               type: "button", className: "qm-set-mini", key: "term",
               "data-qm-stale-terminate": r.tool_call_id,
@@ -8779,6 +8994,12 @@ function SettingsPanel(props: {
     /** 当前页码（0 起）。必须随 props 一起透传，否则翻页点了没反应 ——
      *  与 2026-11-15 那次「漏传 stale 导致页签永远空白」同一类缺陷。 */
     page: number;
+    /** 分组与生效阈值（P1-b，2026-11-15）。同样必须透传：
+     *  `threshold === null` = 未取到（渲染"加载中…"），**不是** 0（关闭）。 */
+    exceeded: any[];
+    within: any[];
+    threshold: number | null;
+    thrBusy: boolean;
   };
 }): any {
   const { R, open, onClose } = props;
