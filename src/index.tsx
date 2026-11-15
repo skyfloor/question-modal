@@ -379,6 +379,11 @@ function injectStyles(): void {
       "font-size:11px;color:var(--app-text-secondary,#64748b)}",
       ".qm-set-stalec3{font-size:12px;color:var(--app-text-primary,#1e293b);white-space:nowrap}",
       ".qm-set-stalec4{display:flex;gap:6px;justify-content:flex-end}",
+      // 分页条（2026-11-15）：与表格同宽、右对齐信息文字，
+      // 上下留白与 .qm-set-row 的密度口径一致，避免页面突然变松。
+      ".qm-set-stalepager{display:flex;align-items:center;justify-content:flex-end;",
+      "gap:10px;padding:12px 0 4px;font-size:11px}",
+      ".qm-set-stalepageinfo{color:var(--app-text-tertiary,#94a3b8);white-space:nowrap}",
       // ── 行布局：固定网格，彻底消除「控件宽度不同 → 每行错位」──
       // label 列弹性、控件列右对齐；行距与分隔线对齐参考稿（实线浅分隔）。
       ".qm-set-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;",
@@ -1307,6 +1312,9 @@ async function staleScan(): Promise<void> {
     const d = await fetchStaleSurveys();
     settingsState.stale.rows = (d && d.items) || [];
     settingsState.stale.scanned = true;
+    // 重新扫描 = 新一批结果，页码回到第一页。不重置的话，上一批在第 3 页
+    // 而新结果只有 1 页时，会渲染出「有数据但一片空白」（越界）。
+    settingsState.stale.page = 0;
     const n = settingsState.stale.rows.length;
     const cost = Date.now() - startedAt;
     settingsState.stale.msgKind = "ok";
@@ -6719,6 +6727,15 @@ const settingsState: {
     busy: boolean;
     msg: string;
     msgKind: string;
+    /** 当前页码（从 0 起）。
+     *
+     *  ★ 用户需求 2026-11-15：结果可能很多（实测曾一次扫出多条孤儿记录，
+     *    长期运行的机器只增不减），一次铺满会让弹窗被撑长、渲染变慢；
+     *    按 5 条/页切分，既稳又便于逐个核对。
+     *  ★ 页码必须存在 state 里而不是组件局部变量：本面板是无 hooks 的
+     *    「模块状态 + 整树重绘」写法，任何局部变量都会在重绘后归零。
+     */
+    page: number;
   };
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
@@ -6731,7 +6748,7 @@ const settingsState: {
   conflictNote: "",
   notifyChannels: [], notifyCurrent: "off", notifyTesting: "", notifyMsg: {},
   notifyLog: {},
-  stale: { rows: [], scanned: false, busy: false, msg: "", msgKind: "info" },
+  stale: { rows: [], scanned: false, busy: false, msg: "", msgKind: "info", page: 0 },
 };
 let settingsPanelRoot: any = null;
 
@@ -8637,6 +8654,22 @@ function settingsTabBody(
     }
 
     if (rows.length) {
+      // ── 分页（2026-11-15 用户需求：结果多时避免页面异常）──────────
+      //
+      // 每页 5 条。为什么固定 5 而不是"自适应高度"：
+      //   · 弹窗高度是固定尺寸（min(680, 92vw)），自适应需要测量 DOM，
+      //     在「模块状态 + 整树重绘」下既复杂又易抖；
+      //   · 5 条 × 约 44px ≈ 220px，加上表头与按钮仍在弹窗可视区内，
+      //     一屏看全，不用内部滚动 —— 内部滚动条在弹窗里体验很差。
+      // 页码越界必须夹紧：释放/重扫后总数会变小，若直接沿用旧页码，
+      // 会出现「明明有数据却是空白」（本轮的同类缺陷就是这么来的）。
+      const PAGE_SIZE = 5;
+      const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+      const curPage = Math.min(Math.max(0, Number(st && st.page) || 0),
+        totalPages - 1);
+      const pageRows = rows.slice(curPage * PAGE_SIZE,
+        curPage * PAGE_SIZE + PAGE_SIZE);
+
       const head = R.createElement("div", {
         className: "qm-set-stalerow qm-set-staleheader", key: "rh",
       }, [
@@ -8645,7 +8678,7 @@ function settingsTabBody(
         R.createElement("span", { className: "qm-set-stalec3", key: "c3" }, "挂起"),
         R.createElement("span", { className: "qm-set-stalec4", key: "c4" }, "操作"),
       ]);
-      const body = rows.map((r: any) => {
+      const body = pageRows.map((r: any) => {
         const canTerm = !!r.terminable;
         return R.createElement("div", {
           className: "qm-set-stalerow", key: r.tool_call_id,
@@ -8689,6 +8722,35 @@ function settingsTabBody(
       bodyKids.push(R.createElement("div", {
         className: "qm-set-staletable", key: "tbl", "data-qm-stale-table": "1",
       }, [head].concat(body)));
+
+      // ── 分页控件（仅在多于 1 页时出现）──────────────────────────
+      //
+      // 单页时刻意不显示：一个只有「1 / 1」且两个按钮都禁用的控件条
+      // 只是噪音，用户会去点它并疑惑为什么没反应。
+      if (totalPages > 1) {
+        const go = (p: number) => {
+          settingsState.stale.page = p;
+          settingsRenderPanel();
+        };
+        const btn = (label: string, target: number, dis: boolean, k: string) =>
+          R.createElement("button", {
+            type: "button", className: "qm-set-mini", key: k,
+            "data-qm-stale-page": String(target),
+            disabled: dis,
+            onClick: () => { go(target); },
+          }, label);
+        bodyKids.push(R.createElement("div", {
+          className: "qm-set-stalepager", key: "pg", "data-qm-stale-pager": "1",
+        }, [
+          btn("上一页", curPage - 1, curPage <= 0, "prev"),
+          R.createElement("span", {
+            className: "qm-set-stalepageinfo", key: "info",
+            "data-qm-stale-pageinfo": String(curPage + 1),
+          }, `第 ${curPage + 1} / ${totalPages} 页`
+            + `（共 ${rows.length} 条，每页 ${PAGE_SIZE} 条）`),
+          btn("下一页", curPage + 1, curPage >= totalPages - 1, "next"),
+        ]));
+      }
     }
   }
 
@@ -8714,6 +8776,9 @@ function SettingsPanel(props: {
    */
   stale?: {
     rows: any[]; scanned: boolean; busy: boolean; msg: string; msgKind: string;
+    /** 当前页码（0 起）。必须随 props 一起透传，否则翻页点了没反应 ——
+     *  与 2026-11-15 那次「漏传 stale 导致页签永远空白」同一类缺陷。 */
+    page: number;
   };
 }): any {
   const { R, open, onClose } = props;
