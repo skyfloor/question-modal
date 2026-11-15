@@ -1295,13 +1295,26 @@ async function postStaleTerminate(ids: string[]): Promise<any> {
 /** 扫描并重绘。失败时把原因写进 msg（不静默、不假装空列表）。 */
 async function staleScan(): Promise<void> {
   settingsState.stale.busy = true;
-  settingsState.stale.msg = "";
+  // ★ 先给一条「进行中」文案再发请求（2026-11-15 用户反馈「点了没有任何结果，
+  //   不知道是没数据还是异常」）。此前 busy 只改按钮文字，而按钮文字本身
+  //   也因 props 漏传而看不见 → 用户得不到任何信号。现在三个时刻都有话：
+  //   进行中 / 成功（含条数与耗时）/ 失败（含原因）。
+  settingsState.stale.msgKind = "info";
+  settingsState.stale.msg = "正在扫描…";
   settingsRenderPanel();
+  const startedAt = Date.now();
   try {
     const d = await fetchStaleSurveys();
     settingsState.stale.rows = (d && d.items) || [];
     settingsState.stale.scanned = true;
-    settingsState.stale.msgKind = "info";
+    const n = settingsState.stale.rows.length;
+    const cost = Date.now() - startedAt;
+    settingsState.stale.msgKind = "ok";
+    // 明确写出「扫了几条、阈值多少、耗时多少」——这三项齐了才能区分
+    // 「确实没有挂起项」与「接口返回了但内容为空」这类看起来一样的现象。
+    settingsState.stale.msg = n > 0
+      ? `扫描完成：发现 ${n} 条超过 30 分钟未处理的问卷（耗时 ${cost}ms）`
+      : `扫描完成：没有超过 30 分钟未处理的问卷（耗时 ${cost}ms）`;
   } catch (e: any) {
     // 扫描失败 ≠ 没有挂起项。必须区分：否则用户会把「请求失败」当成「很干净」。
     settingsState.stale.rows = [];
@@ -7634,6 +7647,9 @@ function settingsRenderPanel(): void {
     templates: settingsState.templates,
     tplEdit: settingsState.tplEdit,
     tplBusy: settingsState.tplBusy,
+    // ★ 漏传这一行 = 挂起清理页签永远空白（2026-11-15 实测缺陷）：
+    //   组件读的是 props.stale，只更新 settingsState 不会触发可见变化。
+    stale: settingsState.stale,
   }), settingsPanelRoot);
 }
 
@@ -8611,6 +8627,15 @@ function settingsTabBody(
       }, "没有超过 30 分钟仍未处理的问卷。"));
     }
 
+    // 还没扫过：给出明确指引，否则页签是一片空白，用户不知道要不要点。
+    if (!st || !st.scanned) {
+      if (!(st && st.msg)) {
+        bodyKids.push(R.createElement("div", {
+          className: "qm-set-staleempty", key: "sn", "data-qm-stale-idle": "1",
+        }, "点「扫描」列出静默超过 30 分钟仍未处理的问卷。"));
+      }
+    }
+
     if (rows.length) {
       const head = R.createElement("div", {
         className: "qm-set-stalerow qm-set-staleheader", key: "rh",
@@ -8680,6 +8705,16 @@ function SettingsPanel(props: {
   sessData?: any;
   cfg?: EffectiveConfig | null; cfgError?: string; chatId?: string;
   dirtyCount?: number; saving?: boolean; saveMsg?: string; conflictNote?: string;
+  /** 挂起清理页签的状态（2026-11-15）。
+   *
+   *  ★ 必须显式透传：本面板是「模块级状态 + ReactDOM.render 整树重绘」的
+   *    无 hooks 写法，组件只认 props。只在 settingsState 上加字段而忘了
+   *    在这里传，分支里读到的永远是 undefined → 点扫描后界面一动不动，
+   *    用户完全无法区分「扫描完没有数据」和「功能坏了」。
+   */
+  stale?: {
+    rows: any[]; scanned: boolean; busy: boolean; msg: string; msgKind: string;
+  };
 }): any {
   const { R, open, onClose } = props;
   if (!open) return null;
