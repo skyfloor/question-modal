@@ -1997,6 +1997,10 @@ class PrefsRequest(BaseModel):
     would be accepted by the route and then thrown away before reaching
     ``sanitize_settings``.  That failure is invisible: the request returns 200
     and the setting simply never takes effect.
+
+    ⚠️ 它们**不是**真实设置项，只作为 pydantic 的字段容器存在 ——
+    真正写入时要经 ``_prefs_payload()`` 剔除"调用方没传的"和"显式 None"的键。
+    详见该函数的注释（2026-11-17 回归事故）。
     """
     model_config = ConfigDict(extra="allow")
 
@@ -2004,6 +2008,39 @@ class PrefsRequest(BaseModel):
     model_id: Optional[str] = Field(None, description="'<provider>:<model>'")
     with_context: Optional[bool] = Field(None)
     parallel: Optional[bool] = Field(None)
+
+
+def _prefs_payload(body: "PrefsRequest") -> dict:
+    """把请求体变成「只有调用方真正想设置的那些键」。
+
+    ★ 2026-11-17 回归事故（我自己引入又修掉的，记录在此防复发）：
+
+      `PrefsRequest` 把 mode / model_id / with_context / parallel 声明成
+      ``Optional[...] = None`` 作为字段容器。``model_dump()`` 会**把没传的
+      字段也输出成 None**。在 sanitize_settings 改成返回 rejected 之前，
+      这些 None 被旧代码静默丢弃，所以看不出问题；一旦开始如实回报被拒项，
+      它们立刻变成 4 条噪音：
+
+          POST {"release_after_sec": 7200}
+          → rejected 里多出 mode/model_id/with_context/parallel（值 None）
+
+      真实后果比噪音严重得多：前端 `pushRemotePrefs()` 每次都发全 4 个键
+      （其中未改的是 undefined → JSON 里直接没有该键，但一旦某个调用方
+      传了 null 就会变成"显式非法值"），界面就会弹出「部分设置未生效」，
+      而用户其实什么都没改错。
+
+    ★ 两条剔除规则，缺一不可：
+      1. ``exclude_unset`` —— 调用方**根本没传**的键不该出现（否则等于
+         凭空给它塞了个值）。
+      2. 「值为 None」也剔除 —— 显式传 null 在 merge 语义下应当等同
+         「没设置这一项」。prefs 没有「清空某键」的协议（那是 session-prefs
+         的 explicit_del 干的事），把一个 null 当"值"去校验只会误报。
+
+      注：空串**不**剔除 —— 空串在 resolve_effective 那边本来就等价于
+      「没有偏好」（会回落全局/默认），由它自己处理，这里不越界。
+    """
+    raw = body.model_dump(exclude_unset=True)
+    return {k: v for k, v in raw.items() if v is not None}
 
 
 class NotifyTestRequest(BaseModel):
@@ -3172,7 +3209,7 @@ def build_router() -> APIRouter:
         HTTP 状态码始终 200：这是批量 merge，部分合法是常态，用 4xx 会让
         调用方无法区分「整个请求坏了」与「其中一项值不合法」。
         """
-        saved = _save_prefs(body.model_dump())
+        saved = _save_prefs(_prefs_payload(body))
         rejected = saved.pop("__rejected__", []) or []
         return {"ok": not rejected, "prefs": saved, "rejected": rejected}
 
