@@ -8141,9 +8141,25 @@ function notifyChannelRow(R: any, scope: string): any {
     }, testing ? "发送中…" : "测试"));
   }
   // 只读状态说明（不可用原因 / 待测试），紧跟在控件右侧同一行。
+  //
+  // ★ 2026-11-17（boss：「使用明确的报错来显示」）：
+  //   原来一律用 #bfbfbf / 11px 的弱灰字。但「不可用」分两种性质，混在一起
+  //   会误导用户：
+  //     · reason_code=missing_agent_id / agent_not_found → **调用方配置错误**，
+  //       是必须让用户看见并去修的硬错误（红字）
+  //     · channel_disabled / missing_credentials → 宿主设置里的正常状态说明
+  //       （灰字即可，用户可能只是还没配）
+  //   `reason_code` 由后端给出（前端不再靠中文文案猜），见 plugin.py
+  //   _notify_channel_state。
   if (cur && cur.ready === false && cur.reason) {
+    const hardErr = cur.reason_code === "missing_agent_id"
+      || cur.reason_code === "agent_not_found";
     top.push(R.createElement("span", {
-      key: "rs", style: { marginLeft: 8, color: "#bfbfbf", fontSize: 11 },
+      key: "rs",
+      "data-qm-notify-reason": cur.reason_code || "",
+      style: hardErr
+        ? { marginLeft: 8, color: "var(--app-danger,#d93025)", fontSize: 12, fontWeight: 600 }
+        : { marginLeft: 8, color: "#bfbfbf", fontSize: 11 },
     }, cur.reason));
   }
   // ⚠️ 2026-11-14 用户裁定（第 5 轮 UI 调整）：

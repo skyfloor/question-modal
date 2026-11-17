@@ -966,6 +966,10 @@ def _notify_channel_state(channel: str, cfg: dict, agent_id: str = "") -> dict:
         "label": label,
         "ready": False,
         "reason": "",
+        # 机判字段：前端/脚本据此分流处置，不必解析中文文案。
+        # 取值：missing_agent_id / channel_disabled / missing_credentials /
+        #       no_sessions / read_failed / 空（可用或无特殊原因）
+        "reason_code": "",
         "verified": channel in _notify_verified_set(cfg),
     }
     if channel == "off":
@@ -989,18 +993,57 @@ def _notify_channel_state(channel: str, cfg: dict, agent_id: str = "") -> dict:
     try:
         info = _host_channel_info(channel, agent_id)
     except Exception as exc:  # noqa: BLE001
+        state["reason_code"] = "read_failed"
         state["reason"] = "无法读取宿主频道配置：" + type(exc).__name__
+        return state
+
+    # ★★ 先判定「读到的是不是该读的那份配置」（2026-11-17，boss 要求明确报错）。
+    #
+    #   若调用方没给 agent_id，_agent_config_source 会退化成全局模板
+    #   <WORKING_DIR>/config.json。那份文件里 channels 全部 enabled=false、
+    #   无凭据 —— 于是下面会报「宿主未启用该频道」，把用户引去翻宿主设置，
+    #   而真实原因是**请求缺 agent_id**。两种情况的修法完全不同，必须先分开。
+    #
+    #   这里刻意**不自动兜底某个 agent**（比如猜 "default"）：多 agent 机器上
+    #   猜错会把 A 的频道状态显示成 B 的，比报错更糟。让调用方把 agent_id 传对。
+    if info.get("config_source") == "fallback_global":
+        state["reason_code"] = "missing_agent_id"
+        state["reason"] = (
+            "无法确定当前 agent：本次请求未携带 agent_id，插件只能读取全局配置"
+            "模板（%(path)s），该模板不含任何已启用的频道，因此无法判断该频道"
+            "是否可用。请在请求中携带 agent_id（查询参数 agent_id=… 或请求头 "
+            "X-Agent-Id: …）后重试。"
+            % {"path": info.get("config_path") or "<WORKING_DIR>/config.json"}
+        )
+        return state
+
+    if info.get("config_source") == "agent_not_found":
+        state["reason_code"] = "agent_not_found"
+        state["reason"] = (
+            "找不到该 agent 的配置文件：%(path)s 不存在。"
+            "请确认 agent_id=%(aid)r 是否正确（可查看 %(root)s/workspaces/ 下"
+            "有哪些 agent 目录）。"
+            % {"path": info.get("config_path"),
+               "aid": agent_id,
+               "root": str(_WORKING_DIR)}
+        )
         return state
 
     if not info.get("configured"):
         if not info.get("enabled"):
-            state["reason"] = "宿主未启用该频道"
+            # 到了这里说明读的是**该 agent 自己的** agent.json，
+            # 那 enabled=false 就是用户真的没启用 —— 这条文案可信。
+            state["reason_code"] = "channel_disabled"
+            state["reason"] = "宿主未启用该频道（已读取 %s）" % (
+                info.get("config_path") or "agent.json")
         else:
             miss = info.get("missing") or []
-            state["reason"] = "缺少凭据：" + "、".join(miss) if miss else "缺少凭据"
+            state["reason_code"] = "missing_credentials"
+            state["reason"] = ("缺少凭据：" + "、".join(miss)) if miss else "缺少凭据"
         return state
     if not info.get("sessions"):
         # q2 裁定：三者都要满足，缺会话即不可用（不知道发给谁）
+        state["reason_code"] = "no_sessions"
         state["reason"] = "该频道还没有任何会话，无法确定收件人"
         return state
     state["ready"] = True
@@ -1035,8 +1078,16 @@ def _host_channel_info(channel: str, agent_id: str = "") -> dict:
     只读磁盘上的 agent 配置与会话表，不触发宿主启动渠道 —— 面板探测不应
     有副作用（启动一个未运行的渠道代价很高）。
     """
-    info = {"configured": False, "sessions": 0, "target_user": "", "enabled": False}
+    info = {"configured": False, "sessions": 0, "target_user": "", "enabled": False,
+            "config_source": "", "config_path": ""}
     try:
+        src = _agent_config_source(agent_id)
+        # ★ 把「配置是从哪读来的」一并带出去（2026-11-17）。
+        #   没有这个字段，调用方只能看到 enabled=False，无法区分
+        #   「用户真的没启用」与「读错了文件」——这两种情况的修法完全不同：
+        #   前者让用户去宿主设置里开，后者让调用方补 agent_id。
+        info["config_source"] = src["source"]
+        info["config_path"] = str(src["path"])
         cfg = _current_agent_config(agent_id)
         channels = (cfg or {}).get("channels") or {}
         chan = channels.get(channel) or {}
@@ -1095,26 +1146,65 @@ def _current_agent_config(agent_id: str = "") -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _agent_config_source(agent_id: str = "") -> dict:
+    """定位 agent.json 并**说明这份配置是怎么来的**。
+
+    返回 ``{path: Path, source: str, agent_id: str}``，``source`` 取值：
+
+    | source | 含义 | 频道配置可信度 |
+    |:--|:--|:--|
+    | ``explicit_env`` | 环境变量显式指定 | 可信 |
+    | ``agent`` | 按 agent_id 命中 ``workspaces/<id>/agent.json`` | **可信** |
+    | ``fallback_global`` | 没拿到 agent_id，退化成 ``<WORKING_DIR>/config.json`` | **不可信** |
+
+    ★★ 为什么需要这个函数（2026-11-17 实测事故，boss 报"用明确的报错来显示"）：
+
+      我调用 ``POST /notify/test`` 时**没带 agent_id**，插件退化成读
+      ``<WORKING_DIR>/config.json``。那个文件**确实存在**，但它是**全局配置
+      模板**：``channels.dingtalk.enabled = false``、无任何凭据。于是插件
+      报「宿主未启用该频道」—— 而真相是宿主**启用得好好的**（
+      ``workspaces/default/agent.json`` 里 ``enabled=true`` 且
+      client_id/client_secret 齐备）。
+
+      这条错误文案把用户引向完全错误的方向：用户会去宿主设置里翻钉钉配置，
+      而问题其实出在**调用方没带 agent_id**。实测我第一次就被带偏了，差点
+      判定"用户的钉钉配置有问题"。
+
+      修法不是换一句更长的文案，而是**先判定读到的是不是该读的那份文件**，
+      再根据判定结果给出各自明确的错误。
+    """
+    explicit = os.environ.get("QWENPAW_QUESTION_MODAL_AGENT_CONFIG", "").strip()
+    if explicit:
+        return {"path": Path(explicit), "source": "explicit_env", "agent_id": agent_id}
+    if agent_id:
+        cand = _WORKING_DIR / "workspaces" / agent_id / "agent.json"
+        if cand.is_file():
+            return {"path": cand, "source": "agent", "agent_id": agent_id}
+        # ★ 传了 agent_id 但找不到该 agent 的配置 —— 必须与"没传"区分开
+        #   （2026-11-17 自查发现：首版把两者都归成 fallback_global，于是
+        #   传了个不存在的 agent_id 时，报错却说"未携带 agent_id"，同样误导）。
+        return {"path": cand, "source": "agent_not_found", "agent_id": agent_id}
+    return {"path": _WORKING_DIR / "config.json", "source": "fallback_global",
+            "agent_id": agent_id}
+
+
 def _agent_config_path(agent_id: str = "") -> Path:
     """定位某个 agent 的 agent.json。
 
     2026-11-14 修正（决定性）：**必须由调用方传入 agent_id**。此前靠
     「config.json 里只有一个 agent 就猜它」——多 agent 机器上猜测直接返回
-    空串，于是路径退化成
-    ``<WORKING_DIR>/config.json``（不存在）→ 读不到频道配置 → 微信被判
-    「未启用或缺凭据」，而实际上它是可用的。实测症状：隔离探针 ready=True，
-    线上端点 ready=False。
+    空串，于是路径退化成 ``<WORKING_DIR>/config.json`` → 读不到**该 agent 的**
+    频道配置 → 微信被判「未启用或缺凭据」，而实际上它是可用的。
+    实测症状：隔离探针 ready=True，线上端点 ready=False。
+
+    2026-11-17 补注：本机 ``<WORKING_DIR>/config.json`` **是存在的**（全局
+    模板，含 channels 但全部 enabled=false、无凭据），所以"退化"不会报文件
+    不存在，而是**静默读到一份不含该 agent 频道配置的文件** —— 比文件缺失
+    更隐蔽。判定细节见 :func:`_agent_config_source`。
 
     回退顺序：显式环境变量 → 传入的 agent_id → 请求头推导（见调用点）。
     """
-    explicit = os.environ.get("QWENPAW_QUESTION_MODAL_AGENT_CONFIG", "").strip()
-    if explicit:
-        return Path(explicit)
-    if agent_id:
-        cand = _WORKING_DIR / "workspaces" / agent_id / "agent.json"
-        if cand.is_file():
-            return cand
-    return _WORKING_DIR / "config.json"
+    return _agent_config_source(agent_id)["path"]
 
 
 def _current_agent_id() -> str:
@@ -1346,7 +1436,10 @@ async def _do_notify_test(channel: str, text: str, agent_id: str) -> dict:
 
     state = _notify_channel_state(channel, cfg, agent_id)
     if not state["ready"]:
+        # reason_code 一并回传：调用方（脚本/前端）据此分流处置，
+        # 不必解析中文文案。2026-11-17 加，配合「缺 agent_id」的明确报错。
         return {"ok": False, "channel": channel, "delivered": False,
+                "reason_code": state.get("reason_code") or "",
                 "error": state["reason"] or "频道不可用"}
 
     info = _host_channel_info(channel, agent_id)
@@ -1485,6 +1578,7 @@ async def notify_survey_pending(
     state = _notify_channel_state(channel, cfg, agent_id)
     if not state["ready"]:
         return {"ok": False, "delivered": False, "channel": channel,
+                "reason_code": state.get("reason_code") or "",
                 "reason": state["reason"] or "频道不可用"}
     if not state["verified"]:
         # q4：未通过测试的频道一律不许真正投递。

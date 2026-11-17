@@ -6286,7 +6286,7 @@ function kl(t, e) {
       disabled: !!S.disabled
     }, S.label)))
   ];
-  y && i && w.push(t.createElement("button", {
+  if (y && i && w.push(t.createElement("button", {
     key: "test",
     type: "button",
     disabled: h,
@@ -6304,10 +6304,14 @@ function kl(t, e) {
       cursor: h ? "default" : "pointer",
       whiteSpace: "nowrap"
     }
-  }, h ? "发送中…" : "测试")), o && o.ready === !1 && o.reason && w.push(t.createElement("span", {
-    key: "rs",
-    style: { marginLeft: 8, color: "#bfbfbf", fontSize: 11 }
-  }, o.reason));
+  }, h ? "发送中…" : "测试")), o && o.ready === !1 && o.reason) {
+    const S = o.reason_code === "missing_agent_id" || o.reason_code === "agent_not_found";
+    w.push(t.createElement("span", {
+      key: "rs",
+      "data-qm-notify-reason": o.reason_code || "",
+      style: S ? { marginLeft: 8, color: "var(--app-danger,#d93025)", fontSize: 12, fontWeight: 600 } : { marginLeft: 8, color: "#bfbfbf", fontSize: 11 }
+    }, o.reason));
+  }
   const m = !!(o && o.verified === !0), b = k || f, x = !!f;
   if (b || y && i && !h) {
     const S = k ? k.delivered === !0 : x ? f.indexOf("✓") === 0 : !1;
