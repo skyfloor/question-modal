@@ -1334,52 +1334,6 @@ async function postStaleTerminate(ids: string[]): Promise<any> {
   return d;
 }
 
-/** 修改「挂起超时自动释放」阈值并立即保存（P1-a，2026-11-15）。
- *
- *  ★ 为什么不用 `cfgSave`：那个函数读 `settingsState.draft`，而本页签
- *    是"改即保存"语义（下拉一变就落盘），不走草稿 → 保存两条路径。
- *    复用 `POST /prefs`（`resolve_effective` 的 ② 全局层），与其它全局
- *    设置项同一通道，不新增端点。
- *
- *  ★ 0 是合法值（= 关闭），绝不能用 `if (!val)` 之类的 falsy 判断挡掉。
- *
- *  ★ 保存失败必须显红字并**回滚下拉显示**：否则用户看到「已选关闭」
- *    而实际后端还是 1800，是典型的"界面说谎"（历史事故同族）。
- */
-async function staleSetThreshold(sec: number): Promise<void> {
-  if (settingsState.stale.thrBusy) return;
-  const prev = settingsState.stale.threshold;
-  settingsState.stale.thrBusy = true;
-  settingsRenderPanel();
-  try {
-    const resp = await fetch(apiUrl("/question-modal/prefs"), {
-      method: "POST", headers: authHeaders(),
-      body: JSON.stringify({ release_after_sec: sec }),
-    });
-    const d = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error((d && d.detail) || ("HTTP " + resp.status));
-    settingsState.stale.threshold = sec;
-    // 生效值变了 → 分组必须重取（否则界面还按旧阈值分组）
-    invalidateConfigCache();
-    settingsState.stale.msgKind = "ok";
-    settingsState.stale.msg = sec <= 0
-      ? "已关闭自动释放：挂起问卷将一直保留，需在本页手动释放"
-      : `自动释放已设为：静默超过 ${staleThresholdText(sec)} 自动释放`;
-    try {
-      applyStaleResult(await fetchStaleSurveys());
-    } catch { /* 重取失败不影响设置已保存这一事实 */ }
-  } catch (e: any) {
-    // 回滚显示到保存前的值，避免"界面显示关闭、后端仍是 1800"
-    settingsState.stale.threshold = prev;
-    settingsState.stale.msgKind = "error";
-    settingsState.stale.msg = "设置保存失败："
-      + (e && e.message ? e.message : String(e));
-  } finally {
-    settingsState.stale.thrBusy = false;
-    settingsRenderPanel();
-  }
-}
-
 /** 扫描并重绘。失败时把原因写进 msg（不静默、不假装空列表）。 */
 async function staleScan(): Promise<void> {
   settingsState.stale.busy = true;
@@ -1619,9 +1573,12 @@ interface QA { type: string; value: string | string[]; other: string; skipped?: 
    *  `"requires_human"` = the driver skipped an observation-only question
    *  (user decision 2026-11-07): only a real person can report what they saw,
    *  so the model must not fabricate an answer.
+   *  `"optional"` = the question declares itself optional (user decision
+   *  2026-11-17, REQ-2026-0072) and was left blank — nobody gave up anything,
+   *  so it must NOT be reported as「用户主动跳过」.
    *  Absent = the user clicked「跳过本题」.  Kept apart so the回传 can tell
    *  「用户主动跳过」from「自动跳过」— they used to look identical. */
-  skipped_by?: "no_recommend" | "requires_human" | "user";
+  skipped_by?: "no_recommend" | "requires_human" | "user" | "optional";
   /** Files the user attached under this question's「其他」box.  Each entry is
    *  what `/api/console/upload` returned: {url, file_name, size}. */
   attachments?: Attachment[]; }
@@ -2855,6 +2812,79 @@ function sanitizeOther(ans: Record<string, QA>): Record<string, QA> {
     next[k] = { ...a, other: "", attachments: [] };
   });
   return next;
+}
+
+// ══════════ 可选题判定与补写（2026-11-17，REQ-2026-0072）══════════
+//
+// boss 原话：「某些问卷（非最后一题）的填空题，题目明明写着可为空跳过，
+// 但是实际因为必填门禁，是无法提交，导致题目与实际相悖」
+//
+// ★★ 词表与优先级必须与后端 `recommend.py:is_optional()` 完全一致 ★★
+//    否则自动模式（后端 runner）与手工模式（前端闸门）会对同一份问卷
+//    给出不同的必填集合（契约 AC-8）。
+//
+// 判定优先级（契约 OPTIONAL_FIELD_CONTRACT v1.1，不可变更）：
+//   1. optional === false → 必填（显式字段压过一切文案）
+//   2. optional === true  → 可选（字段优先是双向的，不因真假而不同）
+//   3. 题干命中反向词表   → 必填（字段缺省时才看文案；反向豁免优先）
+//   4. 题干命中可选词表   → 可选
+//   5. 以上均未命中       → 必填（默认从严）
+const OPT_REVERSE_WORDS = ["必须", "务必", "不得为空", "不能为空"];
+const OPT_WORDS = ["可为空", "可留空", "选填", "可选", "非必填"];
+
+function isOptionalQ(q: any): boolean {
+  if (!q || typeof q !== "object") return false;
+  if (q.optional === false) return false;   // 显式必填，压过文案
+  if (q.optional === true) return true;     // 显式可选，同样压过文案
+  const title = String(q.title || "");
+  if (!title) return false;
+  if (OPT_REVERSE_WORDS.some((w) => title.indexOf(w) !== -1)) return false;
+  return OPT_WORDS.some((w) => title.indexOf(w) !== -1);
+}
+
+/** 给「留空的可选题」补写 skipped_by="optional"（契约 §3.0 第①步）。
+ *
+ *  ★ 为什么必须有这一步：实测 `authoritativeAnswers()` 原本只做
+ *    `sanitizeOther(reconcileWithPersisted(...))` —— 合并已答与持久化缓存，
+ *    **从不遍历可见题补空条目**；后端 `/answer` 也零校验（missing/required/
+ *    未作答 命中全为 0）。不补写的话，契约 AC-1「回传含 skipped_by:optional」
+ *    永远不会成立（需求评审 R-3 抓到的缺口）。
+ *
+ *  ★ 两条硬约束：
+ *    1. **只补当前可见的题** —— 否则 showIf 隐藏的题会被写入跳过条目，
+ *       回传里凭空多出用户从未见过的题（AC-9）。
+ *    2. **只补可选题** —— 必填题留空仍要被闸门拦；给它补 skipped 会让闸门
+ *       形同虚设。
+ *
+ *  纯函数、幂等：已有任何答案痕迹（value/other/attachments/skipped）的题不动。
+ */
+function fillOptionalSkips(
+  questions: any[], ans: Record<string, QA>,
+): Record<string, QA> {
+  const out: Record<string, QA> = { ...(ans || {}) };
+  let vis: number[] = [];
+  try {
+    vis = visibleIndices(questions, out);
+  } catch (_) {
+    return out;   // 可见性计算异常时不补写（宁可少写，不可写错）
+  }
+  vis.forEach((i) => {
+    const q = questions[i];
+    if (!isOptionalQ(q)) return;             // 必填题不补
+    const key = `q${i}`;
+    const cur = out[key];
+    // 已有痕迹（含显式跳过）→ 不动，避免覆盖用户/驱动的真实意图
+    if (cur && (cur.skipped === true || filledAnswer(cur))) return;
+    const qt = qType(q);
+    out[key] = {
+      type: qt,
+      value: (qt === "multi" ? [] : "") as any,
+      other: "",
+      skipped: true,
+      skipped_by: "optional",
+    } as QA;
+  });
+  return out;
 }
 
 /** Compact question list, used when a skipped survey is expanded. */
@@ -5280,9 +5310,17 @@ function AskUserCard(props: { data?: any }) {
    *  the authoritative map (persisted wins for any key this instance never
    *  touched — see `reconcileWithPersisted`).  Called at submit/skip time so a
    *  host-driven remount cannot ship an all-empty survey. */
+  //
+  // ★ 2026-11-17（REQ-2026-0072 / 契约 §3.0）：三步顺序**不可颠倒**
+  //    ① fillOptionalSkips —— 给「留空的可选题」补写 skipped_by="optional"
+  //    ② reconcileWithPersisted —— 让 localStorage 里用户真实答过的覆盖①
+  //    ③ sanitizeOther —— 既有净化
+  //   为什么必须先补后合并：反过来的话，补写会盖掉用户在另一标签页刚作答的
+  //   内容（真实丢答案）。先补只填空位，合并能纠正它。
   const authoritativeAnswers = (): Record<string, QA> =>
     sanitizeOther(reconcileWithPersisted(
-      answers, loadCardState(callId)?.answers, touchedRef.current));
+      fillOptionalSkips(questions, answers),
+      loadCardState(callId)?.answers, touchedRef.current));
 
   /** True when every visible question is still the pristine initializer (no
    *  value / other / attachment / skip).  Such a submit is almost always a lost
@@ -5300,20 +5338,29 @@ function AskUserCard(props: { data?: any }) {
    */
   const gateEnabled = (): boolean => !!cfgOf("gate_unsaved", true);
 
+  // 可选题判定复用模块级 `isOptionalQ`（词表与后端 recommend.py 同源）。
+  // ★ 不要再在这里定义第二份词表：两份副本必然漂移，那就是 AC-8 失败的开端。
+  const isOptional = (q: any): boolean => isOptionalQ(q);
+
   const missingOf = (eff: Record<string, QA>, only?: number): number[] => {
     // 关掉拦截 = 允许空题直接前进；返回空数组让所有调用点自然放行，
     // 闸门代码本身不需要第二套分支。
     if (!gateEnabled()) return [];
+    // 可选题留空不算「未作答」（2026-11-17 REQ-2026-0072）：
+    // 这是「题目明明写着可为空跳过、却被必填门禁卡住」的修复点。
+    // 只影响**是否拦截**；留空的可选题由 fillOptionalSkips 补写跳过条目。
+    //
+    // ★ visibleIndices 只算一次（首版写成在 needAns 内部反复调用，
+    //   O(n) 次调用 × O(n) 次计算 = O(n²)，没有理由留一个平方复杂度）。
+    const vis = new Set(visibleIndices(questions, eff));
+    const needAns = (i: number) =>
+      vis.has(i) && !filledAnswer(eff[`q${i}`]) && !isOptional(questions[i]);
     const out: number[] = [];
     if (typeof only === "number") {
-      if (visibleIndices(questions, eff).indexOf(only) !== -1
-          && !filledAnswer(eff[`q${only}`])) out.push(only + 1);
+      if (needAns(only)) out.push(only + 1);
       return out;
     }
-    const vis = new Set(visibleIndices(questions, eff));
-    questions.forEach((_q, i) => {
-      if (vis.has(i) && !filledAnswer(eff[`q${i}`])) out.push(i + 1);
-    });
+    questions.forEach((_q, i) => { if (needAns(i)) out.push(i + 1); });
     return out;
   };
 
@@ -7172,6 +7219,23 @@ async function cfgSave(): Promise<void> {
       settingsRenderPanel();
       return;
     }
+    // ★ 2026-11-17（契约 API_CONTRACT_v5 CHG-001 / 评审 R-5）：
+    //   全局保存走 `/prefs`，该端点现在是「部分成功」语义 ——
+    //   HTTP 200 只代表请求被受理，不代表每个键都写进去了。
+    //   不判 rejected 的话，「改 X 保存、实际被拒」会让界面显示保存成功。
+    const _rej: any[] = Array.isArray(d && d.rejected) ? d.rejected : [];
+    if (_rej.length) {
+      settingsState.saving = false;
+      const detail = _rej
+        .map((r: any) => `${r.key}：${r.reason || "取值不合法"}`)
+        .join("；");
+      settingsState.saveMsg = "部分设置未生效 —— " + detail;
+      settingsRenderPanel();
+      // 合法项已经写进去了，draft 必须清掉已生效部分以外的内容会误导，
+      // 这里保守起见整份保留 draft，让用户看到"还没保存成功"，
+      // 而不是假装都存好了（宁可让他再点一次，也不要谎报成功）。
+      return;
+    }
     settingsState.saving = false;
     settingsState.draft = {};
     // The next card must not read the pre-save snapshot.
@@ -7473,6 +7537,10 @@ function openSettingsPanel(): void {
   settingsState.cfgError = "";
   // 模型与模板候选：只在设置面板用，异步补齐即可。
   void loadSettingsOptions();
+  // 「挂起超时自动释放」的当前值：打开面板即拉一次（TASK-006）。
+  // 不这样做的话，用户切到「挂起清理」页看到的是空下拉（显示「加载中…」），
+  // 无从确认当前生效值 —— 这正是 boss 报「无保存」的直接观感来源。
+  void loadStaleThreshold();
   settingsState.agentId = _hostAgentId || (() => {
     try { return host().getSelectedAgentId ? host().getSelectedAgentId() : ""; }
     catch (_) { return ""; }
@@ -7557,6 +7625,42 @@ function openSettingsPanel(): void {
       if (ch && ch !== "off") void loadNotifyTestLog(ch);
     });
   });
+}
+
+/** 拉取「挂起超时自动释放」的当前生效值，填入 st.threshold。
+ *
+ *  ★ 2026-11-17（REQ-2026-0072 REQ-003 / TASK-006）：
+ *    缺陷症状（boss 原话）：「挂起清理，挂起超时自动释放无保存」。
+ *
+ *    根因：`settingsState.stale.threshold` 初值是 `null`，而唯一的赋值点是
+ *    `applyStaleResult()` —— 它只在**点「扫描」**或**改下拉之后**才被调用。
+ *    `openSettingsPanel()` 只加载配置与通知频道，`onTabChange` 又只对
+ *    `global`/`default` 调 `loadGlobalCfg()`。于是**一进页面下拉是空的**
+ *    （显示「加载中…」），用户根本无从确认当前值，自然会认为"没保存"。
+ *
+ *    这里补上「进页签即拉一次」：打开面板时、切到挂起清理页时都调用。
+ *
+ *  ★ null 与 0 语义必须分开：null = 尚未取到（显示「加载中…」）；
+ *    0 = 已关闭自动释放。把 null 渲染成 0 会让用户以为自己关掉了自动释放，
+ *    而实际是后台还在跑（或反之）—— 这类"看起来一样"的语义混淆最难排查。
+ */
+let _staleThrLoading = false;
+async function loadStaleThreshold(): Promise<void> {
+  if (_staleThrLoading) return;
+  _staleThrLoading = true;
+  try {
+    const cfg = await fetchEffectiveConfig("");
+    const v = (cfg && cfg.config && cfg.config.release_after_sec);
+    // 只在拿到**数字**时赋值；取不到就保持 null（界面显示「加载中…」），
+    // 绝不猜一个默认值顶上——那等于给用户看一个不存在的当前值。
+    settingsState.stale.threshold =
+      typeof v === "number" && isFinite(v) ? v : null;
+  } catch (_) {
+    settingsState.stale.threshold = null;   // 失败也保持"未取到"，不伪装成 0
+  } finally {
+    _staleThrLoading = false;
+    try { settingsRenderPanel(); } catch (_) { /* panel closed */ }
+  }
 }
 
 /** One provider and the models it offers — the two-column picker's data. */
@@ -7753,6 +7857,10 @@ function settingsRenderPanel(): void {
       // 诊断页需要缓存清单；打开就拉，避免显示「正在读取」后一直空着。
       // default / global 两页都读写全局磁盘值，切过去就刷新。
       if (t === "global" || t === "default") void loadGlobalCfg();
+      // 挂起清理页的阈值也必须在**切过去时**拉一次（TASK-006）：
+      // 面板是长期存在、靠 open 开关的，只在打开时拉不够 —— 用户可能在
+      // 面板开着的情况下从别的页签切过来，那时 threshold 仍是 null。
+      if (t === "stale") void loadStaleThreshold();
     },
     scope: settingsState.scope,
     scopeChoice: settingsState.scopeChoice,
@@ -8728,7 +8836,14 @@ function settingsTabBody(
       className: "qm-set-stalehead", key: "sh",
     }, [
       // ── 自动释放设置（P1-a）──────────────────────────────
-      // 改即保存：与「全局配置」页其它设置项同一语义，不另设"保存"按钮。
+      // ★ 2026-11-17（REQ-2026-0072 REQ-003 / TASK-007）：**改成草稿模式**。
+      //
+      //   改前是「改即保存」（下拉一变就 POST /prefs），而底部「保存」按钮
+      //   绑的是 `cfgSave()` —— 它只读 `settingsState.draft`，这一页从不写
+      //   draft，于是底部按钮**纯属摆设**，点下去还显示保存成功。
+      //   这比"没加载"更能骗人（boss 报的「无保存」就是这么来的）。
+      //
+      //   改后与其它页签一致：下拉只改草稿，底部「保存」真正落盘。
       //
       // ★ 结构沿用全局配置页的 `.qm-set-row`（label 弹性列 + 控件 auto 列右对齐），
       //   不自己拼 flex。2026-11-15 用户反馈「挂起超时自动释放：这个文字与
@@ -8750,7 +8865,18 @@ function settingsTabBody(
             className: "qm-set-input",
             disabled: !!(st && st.thrBusy),
             value: thr === null ? "" : String(thr),
-            onChange: (e: any) => { void staleSetThreshold(Number(e.target.value)); },
+            onChange: (e: any) => {
+              const v = Number(e.target.value);
+              // 写草稿（等底部「保存」落盘），不再即时 POST。
+              // draft 值是「用户此刻的选择」，threshold 同步更新只为让
+              // 上方说明文案立刻反映选择，不代表已经生效。
+              settingsState.draft.release_after_sec = v;
+              settingsState.stale.threshold = v;
+              settingsState.stale.msgKind = "";
+              settingsState.stale.msg =
+                "已选择「" + staleThresholdText(v) + "」，点下方「保存」后生效";
+              settingsRenderPanel();
+            },
           }, [
             // 未取到时不渲染任何具体档位，避免默认高亮误导
             thr === null

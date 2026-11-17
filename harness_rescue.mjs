@@ -4864,5 +4864,134 @@ check("[BM6] 产物内存在出口净化 sanitizeOther",
 
 console.log("\n[AU] 跨设备配置同步 —— 已按 2026-11-13 裁定停用（功能未纳入 2.4.3 基线，整组跳过）");
 
+// ══════════════════════════════════════════════════════════════════
+// [BN] 可选题（2026-11-17，REQ-2026-0072 / 契约 OPTIONAL_FIELD_CONTRACT v1.1）
+//
+// boss 原话：「某些问卷（非最后一题）的填空题，题目明明写着可为空跳过，
+// 但是实际因为必填门禁，是无法提交，导致题目与实际相悖」
+//
+// 判据一律用 `hasGate()`（按 data-qm-gate 属性，不靠文案正则）——这是 harness
+// 既有约定：红条文字可能变，DOM 属性是稳定契约。
+// ══════════════════════════════════════════════════════════════════
+
+// ── [BN1] 题干写「可为空」的可选题：留空点「下一步」不得被拦 ──
+fetchScript = (u) => (u.includes("/question-modal/resolve") ? pending(REQ, "call_BN1") : NOT_FOUND);
+answerPosts = [];   // 首版漏了这句：answerPosts 是全局累积数组，reset() 不清它
+mount(makeNode("call_BN1", [
+  { title: "变更影响范围（可为空跳过）", type: "text" },
+  { title: "必填的说明", type: "text" },
+]));
+await flush(); await realTick(); await flush();
+clickButton("下一步");
+await realTick(); await flush();
+check("[BN1] ★可选题留空 → 「下一步」不被拦（AC-3，本轮修复点）",
+  !hasGate(lastTree), "gate=" + hasGate(lastTree) + " text=" + treeText(lastTree).slice(0, 70));
+check("[BN1b] 已离开第 1 题（说明真的推进了，不是原地不动却无红条）",
+  !hasText(lastTree, "变更影响范围") || hasText(lastTree, "必填的说明"),
+  "屏上文本=" + treeText(lastTree).slice(0, 90));
+
+// ── [BN2] 必填题留空仍必须被拦（防「顺手把闸门拆了」）──
+fetchScript = (u) => (u.includes("/question-modal/resolve") ? pending(REQ, "call_BN2") : NOT_FOUND);
+answerPosts = [];   // 首版漏了这句：answerPosts 是全局累积数组，reset() 不清它
+mount(makeNode("call_BN2", [
+  { title: "必填的说明（必须填写）", type: "text" },
+  { title: "下一题", type: "text" },
+]));
+await flush(); await realTick(); await flush();
+clickButton("下一步");
+await realTick(); await flush();
+check("[BN2] ★必填题留空 → 仍被拦截（AC-2/AC-6，闸门没被拆掉）",
+  hasGate(lastTree), "gate=" + hasGate(lastTree));
+
+// ── [BN3] 显式 optional:true 压过题干反向词（AC-5b，需求评审 R-1 核心）──
+// 题干写「必须」但字段显式标可选 ⇒ 应放行。
+// 若实现仍是 v1.0 的「反向词优先」，这条必失败 —— 这正是评审抓到的契约矛盾。
+fetchScript = (u) => (u.includes("/question-modal/resolve") ? pending(REQ, "call_BN3") : NOT_FOUND);
+answerPosts = [];   // 首版漏了这句：answerPosts 是全局累积数组，reset() 不清它
+mount(makeNode("call_BN3", [
+  { title: "备注（必须填写具体原因）", type: "text", optional: true },
+  { title: "下一题", type: "text" },
+]));
+await flush(); await realTick(); await flush();
+clickButton("下一步");
+await realTick(); await flush();
+check("[BN3] ★optional:true 压过题干「必须」（AC-5b，字段双向优先）",
+  !hasGate(lastTree), "gate=" + hasGate(lastTree));
+
+// ── [BN4] 显式 optional:false 压过题干可选词（AC-5）──
+fetchScript = (u) => (u.includes("/question-modal/resolve") ? pending(REQ, "call_BN4") : NOT_FOUND);
+answerPosts = [];   // 首版漏了这句：answerPosts 是全局累积数组，reset() 不清它
+mount(makeNode("call_BN4", [
+  { title: "备注（可选）", type: "text", optional: false },
+  { title: "下一题", type: "text" },
+]));
+await flush(); await realTick(); await flush();
+clickButton("下一步");
+await realTick(); await flush();
+check("[BN4] ★optional:false 压过题干「可选」（AC-5，显式必填）",
+  hasGate(lastTree), "gate=" + hasGate(lastTree));
+
+// ── [BN5] 必填作答 + 可选题留空 → 能走到提交，且提交体带 skipped_by=optional ──
+fetchScript = (u, opts) => {
+  if (u.includes("/question-modal/resolve")) return pending(REQ, "call_BN5");
+  // ★ 必须让 /answer 成功：首版只处理 resolve、其余一律 NOT_FOUND，
+  //   于是提交收到 404 → 卡片按「后端记录已丢」收敛成「已完成」，
+  //   answerPosts 永远是空 —— 测的其实是收敛路径，不是提交路径。
+  if (u.includes("/question-modal/answer")) {
+    // ★ 必须捕获 body 且**透传 opts**：首版签名漏了 opts，
+    //   answerPosts 收不到请求体（posts=0），判据永远取不到答案。
+    answerPosts.push(JSON.parse((opts && opts.body) || "{}"));
+    return { ok: true, data: { ok: true, message: "answered", request_id: REQ } };
+  }
+  return NOT_FOUND;
+};
+answerPosts = [];   // 首版漏了这句：answerPosts 是全局累积数组，reset() 不清它
+mount(makeNode("call_BN5", [
+  { title: "选择项", type: "single", options: ["甲", "乙"] },
+  { title: "补充说明（选填）", type: "text" },
+]));
+await flush(); await realTick(); await flush();
+clickButton("甲");                       // 必填题作答
+await realTick(); await flush();
+// ★ 第一步「下一步」直接越过「可选题」到末页（可选题留空被正确放行）。
+//   首版写成点两次「下一步」，第二次时已在末页 → button not found。
+//   这里用「当前是否还有下一步按钮」判断，不假设固定步数。
+if (hasText(lastTree, "下一步")) { clickButton("下一步"); await realTick(); await flush(); }
+if (hasText(lastTree, "下一步")) { clickButton("下一步"); await realTick(); await flush(); }
+check("[BN5] ★可选题留空后走到末页（AC-1 前置：不被卡住）",
+  hasText(lastTree, "提交"),
+  "有提交按钮=" + hasText(lastTree, "提交") + " gate=" + hasGate(lastTree)
+  + " 按钮=" + buttons(lastTree).map((x) => x.label).join(","));
+if (hasText(lastTree, "提交")) { clickButton("提交"); await realTick(); await flush(); }
+const bn5Ans = ((answerPosts.length ? answerPosts[answerPosts.length - 1] : {}).answers) || {};
+check("[BN5b] ★提交体里可选题带 skipped_by=optional（AC-1 判据）",
+  String((bn5Ans.q1 || {}).skipped_by || "") === "optional",
+  "posts=" + answerPosts.length + " gate=" + hasGate(lastTree)
+  + " 屏上=" + treeText(lastTree).slice(0,120) + " 全文=" + JSON.stringify(bn5Ans));
+
+// ── [BN6] showIf 隐藏的可选题不得被补写（AC-9）──
+fetchScript = (u, opts) => {
+  if (u.includes("/question-modal/resolve")) return pending(REQ, "call_BN6");
+  // ★ 必须让 /answer 成功：首版只处理 resolve、其余一律 NOT_FOUND，
+  //   于是提交收到 404 → 卡片按「后端记录已丢」收敛成「已完成」，
+  //   answerPosts 永远是空 —— 测的其实是收敛路径，不是提交路径。
+  if (u.includes("/question-modal/answer")) return { ok: true, data: { ok: true, message: "answered", request_id: REQ } };
+  return NOT_FOUND;
+};
+answerPosts = [];   // 首版漏了这句：answerPosts 是全局累积数组，reset() 不清它
+mount(makeNode("call_BN6", [
+  { title: "是否展开", type: "single", options: ["展开", "收起"] },
+  { title: "隐藏题的补充（可为空）", type: "text", showIf: { q0: ["展开"] } },
+]));
+await flush(); await realTick(); await flush();
+clickButton("收起");                      // 让 q1 保持隐藏
+await realTick(); await flush();
+if (hasText(lastTree, "下一步")) { clickButton("下一步"); await realTick(); await flush(); }
+if (hasText(lastTree, "下一步")) { clickButton("下一步"); await realTick(); await flush(); }
+if (hasText(lastTree, "提交")) { clickButton("提交"); await realTick(); await flush(); }
+const bn6Ans = ((answerPosts.length ? answerPosts[answerPosts.length - 1] : {}).answers) || {};
+check("[BN6] ★showIf 隐藏的可选题不被补写（AC-9）",
+  !("q1" in bn6Ans), "提交体 keys=" + JSON.stringify(Object.keys(bn6Ans)));
+
 console.log("\n════════ 结果: " + pass + " passed, " + fail + " failed ════");
 process.exit(fail ? 1 : 0);

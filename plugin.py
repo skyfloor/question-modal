@@ -321,12 +321,18 @@ def _save_prefs(patch: dict) -> dict:
 
 
 def _save_prefs_locked(patch: dict) -> dict:
-    """Body of :func:`_save_prefs`; caller must hold ``_PREFS_LOCK``."""
+    """Body of :func:`_save_prefs`; caller must hold ``_PREFS_LOCK``.
+
+    ★ 2026-11-17：返回值追加 ``__rejected__``（被拒键列表）。
+      ``post_prefs`` 用它把「部分成功」如实回传给调用方；读路径上的调用者
+      只看 ``__rejected__`` 之外的键，行为与旧版一致。
+    """
     cur = _load_prefs()
     # Every schema key is accepted here (validated + clamped by
     # ``sanitize_settings``), so adding a setting no longer means editing this
     # function — one schema, one validator, one merge path.
-    cur.update(sanitize_settings(patch))
+    _clean, _rejected = sanitize_settings(patch)
+    cur.update(_clean)
     cur["updated_at"] = time.time()
     try:
         tmp = _PREFS_FILE.parent / (
@@ -335,7 +341,13 @@ def _save_prefs_locked(patch: dict) -> dict:
         tmp.replace(_PREFS_FILE)
     except Exception:  # noqa: BLE001 — the card keeps a localStorage mirror
         logger.warning("question_modal: could not persist prefs", exc_info=True)
-    return cur
+    # 🔴 __rejected__ 只放进**返回副本**，绝不能写进磁盘 ——
+    #    否则它会被当成一个「设置项」持久化，下次 _load_prefs 读回来
+    #    再传给 sanitize_settings（未知键静默忽略）虽不致命，但会让
+    #    analysis_prefs.json 里混入非配置数据。
+    out = dict(cur)
+    out["__rejected__"] = _rejected
+    return out
 
 
 # ── Cache files (diagnostics tab) ───────────────────────────────────────
@@ -626,16 +638,69 @@ def _coerce_setting(key: str, value: Any) -> tuple[bool, Any]:
     return False, None
 
 
-def sanitize_settings(patch: Any) -> dict:
-    """Keep only schema-known keys with valid (or clamped) values."""
+def sanitize_settings(patch: Any) -> tuple[dict, list[dict]]:
+    """Keep only schema-known keys with valid (or clamped) values.
+
+    Returns ``(clean, rejected)``.
+
+    ★ 2026-11-17（REQ-2026-0072 / API_CONTRACT_v5 CHG-001）签名变更：
+      旧签名只返回 ``clean``，于是被拒绝的值**静默消失** ——
+      `POST /prefs {"release_after_sec": 7200}` 返回 200 + ok:true，
+      但值根本没写进去（实测：回读仍为 1800）。用户看到的「保存成功」
+      是假的，这是典型的「界面说谎」。
+
+      改成返回二元组后，调用方既能拿到清理结果，也能把**每个被拒的键**
+      连同原因回传。boss 2026-11-17 裁定：「部分成功：200 + ok:false +
+      逐项 rejected，合法项照写、非法项报错」。
+
+    ★ 为什么直接改签名而不是新增一个 _detailed 版本（评审 R-4 曾建议后者）：
+      boss 明确裁定「直接改签名，11 处一并改」。改完每一处都显式丢弃
+      rejected，等于强制后来者在读路径上也看一眼「这里会有被拒的键」，
+      比悄悄保留一个旧签名更容易发现遗漏。
+
+    🔴 注意 ``rejected`` 里**不含** schema 之外的未知键：那类键历来是
+       静默忽略的（调用方可能传 UI 的临时字段），把它们当「被拒」会
+       制造噪音。只有「schema 认识但值不合法」才算 rejected。
+    """
     if not isinstance(patch, dict):
-        return {}
+        return {}, []
     clean: dict = {}
+    rejected: list[dict] = []
     for key, value in patch.items():
+        if key not in SETTINGS_SCHEMA:
+            continue                      # 未知键：静默忽略（既有语义，不算 rejected）
         ok, norm = _coerce_setting(key, value)
         if ok:
             clean[key] = norm
-    return clean
+        else:
+            rejected.append({
+                "key": key,
+                "value": value,
+                "reason": _reject_reason(key, value),
+            })
+    return clean, rejected
+
+
+def _reject_reason(key: str, value: Any) -> str:
+    """给被拒的键生成人类可读原因（必须含合法取值域，否则用户不知怎么改）。"""
+    spec = SETTINGS_SCHEMA.get(key) or {}
+    typ = spec.get("type")
+    if typ == "enum":
+        return "只接受 %s" % "/".join(str(v) for v in spec.get("values") or [])
+    if typ in ("int", "float"):
+        choices = spec.get("choices")
+        if choices:
+            return "不在允许档位 %s" % "/".join(str(c) for c in choices)
+        lo, hi = spec.get("min"), spec.get("max")
+        if lo is not None and hi is not None:
+            return "需为 %s~%s 之间的整数" % (lo, hi)
+        return "取值不合法"
+    if typ == "bool":
+        return "只接受 true / false"
+    if typ == "str":
+        maxlen = spec.get("maxlen")
+        return "需为字符串%s" % (("且不超过 %d 字" % maxlen) if maxlen else "")
+    return "取值不合法"
 
 
 def _session_model_id(chat_id: str) -> str:
@@ -765,7 +830,7 @@ def resolve_effective(chat_id: str = "") -> dict:
 
     # ② global defaults (analysis_prefs.json)
     try:
-        out.update(sanitize_settings(_load_prefs()))
+        out.update(sanitize_settings(_load_prefs())[0])
     except Exception:  # noqa: BLE001
         logger.warning(
             "question_modal: could not merge global prefs", exc_info=True,
@@ -784,7 +849,7 @@ def resolve_effective(chat_id: str = "") -> dict:
             if isinstance(sess, dict) and str(
                 sess.get("__active_scope__") or ""
             ).strip() != "default":
-                out.update(sanitize_settings(sess))
+                out.update(sanitize_settings(sess)[0])
         except Exception:  # noqa: BLE001
             logger.warning(
                 "question_modal: could not merge session prefs", exc_info=True,
@@ -804,7 +869,7 @@ def resolve_effective(chat_id: str = "") -> dict:
         if isinstance(sess, dict) and str(
             sess.get("__active_scope__") or ""
         ).strip() != "default":
-            for key in sanitize_settings(sess):
+            for key in sanitize_settings(sess)[0]:
                 sources[key] = "session"
     except Exception:  # noqa: BLE001
         pass
@@ -1488,7 +1553,7 @@ def _session_writable(settings: Any) -> dict:
     route, script or future code — can slip a global-only key into an override.
     """
     clean: dict = {}
-    for key, value in sanitize_settings(settings).items():
+    for key, value in sanitize_settings(settings)[0].items():
         spec = SETTINGS_SCHEMA.get(key) or {}
         if spec.get("scope", "both") == "both":
             clean[key] = value
@@ -3091,8 +3156,25 @@ def build_router() -> APIRouter:
 
     @router.post("/prefs")
     async def post_prefs(body: PrefsRequest):
+        """写入全局设置（merge 语义，只更新传入的键）。
+
+        ★ 2026-11-17 契约变更（API_CONTRACT_v5 CHG-001，REQ-2026-0072）：
+
+        响应体新增 ``rejected``，且 ``ok`` 的定义改为 **``rejected`` 为空**。
+
+        旧行为（缺陷）：``sanitize_settings`` 把非法值静默丢掉，这里无条件
+        返回 ``{"ok": True}``。实测 ``POST {"release_after_sec": 7200}`` 得到
+        200 + ok:true，但回读仍是 1800 —— 任何被拒的值，调用方都会以为保存成功。
+
+        新行为：合法项照写，非法项不写并逐项回传原因；
+        ``ok = (rejected 为空)``，调用方必须判这个字段（不能只看 HTTP 200）。
+
+        HTTP 状态码始终 200：这是批量 merge，部分合法是常态，用 4xx 会让
+        调用方无法区分「整个请求坏了」与「其中一项值不合法」。
+        """
         saved = _save_prefs(body.model_dump())
-        return {"ok": True, "prefs": saved}
+        rejected = saved.pop("__rejected__", []) or []
+        return {"ok": not rejected, "prefs": saved, "rejected": rejected}
 
     # ── Effective settings (the ONLY read path for cards + settings UI) ──
     @router.get("/effective-config")
@@ -3123,7 +3205,7 @@ def build_router() -> APIRouter:
         # the UI show "继承自全局" vs "内建默认".
         global_keys: list[str] = []
         try:
-            global_keys = list(sanitize_settings(_load_prefs()).keys())
+            global_keys = list(sanitize_settings(_load_prefs())[0].keys())
         except Exception:  # noqa: BLE001
             pass
 
@@ -3149,7 +3231,7 @@ def build_router() -> APIRouter:
                 # **必须真的存在至少一个用户值项**才算会话模式。
                 # 否则一条只含内部字段（__keyts__ 等）的记录会被误判成
                 # 会话模式 —— 那种记录不含任何用户选择，语义上是"没设过"。
-                _has_real_value = bool(sanitize_settings(sess))
+                _has_real_value = bool(sanitize_settings(sess)[0])
                 if mark in ("session", "default"):
                     active_scope = mark
                     has_session = (mark == "session")
@@ -3173,11 +3255,11 @@ def build_router() -> APIRouter:
             _all = _load_session_prefs() if chat_id else {}
             _sess = _all.get(chat_id) if isinstance(_all, dict) else None
             if isinstance(_sess, dict):
-                session_config = sanitize_settings(_sess)
+                session_config = sanitize_settings(_sess)[0]
         except Exception:  # noqa: BLE001
             session_config = {}
         try:
-            global_config = sanitize_settings(_load_prefs())
+            global_config = sanitize_settings(_load_prefs())[0]
         except Exception:  # noqa: BLE001
             global_config = {}
 
@@ -3345,7 +3427,7 @@ def build_router() -> APIRouter:
                     "missing": True,
                     "active_scope": str(
                         (values or {}).get("__active_scope__") or ""
-                    ).strip() or ("session" if sanitize_settings(values or {})
+                    ).strip() or ("session" if sanitize_settings(values or {})[0]
                                   else "default"),
                 })
                 continue
@@ -3354,7 +3436,7 @@ def build_router() -> APIRouter:
             # 这个列表会把它列成"有会话覆盖"，误导排查。
             _mark = str((values or {}).get("__active_scope__") or "").strip()
             if _mark not in ("session", "default"):
-                _mark = "session" if sanitize_settings(values or {}) else "default"
+                _mark = "session" if sanitize_settings(values or {})[0] else "default"
             out.append({
                 "chat_id": chat_id,
                 "session_id": info["session_id"],
