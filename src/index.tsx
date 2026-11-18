@@ -376,6 +376,13 @@ function injectStyles(): void {
       "color:var(--app-text-secondary,#64748b)}",
       ".qm-set-staleempty{font-size:12px;padding:24px 0;text-align:center;",
       "color:var(--app-text-tertiary,#94a3b8)}",
+      // 分区标题（2026-11-18 性质二分）：阻塞/残留两区各自一条标题行，
+      // 标题加重、说明弱化，与表格的 11~12px 字号体系保持一致。
+      ".qm-set-stalesect{display:flex;align-items:baseline;gap:8px;padding:14px 0 6px}",
+      ".qm-set-stalesecttitle{font-size:12px;font-weight:600;",
+      "color:var(--app-text-primary,#1e293b);white-space:nowrap}",
+      ".qm-set-stalesecthint{font-size:11px;line-height:1.5;",
+      "color:var(--app-text-tertiary,#94a3b8);min-width:0}",
       ".qm-set-staletable{border-top:1px solid var(--app-border,#e5e7eb)}",
       ".qm-set-stalerow{display:grid;grid-template-columns:minmax(0,1fr) 190px 96px 132px;",
       "gap:12px;align-items:center;padding:10px 0;",
@@ -1298,8 +1305,11 @@ function applyStaleResult(d: any): void {
   const st = settingsState.stale;
   st.exceeded = (d && d.exceeded) || [];
   st.within = (d && d.within) || [];
+  // 性质二分（2026-11-18）：判据唯一在后端（has_live_future），前端只消费。
+  st.blocking = (d && d.blocking) || [];
+  st.residual = (d && d.residual) || [];
   // rows 保持"两组拼接"，分页与既有渲染逻辑不用改
-  st.rows = (d && d.items) || (st.exceeded.concat(st.within));
+  st.rows = (d && d.items) || (st.blocking.concat(st.residual));
   st.threshold = (d && typeof d.threshold_sec === "number")
     ? d.threshold_sec : null;
   st.scanned = true;
@@ -1351,24 +1361,28 @@ async function staleScan(): Promise<void> {
     // 重新扫描 = 新一批结果，页码回到第一页。不重置的话，上一批在第 3 页
     // 而新结果只有 1 页时，会渲染出「有数据但一片空白」（越界）。
     settingsState.stale.page = 0;
+    settingsState.stale.resPage = 0;
     const n = settingsState.stale.rows.length;
+    const nBl = settingsState.stale.blocking.length;
+    const nRe = settingsState.stale.residual.length;
     const nEx = settingsState.stale.exceeded.length;
     const nWi = settingsState.stale.within.length;
     const cost = Date.now() - startedAt;
     settingsState.stale.msgKind = "ok";
-    // 明确写出「扫了几条、阈值多少、耗时多少」——这三项齐了才能区分
+    // 明确写出「扫了几条、两类各多少、阈值多少、耗时多少」——齐了才能区分
     // 「确实没有挂起项」与「接口返回了但内容为空」这类看起来一样的现象。
-    // 分组后还要说清"几条已超阈值（可批量释放）、几条还在观察期"。
     const thr = staleThresholdText(settingsState.stale.threshold);
     settingsState.stale.msg = n > 0
-      ? `扫描完成：共 ${n} 条挂起（已超阈值 ${nEx} 条、观察期内 ${nWi} 条；`
-        + `阈值 ${thr}，耗时 ${cost}ms）`
+      ? `扫描完成：共 ${n} 条挂起（正在阻塞 ${nBl} 条、异常残留 ${nRe} 条；`
+        + `已超阈值 ${nEx} 条、观察期内 ${nWi} 条；阈值 ${thr}，耗时 ${cost}ms）`
       : `扫描完成：没有挂起的问卷（阈值 ${thr}，耗时 ${cost}ms）`;
   } catch (e: any) {
     // 扫描失败 ≠ 没有挂起项。必须区分：否则用户会把「请求失败」当成「很干净」。
     settingsState.stale.rows = [];
     settingsState.stale.exceeded = [];
     settingsState.stale.within = [];
+    settingsState.stale.blocking = [];
+    settingsState.stale.residual = [];
     settingsState.stale.scanned = false;
     settingsState.stale.msgKind = "error";
     settingsState.stale.msg = "扫描失败：" + (e && e.message ? e.message : String(e))
@@ -1379,8 +1393,12 @@ async function staleScan(): Promise<void> {
   }
 }
 
-/** 释放一批问卷，然后重扫。把「失败条数」如实报出来，绝不当成全部成功。 */
-async function staleRelease(ids: string[]): Promise<void> {
+/** 释放一批问卷，然后重扫。把「失败条数」如实报出来，绝不当成全部成功。
+ *
+ *  `verb` 控制文案动词（"释放"= 阻塞类唤醒；"清理"= 残留类收尾），
+ *  两者走同一个后端端点（幂等），仅表述不同。
+ */
+async function staleRelease(ids: string[], verb: string = "释放"): Promise<void> {
   settingsState.stale.busy = true;
   settingsState.stale.msg = "";
   settingsRenderPanel();
@@ -1394,16 +1412,16 @@ async function staleRelease(ids: string[]): Promise<void> {
     const failed = Number(d && d.failed) || 0;
     settingsState.stale.msgKind = failed > 0 ? "warn" : "ok";
     settingsState.stale.msg = failed > 0
-      ? `释放 ${released} 条，${failed} 条未成功（见日志）`
-        + (already ? `；${already} 条此前已释放` : "")
+      ? `${verb} ${released} 条，${failed} 条未成功（见日志）`
+        + (already ? `；${already} 条此前已处理` : "")
       : released > 0
-        ? `已释放 ${released} 条问卷` + (already ? `；${already} 条此前已释放` : "")
-        : `无需释放：${already || ids.length} 条此前已释放`;
+        ? `已${verb} ${released} 条问卷` + (already ? `；${already} 条此前已处理` : "")
+        : `无需${verb}：${already || ids.length} 条此前已处理`;
     const fresh = await fetchStaleSurveys();
     applyStaleResult(fresh);
   } catch (e: any) {
     settingsState.stale.msgKind = "error";
-    settingsState.stale.msg = "释放失败：" + (e && e.message ? e.message : String(e));
+    settingsState.stale.msg = verb + "失败：" + (e && e.message ? e.message : String(e));
   } finally {
     settingsState.stale.busy = false;
     settingsRenderPanel();
@@ -1438,6 +1456,47 @@ async function staleReleaseAll(): Promise<void> {
   } catch (e: any) {
     settingsState.stale.msgKind = "error";
     settingsState.stale.msg = "批量释放失败：" + (e && e.message ? e.message : String(e));
+  } finally {
+    settingsState.stale.busy = false;
+    settingsRenderPanel();
+  }
+}
+
+/** 批量清理残留（2026-11-18 boss 裁定）：只作用于「异常残留」组。
+ *
+ *  残留 = 后端判定 has_live_future=false（孤儿/无句柄/已 done）——
+ *  agent 早已不在等待。清理只是把未收尾的 state 收尾：无 Future 可唤醒、
+ *  无副作用，因此不需要二次确认，也**不受阈值限制**（与 D10 的
+ *  「观察期内不参与批量释放」不冲突：那条保护的是正在作答的人）。
+ *  复用同一个 release 端点（幂等），仅文案按「清理」表述。
+ */
+async function staleCleanupAll(): Promise<void> {
+  const ids = (settingsState.stale.residual || [])
+    .map((r: any) => String(r && r.tool_call_id)).filter(Boolean);
+  if (!ids.length) {
+    settingsState.stale.msgKind = "info";
+    settingsState.stale.msg = "当前没有可清理的残留问卷";
+    settingsRenderPanel();
+    return;
+  }
+  settingsState.stale.busy = true;
+  settingsState.stale.msg = "";
+  settingsRenderPanel();
+  try {
+    const d = await postStaleRelease({ tool_call_ids: ids });
+    const released = Number(d && d.released) || 0;
+    const already = Number(d && d.already) || 0;
+    const failed = Number(d && d.failed) || 0;
+    settingsState.stale.msgKind = failed > 0 ? "warn" : "ok";
+    settingsState.stale.msg = failed > 0
+      ? `清理 ${released} 条，${failed} 条未成功（见日志）`
+      : `已清理 ${released} 条残留` + (already ? `；${already} 条此前已收尾` : "");
+    const fresh = await fetchStaleSurveys();
+    applyStaleResult(fresh);
+    settingsState.stale.resPage = 0;
+  } catch (e: any) {
+    settingsState.stale.msgKind = "error";
+    settingsState.stale.msg = "清理失败：" + (e && e.message ? e.message : String(e));
   } finally {
     settingsState.stale.busy = false;
     settingsRenderPanel();
@@ -6881,6 +6940,15 @@ const settingsState: {
      *  兼容既有分页渲染；分组只影响「全部释放」的作用域与警示位置。 */
     exceeded: any[];
     within: any[];
+    /** 性质二分（2026-11-18 boss 裁定）：后端按 has_live_future 切好的两组。
+     *  blocking = 正在阻塞会话（agent 真在等作答）；residual = 已结束但状态
+     *  未收尾（孤儿/无句柄/已 done）。分类判据唯一在后端，前端不重算。 */
+    blocking: any[];
+    residual: any[];
+    /** 残留区独立页码（两分区各自分页，互不干扰）。 */
+    resPage: number;
+    /** 刚完成「复制会话 ID」的行（tool_call_id），用于 1.6s 内的反馈文案。 */
+    copied: string;
     /** 生效阈值（秒）。0 = 自动释放已关闭。
      *  ★ 必须是 `number | null`：null 表示**尚未取到**，与 0（已关闭）
      *    语义完全不同。若把 null 也渲染成 0，用户会看到"自动释放已关闭"
@@ -6901,7 +6969,8 @@ const settingsState: {
   notifyChannels: [], notifyCurrent: "off", notifyTesting: "", notifyMsg: {},
   notifyLog: {},
   stale: { rows: [], scanned: false, busy: false, msg: "", msgKind: "info", page: 0,
-           exceeded: [], within: [], threshold: null, thrBusy: false },
+           exceeded: [], within: [], threshold: null, thrBusy: false,
+           blocking: [], residual: [], resPage: 0, copied: "" },
 };
 let settingsPanelRoot: any = null;
 
@@ -8842,11 +8911,23 @@ function settingsTabBody(
     const rows = (st && st.rows) || [];
     const exceeded = (st && st.exceeded) || [];
     const within = (st && st.within) || [];
+    // 性质二分（2026-11-18 boss 裁定）：后端已按 has_live_future 切好两组；
+    // 兜底按 nature 字段过滤，保证字段缺失时不至于两区全空、漏掉任何一行。
+    const blocking: any[] = ((st && st.blocking) || []).length
+      ? st.blocking : rows.filter((r: any) => r && r.nature === "blocking");
+    const residual: any[] = ((st && st.residual) || []).length
+      ? st.residual : rows.filter((r: any) => r && r.nature !== "blocking");
+    // 批量释放只作用于「阻塞 ∩ 已超阈值」：观察期内的可能正被作答（D10）。
+    const blockingExceeded: any[] = blocking.filter(
+      (r: any) => r && exceeded.some(
+        (e: any) => e.tool_call_id === r.tool_call_id));
     const thr = st ? st.threshold : null;
     const thrText = staleThresholdText(thr);
     const thrDisabled = thr !== null && thr <= 0;
     const allDisabled = !!(st && (st.busy || st.thrBusy))
-      || exceeded.length === 0 || thrDisabled;
+      || blockingExceeded.length === 0 || thrDisabled;
+    const cleanupDisabled = !!(st && (st.busy || st.thrBusy))
+      || residual.length === 0;
 
     bodyKids.push(R.createElement("div", {
       className: "qm-set-stalehead", key: "sh",
@@ -8936,18 +9017,31 @@ function settingsTabBody(
         R.createElement("button", {
           type: "button", className: "qm-set-btn qm-set-btnprimary", key: "all",
           "data-qm-stale-release-all": "1",
-          // ★ 只作用于「已超阈值」组：观察期内的问卷很可能正被另一个
+          // ★ 只作用于「阻塞 ∩ 已超阈值」：观察期内的问卷很可能正被另一个
           //   标签页作答，批量释放等于替用户交卷（boss 裁定 D10）。
           disabled: allDisabled,
           title: thrDisabled
             ? "自动释放已关闭，请逐条释放"
-            : exceeded.length
-              ? `释放全部 ${exceeded.length} 条已超阈值的问卷（观察期内 ${within.length} 条不参与）`
-              : "当前没有已超阈值的问卷",
+            : blockingExceeded.length
+              ? `释放全部 ${blockingExceeded.length} 条已超阈值的阻塞问卷`
+                + `（观察期内 ${within.length} 条不参与）`
+              : "当前没有已超阈值的阻塞问卷",
           onClick: () => { void staleReleaseAll(); },
-        }, exceeded.length
-          ? `全部释放（仅已超阈值 ${exceeded.length} 条）`
+        }, blockingExceeded.length
+          ? `全部释放（阻塞·已超阈值 ${blockingExceeded.length} 条）`
           : "全部释放"),
+        R.createElement("button", {
+          type: "button", className: "qm-set-btn", key: "cleanup",
+          "data-qm-stale-cleanup-all": "1",
+          // 残留 = agent 已不在等待，清理是纯收尾、无副作用，可整批执行。
+          disabled: cleanupDisabled,
+          title: residual.length
+            ? `清理全部 ${residual.length} 条残留问卷（仅收尾状态，无副作用）`
+            : "当前没有可清理的残留问卷",
+          onClick: () => { void staleCleanupAll(); },
+        }, residual.length
+          ? `全部清理（残留 ${residual.length} 条）`
+          : "全部清理"),
       ]),
     ]));
 
@@ -8974,37 +9068,62 @@ function settingsTabBody(
     }
 
     if (rows.length) {
-      // ── 两组分区（P1-b，2026-11-15）──────────────────────────
+      // ── 性质二分分区（2026-11-18 boss 裁定）────────────────────
       //
-      // 「已超阈值」= 后台本该已经释放它（或即将释放），是真正需要人工关注的；
-      // 「观察期内」= 还在等，很可能正被另一个标签页作答。
-      //
-      // ★ 两组共用同一套分页：合并渲染再按页切，避免"两组各自分页"
-      //   导致总条数与页码对不上。组内顺序沿用后端排序（idle 降序），
-      //   而 rows 就是 exceeded + within 的拼接，天然满足"先看该处理的"。
+      // 🔴 正在阻塞会话 = has_live_future（agent 真在等作答）：
+      //    「释放」会唤醒对应会话继续运行；「终止会话」是兜底。
+      // ⚪ 异常残留 = agent 已不在等待（孤儿/无句柄/已 done）：
+      //    只给「清理残留」（纯收尾，无副作用），不给「终止会话」。
+      // 阈值分组（已超阈值/观察期内）降级为行内小标签保留，不丢信息。
+      // 每区独立分页（每页 5 条），页码越界夹紧，扫描/清理后重置。
       const PAGE_SIZE = 5;
-      const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-      const curPage = Math.min(Math.max(0, Number(st && st.page) || 0),
-        totalPages - 1);
-      const pageRows = rows.slice(curPage * PAGE_SIZE,
-        curPage * PAGE_SIZE + PAGE_SIZE);
-
-      // 每一行属于哪一组：用 tool_call_id 集合判断（顺序不能依赖，
-      // 因为排序是后端给的，前端不重算）。
       const exIds: Record<string, boolean> = {};
       exceeded.forEach((r: any) => { exIds[r.tool_call_id] = true; });
 
-      const head = R.createElement("div", {
-        className: "qm-set-stalerow qm-set-staleheader", key: "rh",
+      // 归属列点击复制完整会话 UUID（boss 2026-11-18：UUID 显示不全、
+      // 需要拿完整值去定位会话）。写剪贴板后给 1.6s 的「已复制」反馈。
+      const copySessionId = (sid: string, tcid: string) => {
+        if (!sid) return;
+        const done = () => {
+          settingsState.stale.copied = tcid;
+          settingsRenderPanel();
+          setTimeout(() => {
+            if (settingsState.stale.copied === tcid) {
+              settingsState.stale.copied = "";
+              settingsRenderPanel();
+            }
+          }, 1600);
+        };
+        try {
+          const nav: any = (typeof navigator !== "undefined") ? navigator : null;
+          if (nav && nav.clipboard && nav.clipboard.writeText) {
+            nav.clipboard.writeText(sid).then(done, done);
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = sid;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            done();
+          }
+        } catch (_) { done(); }
+      };
+
+      const renderHead = (key: string) => R.createElement("div", {
+        className: "qm-set-stalerow qm-set-staleheader", key: key,
       }, [
         R.createElement("span", { className: "qm-set-stalec1", key: "c1" }, "问卷"),
-        R.createElement("span", { className: "qm-set-stalec2", key: "c2" }, "归属"),
+        R.createElement("span", { className: "qm-set-stalec2", key: "c2" },
+          "归属（点击复制会话ID）"),
         R.createElement("span", { className: "qm-set-stalec3", key: "c3" }, "挂起"),
         R.createElement("span", { className: "qm-set-stalec4", key: "c4" }, "操作"),
       ]);
-      const body = pageRows.map((r: any) => {
+
+      const renderRow = (r: any, kind: string) => {
         const canTerm = !!r.terminable;
         const isExceeded = !!exIds[r.tool_call_id];
+        const isBlocking = kind === "blocking";
         // 观察期内的释放是"替人交卷"，必须二次确认 + 标出正在作答。
         // 用与既有代码一致的防御式写法：宿主环境未必有 window.confirm
         // （非浏览器/被禁用的沙箱里它会 undefined），裸调用会抛 TypeError。
@@ -9018,15 +9137,17 @@ function settingsTabBody(
             + "强制释放等于替用户交卷，其正在填写的内容将丢失。确定继续？");
           if (ok) void staleRelease([r.tool_call_id]);
         };
+        const copied = !!(st && st.copied) && st.copied === r.tool_call_id;
         return R.createElement("div", {
-          className: "qm-set-stalerow", key: r.tool_call_id,
+          className: "qm-set-stalerow", key: r.tool_call_id + ":" + kind,
           "data-qm-stale-row": r.tool_call_id,
+          "data-qm-stale-nature": kind,
           "data-qm-stale-group": isExceeded ? "exceeded" : "within",
         }, [
           R.createElement("span", { className: "qm-set-stalec1", key: "c1" }, [
             R.createElement("span", { className: "qm-set-staletitle", key: "t" },
               r.title || "(无标题)"),
-            // 把「为什么它没被自动释放」直接写在行上，省得再去翻日志。
+            // 把「它是什么性质/为什么没被自动释放」直接写在行上，省得翻日志。
             R.createElement("span", { className: "qm-set-staletag", key: "g" },
               r.reason_code === "orphan-no-pending" ? "孤儿·无待答记录"
                 : r.reason_code === "orphan-future-dead" ? "孤儿·唤醒已失效"
@@ -9048,66 +9169,128 @@ function settingsTabBody(
                 }, "模型分析中")
               : null,
           ]),
-          R.createElement("span", { className: "qm-set-stalec2", key: "c2" },
-            (r.agent_id || "-") + (r.session_id ? " · " + r.session_id : "")),
+          R.createElement("span", {
+            className: "qm-set-stalec2", key: "c2",
+            title: copied ? "已复制到剪贴板"
+              : (r.session_id ? "点击复制完整会话 ID：" + r.session_id : ""),
+            style: r.session_id ? {
+              cursor: "pointer", textDecoration: "underline dotted",
+              color: copied ? "#16a34a" : undefined,
+            } : undefined,
+            "data-qm-stale-copy": r.tool_call_id,
+            onClick: () => {
+              copySessionId(String(r.session_id || ""), r.tool_call_id);
+            },
+          }, copied
+            ? "✓ 会话 ID 已复制"
+            : (r.agent_id || "-") + (r.session_id ? " · " + r.session_id : "")),
           R.createElement("span", { className: "qm-set-stalec3", key: "c3" },
             r.idle_text),
           R.createElement("span", { className: "qm-set-stalec4", key: "c4" }, [
-            R.createElement("button", {
-              type: "button", className: "qm-set-mini", key: "rel",
-              "data-qm-stale-release": r.tool_call_id,
-              disabled: !!(st && st.busy),
-              title: isExceeded ? "释放该问卷" : "仍在观察期内，点击需二次确认",
-              onClick: () => {
-                if (isExceeded) void staleRelease([r.tool_call_id]);
-                else askConfirm();
-              },
-            }, isExceeded ? "释放" : "强制释放"),
-            R.createElement("button", {
-              type: "button", className: "qm-set-mini", key: "term",
-              "data-qm-stale-terminate": r.tool_call_id,
-              // 置灰而不是隐藏：让用户知道这个动作存在、以及为什么此刻不能用。
-              disabled: !!(st && st.busy) || !canTerm,
-              title: canTerm
-                ? "终止该会话并取消其前台工具调用"
-                : "该问卷已无活跃等待，对应会话通常也已不存在，无需终止",
-              onClick: () => { void staleTerminate([r.tool_call_id]); },
-            }, "终止会话"),
+            ...(isBlocking ? [
+              R.createElement("button", {
+                type: "button", className: "qm-set-mini", key: "rel",
+                "data-qm-stale-release": r.tool_call_id,
+                disabled: !!(st && st.busy),
+                title: isExceeded ? "释放该问卷（唤醒对应会话）"
+                  : "仍在观察期内，点击需二次确认",
+                onClick: () => {
+                  if (isExceeded) void staleRelease([r.tool_call_id]);
+                  else askConfirm();
+                },
+              }, isExceeded ? "释放" : "强制释放"),
+              R.createElement("button", {
+                type: "button", className: "qm-set-mini", key: "term",
+                "data-qm-stale-terminate": r.tool_call_id,
+                // 置灰而不是隐藏：让用户知道这个动作存在、以及为什么此刻不能用。
+                disabled: !!(st && st.busy) || !canTerm,
+                title: canTerm
+                  ? "终止该会话并取消其前台工具调用"
+                  : "该问卷已无活跃等待，对应会话通常也已不存在，无需终止",
+                onClick: () => { void staleTerminate([r.tool_call_id]); },
+              }, "终止会话"),
+            ] : [
+              R.createElement("button", {
+                type: "button", className: "qm-set-mini", key: "clean",
+                "data-qm-stale-cleanup": r.tool_call_id,
+                disabled: !!(st && st.busy),
+                title: "清理该残留记录（仅收尾状态，无副作用）",
+                onClick: () => { void staleRelease([r.tool_call_id], "清理"); },
+              }, "清理残留"),
+            ]),
           ]),
         ]);
-      });
-      bodyKids.push(R.createElement("div", {
-        className: "qm-set-staletable", key: "tbl", "data-qm-stale-table": "1",
-      }, [head].concat(body)));
+      };
 
-      // ── 分页控件（仅在多于 1 页时出现）──────────────────────────
-      //
-      // 单页时刻意不显示：一个只有「1 / 1」且两个按钮都禁用的控件条
-      // 只是噪音，用户会去点它并疑惑为什么没反应。
-      if (totalPages > 1) {
-        const go = (p: number) => {
-          settingsState.stale.page = p;
-          settingsRenderPanel();
-        };
-        const btn = (label: string, target: number, dis: boolean, k: string) =>
-          R.createElement("button", {
-            type: "button", className: "qm-set-mini", key: k,
-            "data-qm-stale-page": String(target),
-            disabled: dis,
-            onClick: () => { go(target); },
-          }, label);
-        bodyKids.push(R.createElement("div", {
-          className: "qm-set-stalepager", key: "pg", "data-qm-stale-pager": "1",
-        }, [
-          btn("上一页", curPage - 1, curPage <= 0, "prev"),
-          R.createElement("span", {
-            className: "qm-set-stalepageinfo", key: "info",
-            "data-qm-stale-pageinfo": String(curPage + 1),
-          }, `第 ${curPage + 1} / ${totalPages} 页`
-            + `（共 ${rows.length} 条，每页 ${PAGE_SIZE} 条）`),
-          btn("下一页", curPage + 1, curPage >= totalPages - 1, "next"),
-        ]));
-      }
+      // 分区渲染：标题 + 表格 + 该区独立分页。空区不渲染（而不是隐藏），
+      // 让「该类当前为 0」与「没扫到」永远可区分。
+      const renderSection = (kind: string, title: string, hint: string,
+                             list: any[], pageKey: "page" | "resPage") => {
+        if (!list || !list.length) return null;
+        const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+        const curPage = Math.min(
+          Math.max(0, Number((st as any)[pageKey]) || 0), totalPages - 1);
+        const pageRows = list.slice(curPage * PAGE_SIZE,
+          curPage * PAGE_SIZE + PAGE_SIZE);
+        const kids: any[] = [
+          R.createElement("div", {
+            className: "qm-set-stalesect", key: "sec",
+            "data-qm-stale-section": kind,
+          }, [
+            R.createElement("span", {
+              className: "qm-set-stalesecttitle", key: "t",
+              "data-qm-stale-secttitle": kind,
+            }, title),
+            R.createElement("span", {
+              className: "qm-set-stalesecthint", key: "h",
+            }, hint),
+          ]),
+          R.createElement("div", {
+            className: "qm-set-staletable", key: "tbl",
+            "data-qm-stale-table": kind,
+          }, [renderHead("rh-" + kind)].concat(
+            pageRows.map((r: any) => renderRow(r, kind)))),
+        ];
+        // 单页时刻意不显示分页条：一个只有「1 / 1」且两个按钮都禁用的
+        // 控件条只是噪音，用户会去点它并疑惑为什么没反应。
+        if (totalPages > 1) {
+          const go = (p: number) => {
+            (settingsState.stale as any)[pageKey] = p;
+            settingsRenderPanel();
+          };
+          const btn = (label: string, target: number, dis: boolean, k: string) =>
+            R.createElement("button", {
+              type: "button", className: "qm-set-mini", key: k,
+              "data-qm-stale-page": String(target),
+              disabled: dis,
+              onClick: () => { go(target); },
+            }, label);
+          kids.push(R.createElement("div", {
+            className: "qm-set-stalepager", key: "pg",
+            "data-qm-stale-pager": kind,
+          }, [
+            btn("上一页", curPage - 1, curPage <= 0, "prev"),
+            R.createElement("span", {
+              className: "qm-set-stalepageinfo", key: "info",
+              "data-qm-stale-pageinfo": String(curPage + 1),
+            }, `第 ${curPage + 1} / ${totalPages} 页`
+              + `（共 ${list.length} 条，每页 ${PAGE_SIZE} 条）`),
+            btn("下一页", curPage + 1, curPage >= totalPages - 1, "next"),
+          ]));
+        }
+        return kids;
+      };
+
+      const secBlocking = renderSection("blocking",
+        `🔴 正在阻塞会话（${blocking.length} 条）`,
+        "agent 正在等待这些问卷的作答结果；「释放」会唤醒对应会话继续运行。",
+        blocking, "page");
+      const secResidual = renderSection("residual",
+        `⚪ 异常残留（${residual.length} 条）`,
+        "对应会话已不在等待（历史孤儿 / 已结束未收尾）；「清理残留」仅收尾状态，无副作用。",
+        residual, "resPage");
+      if (secBlocking) bodyKids.push(...secBlocking);
+      if (secResidual) bodyKids.push(...secResidual);
     }
   }
 
@@ -9142,6 +9325,12 @@ function SettingsPanel(props: {
     within: any[];
     threshold: number | null;
     thrBusy: boolean;
+    /** 性质二分（2026-11-18）：后端切好的两组 + 残留区页码 + 复制反馈。
+     *  同样必须透传，否则两分区永远空白。 */
+    blocking: any[];
+    residual: any[];
+    resPage: number;
+    copied: string;
   };
 }): any {
   const { R, open, onClose } = props;

@@ -2938,6 +2938,11 @@ def build_router() -> APIRouter:
                 "progress_at": getattr(st, "progress_at", None),
                 "has_pending": pq is not None,
                 "has_live_future": has_live,
+                # 性质二分（2026-11-18 boss 裁定）：唯一判据 = has_live_future。
+                # blocking = 有活 Future，agent 真在等作答；residual = 已无等待方、
+                # 仅状态未收尾（孤儿/无句柄/已 done）。reason_code 只作展示标签，
+                # 不参与分类，避免两处判据打架。
+                "nature": "blocking" if has_live else "residual",
                 # P1-b：有页面正在看这份问卷（SSE 订阅非空）。
                 # 前端据此标红「正在作答」，避免用户把别人正在答的问卷释放掉。
                 "has_live_subscriber": bool(subs.get(str(tcid))),
@@ -3023,6 +3028,12 @@ def build_router() -> APIRouter:
 
         exceeded, within = _stale_split(threshold)
         rows = exceeded + within
+        # 性质二分（2026-11-18 boss 裁定）：blocking = 正在阻塞会话（有活
+        # Future，agent 真在等）；residual = 已结束但状态未收尾（孤儿残留）。
+        # 与阈值分组正交：两刀切的是同一批 rows，blocking+residual 恒等于
+        # exceeded+within，前端据此分区渲染、按类给操作按钮。
+        blocking = [r for r in rows if r.get("nature") == "blocking"]
+        residual = [r for r in rows if r.get("nature") != "blocking"]
         return {
             "ok": True,
             "threshold_sec": threshold,
@@ -3033,6 +3044,10 @@ def build_router() -> APIRouter:
             "within_count": len(within),
             "exceeded": exceeded,
             "within": within,
+            "blocking": blocking,
+            "residual": residual,
+            "blocking_count": len(blocking),
+            "residual_count": len(residual),
             # 向后兼容：旧调用方只读 items / count / releasable / terminable
             "items": rows,
             "releasable": sum(1 for r in rows if r["releasable"]),
