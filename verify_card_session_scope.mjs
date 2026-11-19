@@ -74,8 +74,12 @@ check("[C9] SESSION_KEYS 含 5 个键且含 parallel",
   /const SESSION_KEYS = \[[^\]]*"parallel"[^\]]*\]/.test(src), "");
 
 // ── 打开设置面板会强制刷新配置（同步的关键）──
+// 2026-11-19：窗口 260→2000。invalidate 与 load 之间现在隔着 agentId 采集、
+// openSeq、首帧未定态等初始化代码（约 30 行）——行为不变量是「先失效缓存、
+// 后拉配置」的顺序，不是两者的字面距离；原 260 字符窗口把合法实现误判为
+// 缺失（用例锚点过窄，非产品回归）。
 check("[C10] 打开设置面板时失效缓存并重新拉配置",
-  /invalidateConfigCache\(\);[\s\S]{0,260}loadEffectiveConfigIntoSettings\(/.test(src), "");
+  /invalidateConfigCache\(\);[\s\S]{0,2000}loadEffectiveConfigIntoSettings\(/.test(src), "");
 
 // ── 构建产物里确实含这些行为 ──
 check("[C11] 产物不含「这五项只对当前会话生效」（已移除）",

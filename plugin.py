@@ -321,12 +321,18 @@ def _save_prefs(patch: dict) -> dict:
 
 
 def _save_prefs_locked(patch: dict) -> dict:
-    """Body of :func:`_save_prefs`; caller must hold ``_PREFS_LOCK``."""
+    """Body of :func:`_save_prefs`; caller must hold ``_PREFS_LOCK``.
+
+    ★ 2026-11-17：返回值追加 ``__rejected__``（被拒键列表）。
+      ``post_prefs`` 用它把「部分成功」如实回传给调用方；读路径上的调用者
+      只看 ``__rejected__`` 之外的键，行为与旧版一致。
+    """
     cur = _load_prefs()
     # Every schema key is accepted here (validated + clamped by
     # ``sanitize_settings``), so adding a setting no longer means editing this
     # function — one schema, one validator, one merge path.
-    cur.update(sanitize_settings(patch))
+    _clean, _rejected = sanitize_settings(patch)
+    cur.update(_clean)
     cur["updated_at"] = time.time()
     try:
         tmp = _PREFS_FILE.parent / (
@@ -335,7 +341,13 @@ def _save_prefs_locked(patch: dict) -> dict:
         tmp.replace(_PREFS_FILE)
     except Exception:  # noqa: BLE001 — the card keeps a localStorage mirror
         logger.warning("question_modal: could not persist prefs", exc_info=True)
-    return cur
+    # 🔴 __rejected__ 只放进**返回副本**，绝不能写进磁盘 ——
+    #    否则它会被当成一个「设置项」持久化，下次 _load_prefs 读回来
+    #    再传给 sanitize_settings（未知键静默忽略）虽不致命，但会让
+    #    analysis_prefs.json 里混入非配置数据。
+    out = dict(cur)
+    out["__rejected__"] = _rejected
+    return out
 
 
 # ── Cache files (diagnostics tab) ───────────────────────────────────────
@@ -455,7 +467,29 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     "notify_channel": {
         "default": "off", "type": "enum", "scope": "global", "batch": 5,
         "values": ["off", "browser", "wechat", "dingtalk", "feishu"],
-        "label": "人工模式提醒频道",
+        "label": "（旧）人工模式提醒频道",
+    },
+    # ── 双场景通知频道（2026-11-19，boss 需求：通知不再固定单选）──────
+    #
+    # 旧 `notify_channel` 是全局单选，无法区分「人在 PC 前」与「页面已关」
+    # 两种场景。现拆成两个场景键，发送时按**页面心跳**自动选择：
+    #   notify_channel_pc  PC 端打开时（前端轮询 _PC_ALIVE_SEC 内有过触达）
+    #                      可选 browser / wechat / dingtalk / feishu
+    #   notify_channel_bg  后台运行时（页面关闭或长时间切后台）
+    #                      只可选 wechat / dingtalk / feishu —— **无 browser**：
+    #                      页面都不在了，浏览器通知必然无效。
+    #
+    # 旧键保留为只读迁移源（见 `_migrate_notify_channels`）：新键从未被
+    # 显式设置时从旧键推导；显式设置过（哪怕设成 off）一律尊重显式值。
+    "notify_channel_pc": {
+        "default": "off", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["off", "browser", "wechat", "dingtalk", "feishu"],
+        "label": "PC 端打开时提醒频道",
+    },
+    "notify_channel_bg": {
+        "default": "off", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["off", "wechat", "dingtalk", "feishu"],
+        "label": "后台运行时提醒频道",
     },
     # 向后兼容：老配置里可能存着 notify_manual_mode=true。保留该键作为
     # **只读的迁移来源**（resolve 时若 notify_channel 仍为 off 且旧键为
@@ -626,16 +660,69 @@ def _coerce_setting(key: str, value: Any) -> tuple[bool, Any]:
     return False, None
 
 
-def sanitize_settings(patch: Any) -> dict:
-    """Keep only schema-known keys with valid (or clamped) values."""
+def sanitize_settings(patch: Any) -> tuple[dict, list[dict]]:
+    """Keep only schema-known keys with valid (or clamped) values.
+
+    Returns ``(clean, rejected)``.
+
+    ★ 2026-11-17（REQ-2026-0072 / API_CONTRACT_v5 CHG-001）签名变更：
+      旧签名只返回 ``clean``，于是被拒绝的值**静默消失** ——
+      `POST /prefs {"release_after_sec": 7200}` 返回 200 + ok:true，
+      但值根本没写进去（实测：回读仍为 1800）。用户看到的「保存成功」
+      是假的，这是典型的「界面说谎」。
+
+      改成返回二元组后，调用方既能拿到清理结果，也能把**每个被拒的键**
+      连同原因回传。boss 2026-11-17 裁定：「部分成功：200 + ok:false +
+      逐项 rejected，合法项照写、非法项报错」。
+
+    ★ 为什么直接改签名而不是新增一个 _detailed 版本（评审 R-4 曾建议后者）：
+      boss 明确裁定「直接改签名，11 处一并改」。改完每一处都显式丢弃
+      rejected，等于强制后来者在读路径上也看一眼「这里会有被拒的键」，
+      比悄悄保留一个旧签名更容易发现遗漏。
+
+    🔴 注意 ``rejected`` 里**不含** schema 之外的未知键：那类键历来是
+       静默忽略的（调用方可能传 UI 的临时字段），把它们当「被拒」会
+       制造噪音。只有「schema 认识但值不合法」才算 rejected。
+    """
     if not isinstance(patch, dict):
-        return {}
+        return {}, []
     clean: dict = {}
+    rejected: list[dict] = []
     for key, value in patch.items():
+        if key not in SETTINGS_SCHEMA:
+            continue                      # 未知键：静默忽略（既有语义，不算 rejected）
         ok, norm = _coerce_setting(key, value)
         if ok:
             clean[key] = norm
-    return clean
+        else:
+            rejected.append({
+                "key": key,
+                "value": value,
+                "reason": _reject_reason(key, value),
+            })
+    return clean, rejected
+
+
+def _reject_reason(key: str, value: Any) -> str:
+    """给被拒的键生成人类可读原因（必须含合法取值域，否则用户不知怎么改）。"""
+    spec = SETTINGS_SCHEMA.get(key) or {}
+    typ = spec.get("type")
+    if typ == "enum":
+        return "只接受 %s" % "/".join(str(v) for v in spec.get("values") or [])
+    if typ in ("int", "float"):
+        choices = spec.get("choices")
+        if choices:
+            return "不在允许档位 %s" % "/".join(str(c) for c in choices)
+        lo, hi = spec.get("min"), spec.get("max")
+        if lo is not None and hi is not None:
+            return "需为 %s~%s 之间的整数" % (lo, hi)
+        return "取值不合法"
+    if typ == "bool":
+        return "只接受 true / false"
+    if typ == "str":
+        maxlen = spec.get("maxlen")
+        return "需为字符串%s" % (("且不超过 %d 字" % maxlen) if maxlen else "")
+    return "取值不合法"
 
 
 def _session_model_id(chat_id: str) -> str:
@@ -765,7 +852,7 @@ def resolve_effective(chat_id: str = "") -> dict:
 
     # ② global defaults (analysis_prefs.json)
     try:
-        out.update(sanitize_settings(_load_prefs()))
+        out.update(sanitize_settings(_load_prefs())[0])
     except Exception:  # noqa: BLE001
         logger.warning(
             "question_modal: could not merge global prefs", exc_info=True,
@@ -784,7 +871,7 @@ def resolve_effective(chat_id: str = "") -> dict:
             if isinstance(sess, dict) and str(
                 sess.get("__active_scope__") or ""
             ).strip() != "default":
-                out.update(sanitize_settings(sess))
+                out.update(sanitize_settings(sess)[0])
         except Exception:  # noqa: BLE001
             logger.warning(
                 "question_modal: could not merge session prefs", exc_info=True,
@@ -804,10 +891,20 @@ def resolve_effective(chat_id: str = "") -> dict:
         if isinstance(sess, dict) and str(
             sess.get("__active_scope__") or ""
         ).strip() != "default":
-            for key in sanitize_settings(sess):
+            for key in sanitize_settings(sess)[0]:
                 sources[key] = "session"
     except Exception:  # noqa: BLE001
         pass
+    # 旧单选 notify_channel → 双场景（pc/bg）只读迁移（2026-11-19）。
+    # 必须在 merge 完成后做：只看磁盘全局 prefs 里「新键是否被显式设置过」，
+    # 显式值（哪怕 off）优先于迁移推导，绝不覆盖用户选择。
+    try:
+        _migrate_notify_channels(out)
+    except Exception:  # noqa: BLE001 — 迁移失败回落默认值，绝不阻断读配置
+        logger.warning(
+            "question_modal: notify channel migration failed", exc_info=True,
+        )
+
     out["__sources__"] = sources
     return out
 
@@ -848,6 +945,82 @@ def _config_version() -> int:
 # `{"message_id": <int>}` → 每次**已成功送达**的发送都会抛
 # `PLATFORM_RESULT_UNKNOWN`（用户实测 5/5 全部收到）。故这里把该错误码
 # 视为「已送达」，仅记日志，绝不因此丢弃提醒。
+
+# ── 前端页面心跳（双场景判定信号，2026-11-19）───────────────────────────
+#
+# 「PC 端打开」vs「后台运行」的判定依据：前端问卷面板本来就以秒级轮询
+# ``GET /pending``（页面关闭或长时间切后台会停轮询），后端在该接口入口
+# 记录每个会话的最近触达时间。发通知时：
+#   距上次触达 ≤ _PC_ALIVE_SEC → PC 端打开 → 用 notify_channel_pc
+#   否则                       → 后台运行 → 用 notify_channel_bg
+#
+# 已知取舍（boss 知情）：会话的第一份问卷在创建瞬间，前端面板尚未开始
+# 轮询，若该会话此前从无触达记录，会被判为「后台」→ 走 IM 渠道。
+# 误判方向是「宁发 IM、不丢通知」，可接受。
+_FRONTEND_SEEN: dict[str, float] = {}
+_FRONTEND_SEEN_LOCK = threading.Lock()
+_PC_ALIVE_SEC = 120
+
+
+def _mark_frontend_seen(session_id: str) -> None:
+    """记录一次前端触达（pending 轮询等）。内存态即可，重启丢失无妨。"""
+    sid = str(session_id or "").strip()
+    if not sid:
+        return
+    with _FRONTEND_SEEN_LOCK:
+        _FRONTEND_SEEN[sid] = time.time()
+        # 防无限增长：只保留活跃窗口相关的会话。
+        if len(_FRONTEND_SEEN) > 512:
+            cutoff = time.time() - _PC_ALIVE_SEC * 4
+            for stale in [k for k, v in _FRONTEND_SEEN.items() if v < cutoff]:
+                _FRONTEND_SEEN.pop(stale, None)
+
+
+def _frontend_recently_seen(session_id: str) -> bool:
+    """该会话的页面最近是否活跃（≤ _PC_ALIVE_SEC 内有过前端触达）。"""
+    sid = str(session_id or "").strip()
+    if not sid:
+        return False
+    with _FRONTEND_SEEN_LOCK:
+        ts = _FRONTEND_SEEN.get(sid)
+    return bool(ts and (time.time() - ts) <= _PC_ALIVE_SEC)
+
+
+def _migrate_notify_channels(out: dict) -> None:
+    """旧单选 ``notify_channel`` → 双场景（pc/bg）的**只读**迁移。
+
+    仅当新键**从未被显式设置**（磁盘全局 prefs 里不存在该键）时才从旧键
+    推导；用户显式设置过（哪怕设成 off）一律尊重显式值，绝不覆盖。
+
+    推导规则：
+      旧 off / 缺失                    → pc=off, bg=off（与旧行为一致：不发）
+      旧 browser                       → pc=browser, bg=off
+        （后台没有浏览器通知的语义；旧配置选 browser 时页面一关通知本就
+         失效，bg=off 是忠实迁移，不臆造渠道）
+      旧 wechat / dingtalk / feishu    → pc=旧值, bg=旧值（两边都走该频道）
+      仅有更老的 notify_manual_mode=true → 视同旧 browser（沿用原迁移链）
+    """
+    try:
+        raw = _load_prefs()
+        if not isinstance(raw, dict):
+            raw = {}
+    except Exception:  # noqa: BLE001 — 迁移失败回落默认，绝不阻断读配置
+        raw = {}
+    legacy = str(raw.get("notify_channel") or "").strip()
+    if not legacy and raw.get("notify_manual_mode"):
+        legacy = "browser"
+    if not legacy:
+        return
+    if "notify_channel_pc" not in raw:
+        out["notify_channel_pc"] = (
+            legacy if legacy in ("browser", "wechat", "dingtalk", "feishu")
+            else "off"
+        )
+    if "notify_channel_bg" not in raw:
+        out["notify_channel_bg"] = (
+            legacy if legacy in ("wechat", "dingtalk", "feishu") else "off"
+        )
+
 
 # 频道显示名（面板与日志共用；缺省回落 channel key）
 # 2026-11-14 用户裁定：删除 Slack / Discord 两个选项
@@ -901,6 +1074,10 @@ def _notify_channel_state(channel: str, cfg: dict, agent_id: str = "") -> dict:
         "label": label,
         "ready": False,
         "reason": "",
+        # 机判字段：前端/脚本据此分流处置，不必解析中文文案。
+        # 取值：missing_agent_id / channel_disabled / missing_credentials /
+        #       no_sessions / read_failed / 空（可用或无特殊原因）
+        "reason_code": "",
         "verified": channel in _notify_verified_set(cfg),
     }
     if channel == "off":
@@ -924,18 +1101,57 @@ def _notify_channel_state(channel: str, cfg: dict, agent_id: str = "") -> dict:
     try:
         info = _host_channel_info(channel, agent_id)
     except Exception as exc:  # noqa: BLE001
+        state["reason_code"] = "read_failed"
         state["reason"] = "无法读取宿主频道配置：" + type(exc).__name__
+        return state
+
+    # ★★ 先判定「读到的是不是该读的那份配置」（2026-11-17，boss 要求明确报错）。
+    #
+    #   若调用方没给 agent_id，_agent_config_source 会退化成全局模板
+    #   <WORKING_DIR>/config.json。那份文件里 channels 全部 enabled=false、
+    #   无凭据 —— 于是下面会报「宿主未启用该频道」，把用户引去翻宿主设置，
+    #   而真实原因是**请求缺 agent_id**。两种情况的修法完全不同，必须先分开。
+    #
+    #   这里刻意**不自动兜底某个 agent**（比如猜 "default"）：多 agent 机器上
+    #   猜错会把 A 的频道状态显示成 B 的，比报错更糟。让调用方把 agent_id 传对。
+    if info.get("config_source") == "fallback_global":
+        state["reason_code"] = "missing_agent_id"
+        state["reason"] = (
+            "无法确定当前 agent：本次请求未携带 agent_id，插件只能读取全局配置"
+            "模板（%(path)s），该模板不含任何已启用的频道，因此无法判断该频道"
+            "是否可用。请在请求中携带 agent_id（查询参数 agent_id=… 或请求头 "
+            "X-Agent-Id: …）后重试。"
+            % {"path": info.get("config_path") or "<WORKING_DIR>/config.json"}
+        )
+        return state
+
+    if info.get("config_source") == "agent_not_found":
+        state["reason_code"] = "agent_not_found"
+        state["reason"] = (
+            "找不到该 agent 的配置文件：%(path)s 不存在。"
+            "请确认 agent_id=%(aid)r 是否正确（可查看 %(root)s/workspaces/ 下"
+            "有哪些 agent 目录）。"
+            % {"path": info.get("config_path"),
+               "aid": agent_id,
+               "root": str(_WORKING_DIR)}
+        )
         return state
 
     if not info.get("configured"):
         if not info.get("enabled"):
-            state["reason"] = "宿主未启用该频道"
+            # 到了这里说明读的是**该 agent 自己的** agent.json，
+            # 那 enabled=false 就是用户真的没启用 —— 这条文案可信。
+            state["reason_code"] = "channel_disabled"
+            state["reason"] = "宿主未启用该频道（已读取 %s）" % (
+                info.get("config_path") or "agent.json")
         else:
             miss = info.get("missing") or []
-            state["reason"] = "缺少凭据：" + "、".join(miss) if miss else "缺少凭据"
+            state["reason_code"] = "missing_credentials"
+            state["reason"] = ("缺少凭据：" + "、".join(miss)) if miss else "缺少凭据"
         return state
     if not info.get("sessions"):
         # q2 裁定：三者都要满足，缺会话即不可用（不知道发给谁）
+        state["reason_code"] = "no_sessions"
         state["reason"] = "该频道还没有任何会话，无法确定收件人"
         return state
     state["ready"] = True
@@ -970,8 +1186,16 @@ def _host_channel_info(channel: str, agent_id: str = "") -> dict:
     只读磁盘上的 agent 配置与会话表，不触发宿主启动渠道 —— 面板探测不应
     有副作用（启动一个未运行的渠道代价很高）。
     """
-    info = {"configured": False, "sessions": 0, "target_user": "", "enabled": False}
+    info = {"configured": False, "sessions": 0, "target_user": "", "enabled": False,
+            "config_source": "", "config_path": ""}
     try:
+        src = _agent_config_source(agent_id)
+        # ★ 把「配置是从哪读来的」一并带出去（2026-11-17）。
+        #   没有这个字段，调用方只能看到 enabled=False，无法区分
+        #   「用户真的没启用」与「读错了文件」——这两种情况的修法完全不同：
+        #   前者让用户去宿主设置里开，后者让调用方补 agent_id。
+        info["config_source"] = src["source"]
+        info["config_path"] = str(src["path"])
         cfg = _current_agent_config(agent_id)
         channels = (cfg or {}).get("channels") or {}
         chan = channels.get(channel) or {}
@@ -1030,26 +1254,65 @@ def _current_agent_config(agent_id: str = "") -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _agent_config_source(agent_id: str = "") -> dict:
+    """定位 agent.json 并**说明这份配置是怎么来的**。
+
+    返回 ``{path: Path, source: str, agent_id: str}``，``source`` 取值：
+
+    | source | 含义 | 频道配置可信度 |
+    |:--|:--|:--|
+    | ``explicit_env`` | 环境变量显式指定 | 可信 |
+    | ``agent`` | 按 agent_id 命中 ``workspaces/<id>/agent.json`` | **可信** |
+    | ``fallback_global`` | 没拿到 agent_id，退化成 ``<WORKING_DIR>/config.json`` | **不可信** |
+
+    ★★ 为什么需要这个函数（2026-11-17 实测事故，boss 报"用明确的报错来显示"）：
+
+      我调用 ``POST /notify/test`` 时**没带 agent_id**，插件退化成读
+      ``<WORKING_DIR>/config.json``。那个文件**确实存在**，但它是**全局配置
+      模板**：``channels.dingtalk.enabled = false``、无任何凭据。于是插件
+      报「宿主未启用该频道」—— 而真相是宿主**启用得好好的**（
+      ``workspaces/default/agent.json`` 里 ``enabled=true`` 且
+      client_id/client_secret 齐备）。
+
+      这条错误文案把用户引向完全错误的方向：用户会去宿主设置里翻钉钉配置，
+      而问题其实出在**调用方没带 agent_id**。实测我第一次就被带偏了，差点
+      判定"用户的钉钉配置有问题"。
+
+      修法不是换一句更长的文案，而是**先判定读到的是不是该读的那份文件**，
+      再根据判定结果给出各自明确的错误。
+    """
+    explicit = os.environ.get("QWENPAW_QUESTION_MODAL_AGENT_CONFIG", "").strip()
+    if explicit:
+        return {"path": Path(explicit), "source": "explicit_env", "agent_id": agent_id}
+    if agent_id:
+        cand = _WORKING_DIR / "workspaces" / agent_id / "agent.json"
+        if cand.is_file():
+            return {"path": cand, "source": "agent", "agent_id": agent_id}
+        # ★ 传了 agent_id 但找不到该 agent 的配置 —— 必须与"没传"区分开
+        #   （2026-11-17 自查发现：首版把两者都归成 fallback_global，于是
+        #   传了个不存在的 agent_id 时，报错却说"未携带 agent_id"，同样误导）。
+        return {"path": cand, "source": "agent_not_found", "agent_id": agent_id}
+    return {"path": _WORKING_DIR / "config.json", "source": "fallback_global",
+            "agent_id": agent_id}
+
+
 def _agent_config_path(agent_id: str = "") -> Path:
     """定位某个 agent 的 agent.json。
 
     2026-11-14 修正（决定性）：**必须由调用方传入 agent_id**。此前靠
     「config.json 里只有一个 agent 就猜它」——多 agent 机器上猜测直接返回
-    空串，于是路径退化成
-    ``<WORKING_DIR>/config.json``（不存在）→ 读不到频道配置 → 微信被判
-    「未启用或缺凭据」，而实际上它是可用的。实测症状：隔离探针 ready=True，
-    线上端点 ready=False。
+    空串，于是路径退化成 ``<WORKING_DIR>/config.json`` → 读不到**该 agent 的**
+    频道配置 → 微信被判「未启用或缺凭据」，而实际上它是可用的。
+    实测症状：隔离探针 ready=True，线上端点 ready=False。
+
+    2026-11-17 补注：本机 ``<WORKING_DIR>/config.json`` **是存在的**（全局
+    模板，含 channels 但全部 enabled=false、无凭据），所以"退化"不会报文件
+    不存在，而是**静默读到一份不含该 agent 频道配置的文件** —— 比文件缺失
+    更隐蔽。判定细节见 :func:`_agent_config_source`。
 
     回退顺序：显式环境变量 → 传入的 agent_id → 请求头推导（见调用点）。
     """
-    explicit = os.environ.get("QWENPAW_QUESTION_MODAL_AGENT_CONFIG", "").strip()
-    if explicit:
-        return Path(explicit)
-    if agent_id:
-        cand = _WORKING_DIR / "workspaces" / agent_id / "agent.json"
-        if cand.is_file():
-            return cand
-    return _WORKING_DIR / "config.json"
+    return _agent_config_source(agent_id)["path"]
 
 
 def _current_agent_id() -> str:
@@ -1281,7 +1544,10 @@ async def _do_notify_test(channel: str, text: str, agent_id: str) -> dict:
 
     state = _notify_channel_state(channel, cfg, agent_id)
     if not state["ready"]:
+        # reason_code 一并回传：调用方（脚本/前端）据此分流处置，
+        # 不必解析中文文案。2026-11-17 加，配合「缺 agent_id」的明确报错。
         return {"ok": False, "channel": channel, "delivered": False,
+                "reason_code": state.get("reason_code") or "",
                 "error": state["reason"] or "频道不可用"}
 
     info = _host_channel_info(channel, agent_id)
@@ -1397,33 +1663,45 @@ def _notify_stamp(agent_id: str = "") -> str:
 
 async def notify_survey_pending(
     call_id: str, title: str, count: int, agent_id: str = "",
+    session_id: str = "",
 ) -> dict:
-    """提醒用户「有一份问卷在等你作答」。
+    """提醒用户「有一份问卷在等你作答」（双场景，2026-11-19）。
 
     由**后端**调用（q1 裁定的关键：关掉浏览器时只能走频道通知，前端
-    effect 关页即失效）。频道为单选（q6），且必须已过测试闸门（q4）。
+    effect 关页即失效）。频道必须已过测试闸门（q4）。
+
+    ## 双场景渠道选择（2026-11-19 boss 需求：通知不再固定单选）
+
+    按**页面心跳**判定场景，再取对应场景的配置频道：
+      PC 端打开（_PC_ALIVE_SEC 内前端轮询过）→ notify_channel_pc
+      后台运行（页面关闭/长时间切后台）      → notify_channel_bg
 
     文案（q0 裁定）：与浏览器通知同口径 —— 「问卷名」有 N 道题等你作答。
     注意：只发标题与题数，**不发题目正文**（2026-11-13 安全红线）。
     """
     cfg = resolve_effective("")
-    channel = str(cfg.get("notify_channel") or "off")
-
-    # 旧键迁移：老配置可能只有 notify_manual_mode=true
-    if channel == "off" and cfg.get("notify_manual_mode"):
-        channel = "browser"
+    scene = "pc" if _frontend_recently_seen(session_id) else "bg"
+    scene_label = "PC 端打开" if scene == "pc" else "后台运行"
+    channel = str(
+        cfg.get("notify_channel_pc" if scene == "pc" else "notify_channel_bg")
+        or "off",
+    )
 
     if channel == "off":
         return {"ok": True, "delivered": False, "channel": "off",
-                "reason": "通知频道已关闭"}
+                "scene": scene,
+                "reason": "通知频道已关闭（%s）" % scene_label}
 
     state = _notify_channel_state(channel, cfg, agent_id)
     if not state["ready"]:
         return {"ok": False, "delivered": False, "channel": channel,
+                "scene": scene,
+                "reason_code": state.get("reason_code") or "",
                 "reason": state["reason"] or "频道不可用"}
     if not state["verified"]:
         # q4：未通过测试的频道一律不许真正投递。
         return {"ok": False, "delivered": False, "channel": channel,
+                "scene": scene,
                 "reason": "该频道尚未通过测试发送，请先在设置里点「测试」"}
 
     # ── 文案（2026-11-14 用户要求追加来源与时间）──────────────────────
@@ -1442,11 +1720,16 @@ async def notify_survey_pending(
     body = base + "\n" + stamp
     if channel == "browser":
         # 浏览器通知只能前端发；后端标记为「交由前端处理」。
+        # （只有 pc 场景可能选到 browser：bg 枚举本就不含 browser。）
         return {"ok": True, "delivered": False, "channel": "browser",
-                "delegated": True, "text": body}
+                "scene": scene, "delegated": True, "text": body}
 
     info = _host_channel_info(channel, agent_id)
-    return await _send_via_channel(channel, body, info, agent_id)
+    out = await _send_via_channel(channel, body, info, agent_id)
+    # 场景标记随结果返回：调用方/日志可查证「这次为什么走这个渠道」。
+    if isinstance(out, dict):
+        out.setdefault("scene", scene)
+    return out
 
 
 # ── Per-session (per-chat) setting overrides ───────────────────────────
@@ -1488,7 +1771,7 @@ def _session_writable(settings: Any) -> dict:
     route, script or future code — can slip a global-only key into an override.
     """
     clean: dict = {}
-    for key, value in sanitize_settings(settings).items():
+    for key, value in sanitize_settings(settings)[0].items():
         spec = SETTINGS_SCHEMA.get(key) or {}
         if spec.get("scope", "both") == "both":
             clean[key] = value
@@ -1932,6 +2215,10 @@ class PrefsRequest(BaseModel):
     would be accepted by the route and then thrown away before reaching
     ``sanitize_settings``.  That failure is invisible: the request returns 200
     and the setting simply never takes effect.
+
+    ⚠️ 它们**不是**真实设置项，只作为 pydantic 的字段容器存在 ——
+    真正写入时要经 ``_prefs_payload()`` 剔除"调用方没传的"和"显式 None"的键。
+    详见该函数的注释（2026-11-17 回归事故）。
     """
     model_config = ConfigDict(extra="allow")
 
@@ -1939,6 +2226,39 @@ class PrefsRequest(BaseModel):
     model_id: Optional[str] = Field(None, description="'<provider>:<model>'")
     with_context: Optional[bool] = Field(None)
     parallel: Optional[bool] = Field(None)
+
+
+def _prefs_payload(body: "PrefsRequest") -> dict:
+    """把请求体变成「只有调用方真正想设置的那些键」。
+
+    ★ 2026-11-17 回归事故（我自己引入又修掉的，记录在此防复发）：
+
+      `PrefsRequest` 把 mode / model_id / with_context / parallel 声明成
+      ``Optional[...] = None`` 作为字段容器。``model_dump()`` 会**把没传的
+      字段也输出成 None**。在 sanitize_settings 改成返回 rejected 之前，
+      这些 None 被旧代码静默丢弃，所以看不出问题；一旦开始如实回报被拒项，
+      它们立刻变成 4 条噪音：
+
+          POST {"release_after_sec": 7200}
+          → rejected 里多出 mode/model_id/with_context/parallel（值 None）
+
+      真实后果比噪音严重得多：前端 `pushRemotePrefs()` 每次都发全 4 个键
+      （其中未改的是 undefined → JSON 里直接没有该键，但一旦某个调用方
+      传了 null 就会变成"显式非法值"），界面就会弹出「部分设置未生效」，
+      而用户其实什么都没改错。
+
+    ★ 两条剔除规则，缺一不可：
+      1. ``exclude_unset`` —— 调用方**根本没传**的键不该出现（否则等于
+         凭空给它塞了个值）。
+      2. 「值为 None」也剔除 —— 显式传 null 在 merge 语义下应当等同
+         「没设置这一项」。prefs 没有「清空某键」的协议（那是 session-prefs
+         的 explicit_del 干的事），把一个 null 当"值"去校验只会误报。
+
+      注：空串**不**剔除 —— 空串在 resolve_effective 那边本来就等价于
+      「没有偏好」（会回落全局/默认），由它自己处理，这里不越界。
+    """
+    raw = body.model_dump(exclude_unset=True)
+    return {k: v for k, v in raw.items() if v is not None}
 
 
 class NotifyTestRequest(BaseModel):
@@ -1956,6 +2276,7 @@ class NotifySendRequest(BaseModel):
     tool_call_id: str = Field("", description="问卷卡片标识（用于日志追踪）")
     title: str = Field("", description="问卷标题（不发题目正文）")
     count: int = Field(0, description="未作答题数")
+    session_id: str = Field("", description="会话 ID（双场景心跳判定依据，2026-11-19）")
 
 
 class AnswerResponse(BaseModel):
@@ -2205,6 +2526,9 @@ def build_router() -> APIRouter:
     @router.get("/pending")
     async def get_pending(session_id: str = Query(default="")):
         """Return all pending questions, optionally filtered by session."""
+        # 前端页面心跳（2026-11-19）：问卷面板以秒级轮询本接口，入口处
+        # 记录触达时间，供通知发送时判定「PC 端打开 vs 后台运行」。
+        _mark_frontend_seen(session_id)
         svc = get_question_service()
         items = []
         for pq in await svc.list_pending(session_id):
@@ -2742,6 +3066,11 @@ def build_router() -> APIRouter:
                 "progress_at": getattr(st, "progress_at", None),
                 "has_pending": pq is not None,
                 "has_live_future": has_live,
+                # 性质二分（2026-11-18 boss 裁定）：唯一判据 = has_live_future。
+                # blocking = 有活 Future，agent 真在等作答；residual = 已无等待方、
+                # 仅状态未收尾（孤儿/无句柄/已 done）。reason_code 只作展示标签，
+                # 不参与分类，避免两处判据打架。
+                "nature": "blocking" if has_live else "residual",
                 # P1-b：有页面正在看这份问卷（SSE 订阅非空）。
                 # 前端据此标红「正在作答」，避免用户把别人正在答的问卷释放掉。
                 "has_live_subscriber": bool(subs.get(str(tcid))),
@@ -2827,6 +3156,12 @@ def build_router() -> APIRouter:
 
         exceeded, within = _stale_split(threshold)
         rows = exceeded + within
+        # 性质二分（2026-11-18 boss 裁定）：blocking = 正在阻塞会话（有活
+        # Future，agent 真在等）；residual = 已结束但状态未收尾（孤儿残留）。
+        # 与阈值分组正交：两刀切的是同一批 rows，blocking+residual 恒等于
+        # exceeded+within，前端据此分区渲染、按类给操作按钮。
+        blocking = [r for r in rows if r.get("nature") == "blocking"]
+        residual = [r for r in rows if r.get("nature") != "blocking"]
         return {
             "ok": True,
             "threshold_sec": threshold,
@@ -2837,6 +3172,10 @@ def build_router() -> APIRouter:
             "within_count": len(within),
             "exceeded": exceeded,
             "within": within,
+            "blocking": blocking,
+            "residual": residual,
+            "blocking_count": len(blocking),
+            "residual_count": len(residual),
             # 向后兼容：旧调用方只读 items / count / releasable / terminable
             "items": rows,
             "releasable": sum(1 for r in rows if r["releasable"]),
@@ -2913,7 +3252,7 @@ def build_router() -> APIRouter:
             try:
                 changed = await svc.release_survey(
                     tcid, "manual-admin",
-                    reason="管理员在「挂起清理」页签手动释放",
+                    reason="管理员在「问卷清理」页签手动释放",
                 )
                 results.append({"tool_call_id": tcid,
                                 "ok": bool(changed),
@@ -3091,8 +3430,25 @@ def build_router() -> APIRouter:
 
     @router.post("/prefs")
     async def post_prefs(body: PrefsRequest):
-        saved = _save_prefs(body.model_dump())
-        return {"ok": True, "prefs": saved}
+        """写入全局设置（merge 语义，只更新传入的键）。
+
+        ★ 2026-11-17 契约变更（API_CONTRACT_v5 CHG-001，REQ-2026-0072）：
+
+        响应体新增 ``rejected``，且 ``ok`` 的定义改为 **``rejected`` 为空**。
+
+        旧行为（缺陷）：``sanitize_settings`` 把非法值静默丢掉，这里无条件
+        返回 ``{"ok": True}``。实测 ``POST {"release_after_sec": 7200}`` 得到
+        200 + ok:true，但回读仍是 1800 —— 任何被拒的值，调用方都会以为保存成功。
+
+        新行为：合法项照写，非法项不写并逐项回传原因；
+        ``ok = (rejected 为空)``，调用方必须判这个字段（不能只看 HTTP 200）。
+
+        HTTP 状态码始终 200：这是批量 merge，部分合法是常态，用 4xx 会让
+        调用方无法区分「整个请求坏了」与「其中一项值不合法」。
+        """
+        saved = _save_prefs(_prefs_payload(body))
+        rejected = saved.pop("__rejected__", []) or []
+        return {"ok": not rejected, "prefs": saved, "rejected": rejected}
 
     # ── Effective settings (the ONLY read path for cards + settings UI) ──
     @router.get("/effective-config")
@@ -3123,7 +3479,7 @@ def build_router() -> APIRouter:
         # the UI show "继承自全局" vs "内建默认".
         global_keys: list[str] = []
         try:
-            global_keys = list(sanitize_settings(_load_prefs()).keys())
+            global_keys = list(sanitize_settings(_load_prefs())[0].keys())
         except Exception:  # noqa: BLE001
             pass
 
@@ -3149,7 +3505,7 @@ def build_router() -> APIRouter:
                 # **必须真的存在至少一个用户值项**才算会话模式。
                 # 否则一条只含内部字段（__keyts__ 等）的记录会被误判成
                 # 会话模式 —— 那种记录不含任何用户选择，语义上是"没设过"。
-                _has_real_value = bool(sanitize_settings(sess))
+                _has_real_value = bool(sanitize_settings(sess)[0])
                 if mark in ("session", "default"):
                     active_scope = mark
                     has_session = (mark == "session")
@@ -3173,11 +3529,11 @@ def build_router() -> APIRouter:
             _all = _load_session_prefs() if chat_id else {}
             _sess = _all.get(chat_id) if isinstance(_all, dict) else None
             if isinstance(_sess, dict):
-                session_config = sanitize_settings(_sess)
+                session_config = sanitize_settings(_sess)[0]
         except Exception:  # noqa: BLE001
             session_config = {}
         try:
-            global_config = sanitize_settings(_load_prefs())
+            global_config = sanitize_settings(_load_prefs())[0]
         except Exception:  # noqa: BLE001
             global_config = {}
 
@@ -3283,6 +3639,10 @@ def build_router() -> APIRouter:
                 "browser" if current == "off" and cfg.get("notify_manual_mode")
                 else current
             ),
+            # 双场景当前值（2026-11-19）：迁移已在 resolve_effective 内完成，
+            # 这两个值就是「此刻实际会用的渠道」。
+            "pc_current": str(cfg.get("notify_channel_pc") or "off"),
+            "bg_current": str(cfg.get("notify_channel_bg") or "off"),
             "channels": channels,
         }
 
@@ -3299,7 +3659,23 @@ def build_router() -> APIRouter:
         return await notify_survey_pending(
             body.tool_call_id, body.title or "问卷", int(body.count or 0),
             _req_agent_id(request, ""),
+            session_id=str(body.session_id or ""),
         )
+
+    @router.post("/heartbeat")
+    async def post_heartbeat(request: Request) -> dict:
+        """前端页面心跳（2026-11-19 双场景通知）。
+
+        前端页面存活期间每 30s 打一次（独立于问卷面板，SSE 期间也有），
+        后端据此判定「PC 端打开 vs 后台运行」选择通知渠道。幂等、无副作用。
+        """
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 — 空/坏 body 按缺省处理
+            body = {}
+        sid = str((body or {}).get("session_id") or "") if isinstance(body, dict) else ""
+        _mark_frontend_seen(sid)
+        return {"ok": True}
 
     @router.get("/notify/test-log")
     async def get_notify_test_log(channel: str = Query(default="")) -> dict:
@@ -3345,7 +3721,7 @@ def build_router() -> APIRouter:
                     "missing": True,
                     "active_scope": str(
                         (values or {}).get("__active_scope__") or ""
-                    ).strip() or ("session" if sanitize_settings(values or {})
+                    ).strip() or ("session" if sanitize_settings(values or {})[0]
                                   else "default"),
                 })
                 continue
@@ -3354,7 +3730,7 @@ def build_router() -> APIRouter:
             # 这个列表会把它列成"有会话覆盖"，误导排查。
             _mark = str((values or {}).get("__active_scope__") or "").strip()
             if _mark not in ("session", "default"):
-                _mark = "session" if sanitize_settings(values or {}) else "default"
+                _mark = "session" if sanitize_settings(values or {})[0] else "default"
             out.append({
                 "chat_id": chat_id,
                 "session_id": info["session_id"],
@@ -4069,6 +4445,12 @@ class QuestionModalMiddleware(_MiddlewareBase):
             )
             return
 
+        # 题目规范化（2026-11-19 boss 报障后的根治点）：模型生成的题目结构
+        # 偶发畸形——options 自带「其他」与插件注入的「其他」重复、题干写
+        # 「可多选」却标 single、type 声明与 options 矛盾。在创建入口统一
+        # 修正（幂等、保守：不造 options、不改题干、不动 showIf/recommended）。
+        questions = _analysis.normalize_questions(questions)
+
         request_context = getattr(agent, "_request_context", None) or {}
         session_id = str(request_context.get("session_id", "") or "")
         agent_id = str(request_context.get("agent_id", "") or "")
@@ -4169,6 +4551,8 @@ class QuestionModalMiddleware(_MiddlewareBase):
                     title=title,
                     count=len(questions),
                     agent_id=agent_id,
+                    # 双场景判定依据：该会话前端页面是否活跃（2026-11-19）。
+                    session_id=session_id,
                 )
             except Exception:  # noqa: BLE001 — 提醒失败绝不能阻挡问卷本身
                 logger.warning(

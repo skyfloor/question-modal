@@ -1,0 +1,256 @@
+{
+  "contract_id": "question-modal-api",
+  "contract_version": "5",
+  "generated_at": "2026-11-17",
+  "author": "pm-req",
+  "source_requirement": "REQ-2026-0072",
+  "source_project": "PM-2026-0002",
+  "supersedes": null,
+  "note": "本契约只登记本次变动的接口与字段。未列出的接口沿用既有行为，见 plugin.py 路由实现。",
+  "changes": [
+    {
+      "id": "CHG-001",
+      "requirement": "REQ-2026-002",
+      "type": "response-semantics-change",
+      "breaking": true,
+      "endpoint": {
+        "method": "POST",
+        "path": "/api/question-modal/prefs",
+        "description": "写入全局设置（merge 语义，只更新传入的键）"
+      },
+      "problem": {
+        "observed": "POST {'release_after_sec': 7200} → http=200 {'ok':true}，回读仍为 1800",
+        "root_cause": "plugin.py _save_prefs_locked → sanitize_settings() 对非法值执行 `if ok: clean[key]=norm`，未通过校验的键被静默丢弃；post_prefs 无条件返回 {'ok': True}",
+        "impact": "任何被拒绝的值，调用方（含前端）都会认为保存成功 —— 界面说谎"
+      },
+      "request": {
+        "body": "object，键为 SETTINGS_SCHEMA 中的设置项名，值为目标值",
+        "unchanged": true
+      },
+      "response_new": {
+        "status_when_all_valid": 200,
+        "status_when_any_rejected": 200,
+        "body": {
+          "ok": "boolean，等价于 (rejected 为空)。全部合法为 true，存在被拒项为 false",
+          "prefs": "object，写入后的完整生效配置（含合法项的新值；非法项保持原值）",
+          "rejected": [
+            {
+              "key": "string，被拒的设置项名",
+              "value": "any，调用方传入的原始值",
+              "reason": "string，人类可读的拒绝原因，必须包含合法取值域"
+            }
+          ]
+        },
+        "example_all_valid": {
+          "ok": true,
+          "prefs": {
+            "release_after_sec": 3600
+          },
+          "rejected": []
+        },
+        "example_partial": {
+          "ok": false,
+          "prefs": {
+            "release_after_sec": 1800
+          },
+          "rejected": [
+            {
+              "key": "release_after_sec",
+              "value": 7200,
+              "reason": "不在允许档位 0/1800/3600/14400/28800"
+            }
+          ]
+        }
+      },
+      "semantics": {
+        "partial_success": "合法项照写，非法项不写也不影响其它键（沿用既有 merge 语义）",
+        "ok_definition": "ok === (rejected.length === 0)",
+        "http_status": "始终 200（除非请求体本身不是合法 JSON 或鉴权失败）。不因设置值非法而返 4xx —— 因为这是批量 merge，部分合法是常态"
+      },
+      "caller_obligation": {
+        "frontend": "必须判 body.ok，不得只看 resp.ok（HTTP 200 不再等价于全部保存成功）",
+        "reason": "现状 staleSetThreshold 只看 resp.ok，正是「静默失败显示成功」的成因"
+      },
+      "backward_compat": {
+        "old_callers": "只读 prefs 的调用方不受影响；只判 HTTP 状态的调用方会继续误判（属需同步修复项，见前端任务）",
+        "migration": "无数据迁移"
+      }
+    },
+    {
+      "id": "CHG-002",
+      "requirement": "REQ-2026-001",
+      "type": "new-field",
+      "breaking": false,
+      "scope": "question object in the question_modal tool call",
+      "field": {
+        "name": "optional",
+        "type": "boolean",
+        "required": false,
+        "default": false,
+        "description": "该题是否允许留空。true = 允许留空，留空不触发必填门禁；false 或缺省 = 必填"
+      },
+      "precedence": {
+        "note": "v1.1 修订（需求评审 R-1）：v1.0 把反向词排在 optional===true 之前，导致 optional:true + 题干含「必须」被判必填，违背 boss 裁定「字段优先」。现改为显式字段双向优先（true/false 都压过文案），文案只在字段缺省时兜底。前后端必须使用同一套优先级。",
+        "rules": [
+          {
+            "rank": 1,
+            "condition": "optional === false（显式声明）",
+            "result": "必填",
+            "reason": "显式字段压过一切文案"
+          },
+          {
+            "rank": 2,
+            "condition": "optional === true（显式声明）",
+            "result": "可选",
+            "reason": "字段优先是双向的，不因真假而不同"
+          },
+          {
+            "rank": 3,
+            "condition": "题干命中反向词表",
+            "result": "必填",
+            "reason": "字段缺省时才看文案；反向豁免优先于可选词表"
+          },
+          {
+            "rank": 4,
+            "condition": "题干命中可选词表",
+            "result": "可选"
+          },
+          {
+            "rank": 5,
+            "condition": "以上均未命中",
+            "result": "必填",
+            "reason": "默认从严：宁可多拦一次，不可放过必填题"
+          }
+        ]
+      },
+      "word_lists": {
+        "reverse_required": [
+          "必须",
+          "务必",
+          "不得为空",
+          "不能为空"
+        ],
+        "optional": [
+          "可为空",
+          "可留空",
+          "选填",
+          "可选",
+          "非必填"
+        ]
+      },
+      "word_list_constraints": {
+        "reverse_takes_priority": true,
+        "do_not_reuse_requires_human_policy": "requires_human 的策略是「宁可漏跳不可误跳」（误跳剥夺选择权）；optional 误判的后果是「放过必填题」，方向相反，不得复用同一套保守策略",
+        "field_priority_is_bidirectional": true
+      },
+      "answer_shape_when_left_blank": {
+        "type": "string，题型",
+        "value": "该题型的空值（single/text 为 \"\"，multi 为 []）",
+        "other": "",
+        "skipped": true,
+        "skipped_by": "optional",
+        "written_by": "前端 fillOptionalSkips()，在 reconcileWithPersisted 之前执行（先补后合并）"
+      },
+      "skipped_by_enum": {
+        "note": "本次新增第五种跳过语义，与既有四种并列",
+        "values": [
+          "user",
+          "requires_human",
+          "no_recommend",
+          "watchdog",
+          "optional"
+        ],
+        "optional": "该题已声明允许留空，用户/自动模式未填，非用户主动放弃"
+      },
+      "gate_rule_change": {
+        "old": "所有可见题未作答 → 拦截翻页/提交",
+        "new": "仅「非可选题」未作答 → 拦截。可选题未作答不拦截，且记录 skipped_by=optional",
+        "unchanged": "已作答、已显式跳过（skipped_by=user）的题照旧不拦",
+        "who_writes_skip": "前端两步合并：① 遍历当前可见的可选题补写 skipped_by=optional ② 再 reconcileWithPersisted 让已答覆盖空跳过 ③ 最后 sanitizeOther",
+        "must_not_write_for": [
+          "必填题",
+          "showIf 隐藏的题"
+        ]
+      },
+      "backward_compat": {
+        "old_surveys_without_field": "缺省 optional=false，行为与现状完全一致，无破坏性变更",
+        "migration": "无数据迁移"
+      }
+    },
+    {
+      "id": "CHG-003",
+      "requirement": "REQ-2026-003",
+      "type": "frontend-behavior-fix",
+      "breaking": false,
+      "endpoint": {
+        "method": "GET",
+        "path": "/api/question-modal/stale-surveys",
+        "unchanged": true,
+        "note": "接口本身不动。缺陷在前端从不调用它来取阈值"
+      },
+      "problem": {
+        "observed": "进入「挂起清理」页签时，阈值下拉显示为空/加载中，无法确认当前生效值",
+        "root_cause": "settingsState.stale.threshold 初值 null，唯一赋值处 applyStaleResult() 只在点「扫描」或改下拉后触发；openSettingsPanel() 与 onTabChange 都不拉取 release_after_sec"
+      },
+      "required_behavior": {
+        "on_tab_open": "进入挂起清理页签时立即拉取一次当前生效阈值，填入 settingsState.stale.threshold",
+        "must_distinguish_null_from_zero": "null = 尚未取到（显示「加载中…」）；0 = 已关闭自动释放。二者语义不同，禁止把 null 渲染成 0",
+        "save_semantics_change": "该页阈值由「改即保存」改为草稿模式（写入 settingsState.draft），底部「保存」按钮执行真实保存",
+        "other_tabs_unchanged": true
+      },
+      "why_draft_mode": {
+        "boss_decision": "2026-11-17 裁定：保留并改成真保存（把该页改成草稿模式，其它页签不变）",
+        "reason": "现状该页底部按钮绑 cfgSave()，而 cfgSave 只读 draft；该页走改即保存从不写 draft ⇒ 按钮是摆设且点下去显示保存成功"
+      }
+    }
+  ],
+  "invariants": [
+    "GET /effective-config 仍是唯一读路径，卡片与设置面板都只渲染它的返回",
+    "POST /prefs 的 merge 语义不变（只更新传入的键，不整份覆盖）",
+    "release_after_sec 的越界拒绝语义不变（clamp=false，绝不把非法值夹成 0=关闭）",
+    "0 始终是合法值（关闭自动释放），任何 falsy 判断都不得挡掉它",
+    "前端 missingOf 与后端 recommend.py 的可选题判定必须同源同优先级"
+  ],
+  "out_of_scope": [
+    "不改变 requires_human 的既有策略与词表",
+    "不改变 no_recommend 的自动跳过行为（仅新增 optional 一种并列语义）",
+    "不改变 GET /stale-surveys 的返回结构",
+    "不在本次引入新依赖"
+  ],
+  "review": {
+    "reviewed_at": "2026-11-17",
+    "result": "v1.0 不通过（3 高 2 中）；v1.1 已按评审意见修订，待重审",
+    "findings": [
+      {
+        "id": "R-1",
+        "level": "high",
+        "issue": "CHG-002 优先级自相矛盾：反向词排在 optional:true 之前",
+        "fix": "显式字段提为 rank1/rank2 双向优先，反向词降 rank3"
+      },
+      {
+        "id": "R-2",
+        "level": "high",
+        "issue": "tools/__init__.py 未声明 optional（grep 命中 0），模型拿不到字段",
+        "fix": "新增 optional 说明段；AC-11"
+      },
+      {
+        "id": "R-3",
+        "level": "high",
+        "issue": "未定义谁补写 skipped_by=optional；实测前后端都不补",
+        "fix": "新增两步合并流程；AC-9/AC-10"
+      },
+      {
+        "id": "R-4",
+        "level": "medium",
+        "issue": "sanitize_settings 有 11 处调用点，改签名波及面未披露",
+        "fix": "boss 裁定直接改签名，11 处一并改，TASK-004 复杂度 S→M"
+      },
+      {
+        "id": "R-5",
+        "level": "medium",
+        "issue": "前端 5 处 POST /prefs 调用点，契约只提改 1 处",
+        "fix": "TASK-005 覆盖全部 5 处"
+      }
+    ]
+  }
+}

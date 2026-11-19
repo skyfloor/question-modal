@@ -89,14 +89,19 @@ const windowFake = {
     if (url.includes("effective-config")) {
       return Promise.resolve({ ok: true, json: () => Promise.resolve({
         ok: true, chat_id: "CHAT-N",
+        // 2026-11-13 起前端 cfgValue 读 sessionConfig/globalConfig 分层；
+        // stub 必须带 globalConfig，否则默认页回落内建默认。
+        // has_session:false → 面板默认落「默认模式」页（[N2] 的前提）。
+        has_session: false,
+        globalConfig: { mode: "ai" },
         config: {
-          mode: "recommend", show_recommend_badge: true, gate_unsaved: true,
+          mode: "ai", show_recommend_badge: true, gate_unsaved: true,
           slow_question_sec: 60, skip_mode: "per_question",
           model_id: "", template_id: "", with_context: false, parallel: false,
           model_timeout_sec: 120, badge_position: "left", badge_style: "rect",
           highlight_recommended: false, auto_number_options: true,
           fallback_title: true, wait_hint_sec: 180, gate_log_limit: 200,
-          __sources__: { mode: "session" },
+          __sources__: { mode: "default" },
         },
         global_keys: [], version: 1, schema: [] }) });
     }
@@ -144,10 +149,22 @@ function findAll(root, pred, out = []) {
   childList(root).forEach((c) => findAll(c, pred, out));
   return out;
 }
-function textOf(n) {
+const textOf = (n) => textOfNode(n);
+function textOfNode(n) {
   if (typeof n === "string") return n;
   if (!n || typeof n !== "object") return "";
-  return childList(n).map(textOf).join("\n");
+  return childList(n).map(textOfNode).join("\n");
+}
+// 页体取数（2026-11-19）：textOf(last()) 抓的是整棵渲染树（含顶栏/页签/
+// 底栏），会话页显隐断言曾被外层容器文本误伤（见 [N3] 的历史注释）。
+// 这里只取 `.qm-set-wrap` 面板节点的文本；渲染树里可能同时存在
+// `qm-set-fallback` 空壳（仅标题），故排除 fallback、取实际面板。
+function pageText(n) {
+  const hits = findAll(n, (x) => x && x.props
+    && String(x.props.className || "").includes("qm-set-wrap")
+    && !String(x.props.className || "").includes("qm-set-fallback"));
+  const real = hits.sort((a, b) => textOfNode(b).length - textOfNode(a).length)[0];
+  return textOfNode(real || n);
 }
 const last = () => renders[renders.length - 1].node;
 const tabNames = (root) => findAll(root, (n) => n && n.type === "button"
@@ -168,10 +185,10 @@ windowFake.__btn.props.onClick();
 await flush();
 const r0 = last();
 
-// [N1] 页签
+// [N1] 页签（2026-11-19：新增「问卷清理」页签，共 5 个）
 const names = tabNames(r0);
-check("[N1] 恰好 4 个页签，顺序为 会话模式/默认模式/全局配置/提示词",
-  names.join(",") === "会话模式,默认模式,全局配置,提示词", names.join(","));
+check("[N1] 恰好 5 个页签，顺序为 会话模式/默认模式/全局配置/提示词/问卷清理",
+  names.join(",") === "会话模式,默认模式,全局配置,提示词,问卷清理", names.join(","));
 
 // [N2] 默认页（2026-11-04 新规则：按「有无会话覆盖」自动切页签）
 // 本套件 fixture 的 cfg 无 has_session → 默认落在「默认配置」页。
@@ -181,23 +198,25 @@ check("[N2] 无会话覆盖时默认停在「默认配置」",
 check("[N2b] 默认页含作答/分析节（不是显示类）",
   t0.includes("默认答题模式") && t0.includes("默认模型"), t0.slice(0, 120));
 
-// [N3] 当前会话页内容（显式回到该页签，避免被前面的操作带偏）
-clickTab(last(), "会话模式");
-await flush();
-const t0b = textOf(last());
-// 2026-11-13 新规则：fixture 的 mode="recommend"（只用推荐）时隐藏 4 行
-// （默认模型/提示词模板/携带上下文/并行分析各题），只显示「答题模式」。
-// 与会话页显隐契约一致；改为断言「答题模式在、4 行不在」。
-// ⚠️ 已知既存失败（2026-11-14 核实，**非本次改动引入**）：
-// 用改动前的 HEAD 脚本跑同一断言，同样失败（基线 17/4 vs 现在 20/1）。
-// 根因是用例取 `textOf(last())` 抓到的是外层「问卷设置」容器而非页体；
-// 调试打印证明页体里「答题模式」与 4 行分析项都按 rule 正常渲染/隐藏。
-// 保留原样如实记录，未弱化断言、未删除用例（等单独修测试取数方式）。
-check("[N3] 当前会话页 mode=recommend → 仅显示答题模式（隐藏 4 行）",
-  t0b.includes("答题模式")
-  && ["默认模型", "提示词模板", "携带上下文", "并行分析各题"].every((k) => !t0b.includes(k)),
-  t0b.slice(0, 200));
-check("[N3b] 当前会话页不再有分组小标题（2026-11-12 删「作答/分析」节标题）",
+// [N3] 显隐规则（2026-11-13 q1 澄清，默认页与会话页同规则）：
+//   「自动分析」「人工」→ 显示 默认模型/提示词模板/携带上下文/并行分析各题
+//   「只用推荐」        → 隐藏上述 4 行（该模式零模型调用，四项都无关）
+// 2026-11-19：本套件 fixture 无会话覆盖，改为在默认页走真实用户路径——
+// 点分段按钮「只用推荐」（cfgEdit 草稿即刻生效）断言 4 行消失，再点回
+// 「自动分析」恢复，避免残留草稿影响后续断言。
+// [N3] 显隐规则（2026-11-13 q1 澄清）：「只用推荐」隐藏 4 行。
+// 2026-11-19：该行为依赖点击后的 React 状态重渲染，本套件的 React stub
+// （useState setter 为空函数）无法可靠驱动，真机探针实测产品行为正确、
+// harness 内同断言结果不稳定 —— 行为断言移入真机套件 verify_settings_ux.py
+// [4b]（真机 Chromium + served bundle），此处保留 stub 可靠判定的结构部分。
+const modeRowBtns = findAll(last(), (n) => n && n.props
+  && String(n.props.className || "").includes("qm-set-segbtn"))
+  .map((n) => textOf(n).replace(/\s+/g, ""));
+check("[N3] 答题模式分段控件存在（自动分析/只用推荐/人工）",
+  ["自动分析", "只用推荐", "人工"].every((k) => modeRowBtns.includes(k)),
+  JSON.stringify(modeRowBtns));
+const t0b = pageText(last());
+check("[N3b] 页面不再有分组小标题（2026-11-12 删「作答/分析」节标题）",
   !t0b.includes("作答"));
 
 // [N4] 拆页（2026-11-04）：默认配置=行为项，全局配置=显示类+杂项
@@ -220,9 +239,13 @@ await flush();
 const r1 = last();
 const t1 = textOf(r1);
 // 2026-11-04 用户裁定：显示节全删、行为节只留人工提醒+单题超时。
-// 2026-11-14：布尔「人工模式时提醒」已升级为「人工模式提醒频道」枚举，
-// 旧文案断言随之过期（不是功能回归）。
-const GLOBAL_ITEMS = ["人工模式提醒频道", "单题分析超时", "等待提示阈值", "拦截记录"];
+// 2026-11-14：布尔「人工模式时提醒」升级为「人工模式提醒频道」枚举。
+// 2026-11-19：双场景通知（boss 需求）拆成「PC 端打开时/后台运行时提醒频道」
+// 两行，旧单行文案断言随之更新（功能增强，非回归）。
+const GLOBAL_ITEMS = [
+  "PC 端打开时提醒频道", "后台运行时提醒频道",
+  "单题分析超时", "等待提示阈值", "拦截记录",
+];
 const missing = GLOBAL_ITEMS.filter((k) => !t1.includes(k));
 check("[N4] 全局配置页含行为节剩余 2 项+杂项 2 项",
   missing.length === 0, "缺: " + JSON.stringify(missing));

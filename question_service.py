@@ -1152,6 +1152,35 @@ class QuestionService:
                             "runner:human-skip %s q%s (观察题，不调模型)",
                             tool_call_id[:16], tgt["index"],
                         )
+                    elif tgt.get("optional_skip"):
+                        # ── 可选题（2026-11-17，REQ-2026-0072 / 契约 AC-7）──
+                        #
+                        # 可选题本来就不要求作答，自动模式不该为它调模型
+                        # （逐题分析 7-12 秒且有限流风险，本机曾累计 480 次限流）。
+                        # 直接写一条 `skipped_by="optional"` 并前进。
+                        #
+                        # 为什么必须显式处理而不能落进下面的 else：else 是
+                        # 「调模型分析并填答」分支 —— 让可选题走进去，等于既烧配额
+                        # 又可能替用户填上一个他本来不必做的选择。
+                        _q = st.questions[tgt["index"]]
+                        _qt = rec.q_type(_q)
+                        st.answers = rec.prune_hidden(
+                            st.questions,
+                            {**st.answers, f"q{tgt['index']}": {
+                                "type": _qt,
+                                "value": [] if _qt == "multi" else "",
+                                "other": "",
+                                "skipped": True,
+                                "skipped_by": "optional",
+                                "at": time.time(),
+                            }},
+                        )
+                        st.cursor = int(tgt["cursor"]) + 1
+                        kind = "runner:optional-skip"
+                        logger.info(
+                            "runner:optional-skip %s q%s (可选题，不调模型)",
+                            tool_call_id[:16], tgt["index"],
+                        )
                     else:
                         # ★ 计数口径必须是**真实模型调用次数**，不是"处理了几题"。
                         #

@@ -118,37 +118,39 @@ async def main():
     ok2 = await svc.release_survey(tag, "user")
     check("第二次 release 返回 False", ok2 is False)
 
-    print("\n[8] 看门狗：manual 模式不干预")
+    print("\n[8] 巡检：manual 模式超时同样释放（2026-11-15 单循环巡检语义）")
+    # 旧 per-survey watchdog 对 manual 完全不干预；2026-11-15 起改为服务级
+    # 单循环巡检，manual 无人查看也会按 cold 档超时释放，reason 区分文案。
+    # 阈值现为用户可配（release_after_sec，默认 1800s），不再是常量 300s——
+    # 测试用实例级覆盖把阈值钉到 300s，避免依赖生产 prefs 的当前值。
+    svc._release_after_sec = lambda: 300.0  # type: ignore[method-assign]
     tag_m = f"{tag}-m"
     await svc.create(session_id="s", agent_id="a", title="manual",
                      questions=[{"type": "text", "title": "q"}],
                      tool_call_id=tag_m, mode="manual")
-    old = time.time() - 999
     stm = svc.get_survey(tag_m)
-    stm.progress_at = old
-    svc.ensure_watchdog(tag_m)
-    await asyncio.sleep(qs._SURVEY_WATCHDOG_TICK + 1.0)
+    # 静默基准 = max(progress_at, created_at, inflight)，created_at 也要拨老。
+    stm.created_at = time.time() - 400.0
+    stm.progress_at = time.time() - 305.0
+    await svc._sweep_once()
     stm = svc.get_survey(tag_m)
-    check("manual 未被释放", stm.status == "pending", f"got={stm.status}")
-    svc.stop_watchdog(tag_m)
+    check("manual 超时被巡检释放", stm.status == "submitted", f"got={stm.status}")
+    check("manual 释放原因含等待作答超时",
+          "等待作答超时" in (stm.watchdog_reason or ""), stm.watchdog_reason)
 
-    print("\n[9] 看门狗：ai 模式 60s 无进展 → 释放")
+    print("\n[9] 巡检：ai 模式超时 → 释放")
     tag_a = f"{tag}-a"
     pqa = await svc.create(session_id="s", agent_id="a", title="ai",
                            questions=[{"type": "text", "title": "q"}],
                            tool_call_id=tag_a, mode="ai")
     sta = svc.get_survey(tag_a)
-    sta.progress_at = time.time() - (qs._SURVEY_WATCHDOG_SEC + 5)
-    svc.ensure_watchdog(tag_a)
-    released = False
-    for _ in range(40):
-        await asyncio.sleep(0.25)
-        cur = svc.get_survey(tag_a)
-        if cur.status == "submitted":
-            released = True
-            break
-    check("ai 模式被看门狗释放", released, f"status={svc.get_survey(tag_a).status}")
-    check("释放原因已记录", bool(svc.get_survey(tag_a).watchdog_reason))
+    sta.created_at = time.time() - 400.0
+    sta.progress_at = time.time() - 305.0
+    await svc._sweep_once()
+    cur = svc.get_survey(tag_a)
+    released = cur.status == "submitted"
+    check("ai 模式被巡检释放", released, f"status={cur.status}")
+    check("释放原因已记录", bool(cur.watchdog_reason))
     check("Future 已 resolve", pqa.future.done())
 
     print("\n[10] 落盘恢复")
@@ -171,7 +173,7 @@ async def main():
 
     # 清理测试数据
     for t in (tag, tag_m, tag_a):
-        svc.stop_watchdog(t)
+        # watchdog 已改服务级单循环（2026-11-15），清理无需按 survey 停。
         svc._surveys().pop(t, None)
     svc._persist_surveys()
 

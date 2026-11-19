@@ -508,6 +508,80 @@ def infer_qtype(question: dict) -> str:
     return "text"
 
 
+# ── 问卷题目规范化（2026-11-19 boss 报障：部分问卷发送时结构异常）─────────
+#
+# boss 原话（症状）：「题干显示为多选，实际为单选。非最后一题出现了其他问题
+# 的开放可选题，但是最后一题也是其他问题的开放可选题，重复了」。
+#
+# 代码级根因（两条都在**模型生成侧**，前端/后端渲染本身无 bug）：
+#   1. 模型把 options 里自带了「其他 / 其它 / 其他（请说明）/ Other」之类的
+#      开放选项，而插件会给**每道选择题固定注入**一个「其他」自由文本入口
+#      （见前端 OTHER sentinel）→ 同一道题出现两个「其他」；问卷末页还有
+#      独立的「其他意见」框 → boss 看到多处开放输入「重复」。
+#   2. 模型题干写明「（可多选）」却把 type 标成 single → 界面按单选交互，
+#      与题干自相矛盾（「显示为多选，实际为单选」）。
+# 另有相邻畸形：type 声明为 single/multi 却忘给 options → infer_qtype 判成
+# text，一道选择题变成开放题（同样表现为「多出开放题」）。
+#
+# 因此在问卷**创建入口**做一次幂等规范化（渲染/分析前的唯一管道），规则：
+#   R1 type 统一以 infer_qtype 为准（单一真相源）；
+#   R2 题干明确写「可多选/多选/任意多项」而 type 落成 single 的，按题干
+#      意图修正为 multi（题干语义 > 声明失误）；
+#   R3 剔除模型自带的「其他」类选项（插件会注入，重复必现）；选项逐字
+#      去重（模型偶发重复生成同一项）；
+#   R4 仅做上述保守修正，不造 options、不改题干文案、不动 showIf /
+#      recommended 的业务语义。
+_MULTI_HINT_WORDS = ("可多选", "多选", "任意多项", "多项选择", "可多个")
+_OTHER_PREFIXES = ("其他", "其它", "other", "Other", "OTHER")
+
+
+def _is_otherish_option(opt: object) -> bool:
+    """判断一个模型自带选项是否为「其他」类自由输入项（应剔除）。
+
+    只匹配短选项（≤ 12 字符）且以「其他/其它/other」开头或相等的形态，
+    例如「其他」「其他（请说明）」「Other」。不碰正常长选项——避免误删
+    「其他候选方案如下…」这类以「其他」开头的正经内容选项。
+    """
+    if not isinstance(opt, str):
+        return False
+    s = opt.strip()
+    if not s or len(s) > 12:
+        return False
+    return s.startswith(_OTHER_PREFIXES)
+
+
+def normalize_questions(questions: list) -> list:
+    """对模型生成的问卷题目做幂等规范化，返回新列表（不改入参）。"""
+    out: list = []
+    for q in questions or []:
+        if not isinstance(q, dict):
+            # 非法项原样保留：渲染层已有兜底，这里不做静默丢弃。
+            out.append(q)
+            continue
+        nq = dict(q)
+        opts = nq.get("options")
+        if isinstance(opts, list):
+            seen: list[str] = []
+            cleaned: list = []
+            for o in opts:
+                if _is_otherish_option(o):
+                    continue  # R3：剔除模型自带的「其他」项（插件会注入）
+                key = str(o).strip() if isinstance(o, str) else repr(o)
+                if key in seen:
+                    continue  # R3：逐字去重
+                seen.append(key)
+                cleaned.append(o)
+            nq["options"] = cleaned
+        # R1 + R2：type 以 infer_qtype 为准；题干明示多选而声明 single 时纠偏。
+        qtype = infer_qtype(nq)
+        title_txt = str(nq.get("title") or "")
+        if qtype == "single" and any(w in title_txt for w in _MULTI_HINT_WORDS):
+            qtype = "multi"
+        nq["type"] = qtype
+        out.append(nq)
+    return out
+
+
 def build_answered_context(
     questions: list[dict],
     index: int,

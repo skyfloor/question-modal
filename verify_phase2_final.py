@@ -196,7 +196,7 @@ def main():
         try:
             svc = results.get("svc")
             if svc:
-                svc.stop_watchdog(tag)
+                # watchdog 已改服务级单循环（2026-11-15），无需按 survey 停。
                 svc.stop_runner(tag)
                 svc._surveys().pop(tag, None)
                 svc._persist_surveys()

@@ -199,7 +199,7 @@ async def main():
 
     # 清理
     for t in (tag, tag2, tag3, tag4, tag5):
-        svc.stop_watchdog(t)
+        # watchdog 已改服务级单循环（2026-11-15），清理无需按 survey 停。
         svc.stop_runner(t)
         svc._surveys().pop(t, None)
     svc._persist_surveys()

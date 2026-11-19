@@ -116,7 +116,7 @@ async def run_survey(mode="ai", questions=None, prefs=None, wait=6.0):
     }
     # 清理
     svc.stop_runner(tag)
-    svc.stop_watchdog(tag)
+    # watchdog 已改服务级单循环（2026-11-15），清理无需按 survey 停。
     svc._surveys().pop(tag, None)
     svc._persist_surveys()
     return out
@@ -204,7 +204,8 @@ async def main():
     tag = f"p3-wd-{int(time.time()*1000)}"
     pq = await svc.create(session_id="s", agent_id="a", title="wd",
                           questions=QS[:2], tool_call_id=tag, mode="ai", prefs={})
-    svc.ensure_watchdog(tag)
+    # watchdog 已改服务级单循环（2026-11-15）：在飞分析受 _inflight_at 保护，
+    # 不会被巡检误杀，无需 per-survey ensure。
     svc._sync_runners(tag)
     base = time.time()
     for _ in range(60):
@@ -218,7 +219,7 @@ async def main():
     ck("[18] 没有被看门狗释放",
        not (st.watchdog_reason or "").startswith("自动推进"), st.watchdog_reason)
     svc.stop_runner(tag)
-    svc.stop_watchdog(tag)
+    # watchdog 已改服务级单循环（2026-11-15），清理无需按 survey 停。
     svc._surveys().pop(tag, None)
     svc._persist_surveys()
 

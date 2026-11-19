@@ -229,6 +229,26 @@ function injectStyles(): void {
       "@keyframes qm-set-pulse{0%,100%{opacity:.45}50%{opacity:.9}}",
       "@media (prefers-reduced-motion: reduce){",
       ".qm-set-skeleton>div{animation:none!important}}",
+      // ── 设置面板移动端适配（2026-11-19 boss 反馈：窄屏显示有问题）──────
+      // 问题一：5 个页签在 92vw 容器里被 flex 压缩，页签文字逐字竖排。
+      // 问题二：表单行 grid「标签 minmax(0,1fr) + 控件 auto」，窄屏下
+      //         标签列被控件列挤到每字一行（「默认答题模式」竖排）。
+      // 解法：页签换行排布 + 文字不折行；表单行窄屏整体改单列块布局
+      //         （复用 .qm-set-rowblock 既有模式：标签在上、控件占满下排）。
+      // 仅 max-width:640px 生效，桌面渲染不变。
+      "@media (max-width:640px){",
+      ".qm-set-head{padding:14px 16px 4px;gap:8px}",
+      ".qm-set-tabs{flex-wrap:wrap;padding:10px 16px 14px;row-gap:8px}",
+      ".qm-set-tab{white-space:nowrap;padding:7px 13px}",
+      ".qm-set-wrap .qm-set-row{grid-template-columns:minmax(0,1fr);row-gap:6px;align-items:start}",
+      ".qm-set-wrap .qm-set-row .qm-set-rowctl{min-width:0;flex:1 1 auto;justify-content:flex-start;",
+      "flex-wrap:wrap;overflow-wrap:anywhere;word-break:break-word}",
+      // 清理页操作按钮：窄屏下按钮被 flex 挤压导致「扫描」等两字竖排，
+      // 文字不折行 + 按钮组允许换行排列。
+      ".qm-set-stalebtns{flex-wrap:wrap}",
+      ".qm-set-stalebtns .qm-set-btn{white-space:nowrap}",
+      ".qm-set-foot{margin:8px 16px 0;padding:14px 0 16px}",
+      "}",
       // ── 作用域切换条 ──
       ".qm-set-scopebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;margin:0 0 12px;border:1px solid var(--app-border-subtle,rgba(127,127,127,.28));border-radius:8px;background:var(--app-bg-secondary,rgba(127,127,127,.05))}",
       ".qm-set-scopebarlabel{font-size:12px;color:var(--app-text-tertiary,#86909c)}",
@@ -376,21 +396,36 @@ function injectStyles(): void {
       "color:var(--app-text-secondary,#64748b)}",
       ".qm-set-staleempty{font-size:12px;padding:24px 0;text-align:center;",
       "color:var(--app-text-tertiary,#94a3b8)}",
-      ".qm-set-staletable{border-top:1px solid var(--app-border,#e5e7eb)}",
-      ".qm-set-stalerow{display:grid;grid-template-columns:minmax(0,1fr) 190px 96px 132px;",
-      "gap:12px;align-items:center;padding:10px 0;",
-      "border-bottom:1px solid var(--app-border,#eef1f5);font-size:12px}",
-      ".qm-set-staleheader{font-size:11px;font-weight:600;padding:8px 0;",
-      "color:var(--app-text-tertiary,#94a3b8)}",
-      ".qm-set-stalec1{display:flex;flex-direction:column;gap:3px;min-width:0}",
-      ".qm-set-staletitle{font-size:12px;overflow:hidden;text-overflow:ellipsis;",
-      "white-space:nowrap;color:var(--app-text-primary,#1e293b)}",
+      // 分区标题（2026-11-18 性质二分）：阻塞/残留两区各自一条标题行，
+      // 标题加重、说明弱化，与表格的 11~12px 字号体系保持一致。
+      ".qm-set-stalesect{display:flex;align-items:baseline;gap:8px;padding:14px 0 6px}",
+      ".qm-set-stalesecttitle{font-size:12px;font-weight:600;",
+      "color:var(--app-text-primary,#1e293b);white-space:nowrap}",
+      ".qm-set-stalesecthint{font-size:11px;line-height:1.5;",
+      "color:var(--app-text-tertiary,#94a3b8);min-width:0}",
+      // ── 扫描结果卡片（2026-11-19 boss 反馈：表格太拥挤、信息展示不全）──
+      // 表格 4 列固定宽（190/96/132px）+ nowrap/ellipsis，标题与会话 ID
+      // 都被截断。改为卡片：标题完整换行、会话/问卷 ID 完整展示（可复制）、
+      // 每条独占一张卡；性质用左侧色条区分（🔴阻塞红 / ⚪残留灰）。
+      ".qm-set-stalecards{display:flex;flex-direction:column;gap:8px;padding:6px 0 2px}",
+      ".qm-set-stalecard{border:1px solid var(--app-border,#e5e7eb);border-radius:10px;",
+      "background:var(--app-bg-secondary,#fff);padding:10px 12px;",
+      "display:flex;flex-direction:column;gap:8px}",
+      ".qm-set-stalecard[data-qm-stale-nature=blocking]{border-left:3px solid #ef4444}",
+      ".qm-set-stalecard[data-qm-stale-nature=residual]{border-left:3px solid #94a3b8}",
+      ".qm-set-stalecardhead{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap}",
+      ".qm-set-stalecardtitle{font-size:13px;font-weight:600;line-height:1.45;",
+      "color:var(--app-text-primary,#1e293b);flex:1 1 auto;min-width:0;",
+      "word-break:break-word}",
       ".qm-set-staletag{font-size:10px;line-height:1;padding:3px 6px;border-radius:4px;",
-      "background:#fef3c7;color:#b45309;align-self:flex-start;white-space:nowrap}",
-      ".qm-set-stalec2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
-      "font-size:11px;color:var(--app-text-secondary,#64748b)}",
-      ".qm-set-stalec3{font-size:12px;color:var(--app-text-primary,#1e293b);white-space:nowrap}",
-      ".qm-set-stalec4{display:flex;gap:6px;justify-content:flex-end}",
+      "background:#fef3c7;color:#b45309;flex:0 0 auto;white-space:nowrap}",
+      ".qm-set-stalecardmeta{display:flex;flex-direction:column;gap:3px;",
+      "font-size:11px;line-height:1.5;color:var(--app-text-secondary,#64748b)}",
+      ".qm-set-stalemetaitem{display:flex;gap:8px;align-items:baseline;min-width:0}",
+      ".qm-set-stalemetalabel{flex:0 0 62px;color:var(--app-text-tertiary,#94a3b8)}",
+      ".qm-set-stalemetavalue{flex:1 1 auto;min-width:0;word-break:break-all;",
+      "color:var(--app-text-primary,#1e293b)}",
+      ".qm-set-stalecardfoot{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}",
       // 分页条（2026-11-15）：与表格同宽、右对齐信息文字，
       // 上下留白与 .qm-set-row 的密度口径一致，避免页面突然变松。
       ".qm-set-stalepager{display:flex;align-items:center;justify-content:flex-end;",
@@ -559,6 +594,35 @@ function currentSessionId(): string {
 }
 // 仅供无头回归（harness_rescue.mjs [T2]）探测寻址结果；生产路径零消费。
 (globalThis as any).__qmSessionProbe = currentSessionId;
+
+// ── 前端页面心跳（2026-11-19 双场景通知）────────────────────────────
+// 后端按「最近触达 ≤120s」判定 PC 端打开 vs 后台运行，从而在发提醒时
+// 选择 notify_channel_pc / notify_channel_bg。问卷面板的 pending 轮询是
+// 副信号，但 SSE 长连接期间没有周期性 HTTP 请求 → 在线用户会被误判成
+// 「后台」。这里用独立于问卷面板的全局定时器：页面活着每 30s 打一次，
+// 与问卷面板是否挂载无关。
+let _qmHbTimer: any = null;
+function qmStartHeartbeat(): void {
+  if (_qmHbTimer) return;
+  // 定时器来源要兜底：无头回归 harness 的 fake window 不一定有 setInterval
+  // （实测 TypeError: window.setInterval is not a function，模块加载即崩）。
+  // 优先 window，退 globalThis；两者都没有（纯测试桩）就不启动心跳。
+  const S: any = (typeof window !== "undefined" && typeof (window as any).setInterval === "function")
+    ? window
+    : (typeof globalThis !== "undefined" && typeof (globalThis as any).setInterval === "function"
+      ? globalThis : null);
+  if (!S) return;
+  _qmHbTimer = S.setInterval(() => {
+    try {
+      void fetch(apiUrl("/heartbeat"), {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ session_id: currentSessionId() || "" }),
+      }).catch(() => { /* 心跳失败静默：不影响页面 */ });
+    } catch (_) { /* 静默 */ }
+  }, 30000);
+}
+qmStartHeartbeat();
 
 /** Agent id for this card's requests.
  *
@@ -1298,8 +1362,11 @@ function applyStaleResult(d: any): void {
   const st = settingsState.stale;
   st.exceeded = (d && d.exceeded) || [];
   st.within = (d && d.within) || [];
+  // 性质二分（2026-11-18）：判据唯一在后端（has_live_future），前端只消费。
+  st.blocking = (d && d.blocking) || [];
+  st.residual = (d && d.residual) || [];
   // rows 保持"两组拼接"，分页与既有渲染逻辑不用改
-  st.rows = (d && d.items) || (st.exceeded.concat(st.within));
+  st.rows = (d && d.items) || (st.blocking.concat(st.residual));
   st.threshold = (d && typeof d.threshold_sec === "number")
     ? d.threshold_sec : null;
   st.scanned = true;
@@ -1334,52 +1401,6 @@ async function postStaleTerminate(ids: string[]): Promise<any> {
   return d;
 }
 
-/** 修改「挂起超时自动释放」阈值并立即保存（P1-a，2026-11-15）。
- *
- *  ★ 为什么不用 `cfgSave`：那个函数读 `settingsState.draft`，而本页签
- *    是"改即保存"语义（下拉一变就落盘），不走草稿 → 保存两条路径。
- *    复用 `POST /prefs`（`resolve_effective` 的 ② 全局层），与其它全局
- *    设置项同一通道，不新增端点。
- *
- *  ★ 0 是合法值（= 关闭），绝不能用 `if (!val)` 之类的 falsy 判断挡掉。
- *
- *  ★ 保存失败必须显红字并**回滚下拉显示**：否则用户看到「已选关闭」
- *    而实际后端还是 1800，是典型的"界面说谎"（历史事故同族）。
- */
-async function staleSetThreshold(sec: number): Promise<void> {
-  if (settingsState.stale.thrBusy) return;
-  const prev = settingsState.stale.threshold;
-  settingsState.stale.thrBusy = true;
-  settingsRenderPanel();
-  try {
-    const resp = await fetch(apiUrl("/question-modal/prefs"), {
-      method: "POST", headers: authHeaders(),
-      body: JSON.stringify({ release_after_sec: sec }),
-    });
-    const d = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error((d && d.detail) || ("HTTP " + resp.status));
-    settingsState.stale.threshold = sec;
-    // 生效值变了 → 分组必须重取（否则界面还按旧阈值分组）
-    invalidateConfigCache();
-    settingsState.stale.msgKind = "ok";
-    settingsState.stale.msg = sec <= 0
-      ? "已关闭自动释放：挂起问卷将一直保留，需在本页手动释放"
-      : `自动释放已设为：静默超过 ${staleThresholdText(sec)} 自动释放`;
-    try {
-      applyStaleResult(await fetchStaleSurveys());
-    } catch { /* 重取失败不影响设置已保存这一事实 */ }
-  } catch (e: any) {
-    // 回滚显示到保存前的值，避免"界面显示关闭、后端仍是 1800"
-    settingsState.stale.threshold = prev;
-    settingsState.stale.msgKind = "error";
-    settingsState.stale.msg = "设置保存失败："
-      + (e && e.message ? e.message : String(e));
-  } finally {
-    settingsState.stale.thrBusy = false;
-    settingsRenderPanel();
-  }
-}
-
 /** 扫描并重绘。失败时把原因写进 msg（不静默、不假装空列表）。 */
 async function staleScan(): Promise<void> {
   settingsState.stale.busy = true;
@@ -1397,24 +1418,28 @@ async function staleScan(): Promise<void> {
     // 重新扫描 = 新一批结果，页码回到第一页。不重置的话，上一批在第 3 页
     // 而新结果只有 1 页时，会渲染出「有数据但一片空白」（越界）。
     settingsState.stale.page = 0;
+    settingsState.stale.resPage = 0;
     const n = settingsState.stale.rows.length;
+    const nBl = settingsState.stale.blocking.length;
+    const nRe = settingsState.stale.residual.length;
     const nEx = settingsState.stale.exceeded.length;
     const nWi = settingsState.stale.within.length;
     const cost = Date.now() - startedAt;
     settingsState.stale.msgKind = "ok";
-    // 明确写出「扫了几条、阈值多少、耗时多少」——这三项齐了才能区分
+    // 明确写出「扫了几条、两类各多少、阈值多少、耗时多少」——齐了才能区分
     // 「确实没有挂起项」与「接口返回了但内容为空」这类看起来一样的现象。
-    // 分组后还要说清"几条已超阈值（可批量释放）、几条还在观察期"。
     const thr = staleThresholdText(settingsState.stale.threshold);
     settingsState.stale.msg = n > 0
-      ? `扫描完成：共 ${n} 条挂起（已超阈值 ${nEx} 条、观察期内 ${nWi} 条；`
-        + `阈值 ${thr}，耗时 ${cost}ms）`
+      ? `扫描完成：共 ${n} 条挂起（正在阻塞 ${nBl} 条、异常残留 ${nRe} 条；`
+        + `已超阈值 ${nEx} 条、观察期内 ${nWi} 条；阈值 ${thr}，耗时 ${cost}ms）`
       : `扫描完成：没有挂起的问卷（阈值 ${thr}，耗时 ${cost}ms）`;
   } catch (e: any) {
     // 扫描失败 ≠ 没有挂起项。必须区分：否则用户会把「请求失败」当成「很干净」。
     settingsState.stale.rows = [];
     settingsState.stale.exceeded = [];
     settingsState.stale.within = [];
+    settingsState.stale.blocking = [];
+    settingsState.stale.residual = [];
     settingsState.stale.scanned = false;
     settingsState.stale.msgKind = "error";
     settingsState.stale.msg = "扫描失败：" + (e && e.message ? e.message : String(e))
@@ -1425,8 +1450,12 @@ async function staleScan(): Promise<void> {
   }
 }
 
-/** 释放一批问卷，然后重扫。把「失败条数」如实报出来，绝不当成全部成功。 */
-async function staleRelease(ids: string[]): Promise<void> {
+/** 释放一批问卷，然后重扫。把「失败条数」如实报出来，绝不当成全部成功。
+ *
+ *  `verb` 控制文案动词（"释放"= 阻塞类唤醒；"清理"= 残留类收尾），
+ *  两者走同一个后端端点（幂等），仅表述不同。
+ */
+async function staleRelease(ids: string[], verb: string = "释放"): Promise<void> {
   settingsState.stale.busy = true;
   settingsState.stale.msg = "";
   settingsRenderPanel();
@@ -1440,16 +1469,16 @@ async function staleRelease(ids: string[]): Promise<void> {
     const failed = Number(d && d.failed) || 0;
     settingsState.stale.msgKind = failed > 0 ? "warn" : "ok";
     settingsState.stale.msg = failed > 0
-      ? `释放 ${released} 条，${failed} 条未成功（见日志）`
-        + (already ? `；${already} 条此前已释放` : "")
+      ? `${verb} ${released} 条，${failed} 条未成功（见日志）`
+        + (already ? `；${already} 条此前已处理` : "")
       : released > 0
-        ? `已释放 ${released} 条问卷` + (already ? `；${already} 条此前已释放` : "")
-        : `无需释放：${already || ids.length} 条此前已释放`;
+        ? `已${verb} ${released} 条问卷` + (already ? `；${already} 条此前已处理` : "")
+        : `无需${verb}：${already || ids.length} 条此前已处理`;
     const fresh = await fetchStaleSurveys();
     applyStaleResult(fresh);
   } catch (e: any) {
     settingsState.stale.msgKind = "error";
-    settingsState.stale.msg = "释放失败：" + (e && e.message ? e.message : String(e));
+    settingsState.stale.msg = verb + "失败：" + (e && e.message ? e.message : String(e));
   } finally {
     settingsState.stale.busy = false;
     settingsRenderPanel();
@@ -1484,6 +1513,47 @@ async function staleReleaseAll(): Promise<void> {
   } catch (e: any) {
     settingsState.stale.msgKind = "error";
     settingsState.stale.msg = "批量释放失败：" + (e && e.message ? e.message : String(e));
+  } finally {
+    settingsState.stale.busy = false;
+    settingsRenderPanel();
+  }
+}
+
+/** 批量清理残留（2026-11-18 boss 裁定）：只作用于「异常残留」组。
+ *
+ *  残留 = 后端判定 has_live_future=false（孤儿/无句柄/已 done）——
+ *  agent 早已不在等待。清理只是把未收尾的 state 收尾：无 Future 可唤醒、
+ *  无副作用，因此不需要二次确认，也**不受阈值限制**（与 D10 的
+ *  「观察期内不参与批量释放」不冲突：那条保护的是正在作答的人）。
+ *  复用同一个 release 端点（幂等），仅文案按「清理」表述。
+ */
+async function staleCleanupAll(): Promise<void> {
+  const ids = (settingsState.stale.residual || [])
+    .map((r: any) => String(r && r.tool_call_id)).filter(Boolean);
+  if (!ids.length) {
+    settingsState.stale.msgKind = "info";
+    settingsState.stale.msg = "当前没有可清理的残留问卷";
+    settingsRenderPanel();
+    return;
+  }
+  settingsState.stale.busy = true;
+  settingsState.stale.msg = "";
+  settingsRenderPanel();
+  try {
+    const d = await postStaleRelease({ tool_call_ids: ids });
+    const released = Number(d && d.released) || 0;
+    const already = Number(d && d.already) || 0;
+    const failed = Number(d && d.failed) || 0;
+    settingsState.stale.msgKind = failed > 0 ? "warn" : "ok";
+    settingsState.stale.msg = failed > 0
+      ? `清理 ${released} 条，${failed} 条未成功（见日志）`
+      : `已清理 ${released} 条残留` + (already ? `；${already} 条此前已收尾` : "");
+    const fresh = await fetchStaleSurveys();
+    applyStaleResult(fresh);
+    settingsState.stale.resPage = 0;
+  } catch (e: any) {
+    settingsState.stale.msgKind = "error";
+    settingsState.stale.msg = "清理失败：" + (e && e.message ? e.message : String(e));
   } finally {
     settingsState.stale.busy = false;
     settingsRenderPanel();
@@ -1619,9 +1689,12 @@ interface QA { type: string; value: string | string[]; other: string; skipped?: 
    *  `"requires_human"` = the driver skipped an observation-only question
    *  (user decision 2026-11-07): only a real person can report what they saw,
    *  so the model must not fabricate an answer.
+   *  `"optional"` = the question declares itself optional (user decision
+   *  2026-11-17, REQ-2026-0072) and was left blank — nobody gave up anything,
+   *  so it must NOT be reported as「用户主动跳过」.
    *  Absent = the user clicked「跳过本题」.  Kept apart so the回传 can tell
    *  「用户主动跳过」from「自动跳过」— they used to look identical. */
-  skipped_by?: "no_recommend" | "requires_human" | "user";
+  skipped_by?: "no_recommend" | "requires_human" | "user" | "optional";
   /** Files the user attached under this question's「其他」box.  Each entry is
    *  what `/api/console/upload` returned: {url, file_name, size}. */
   attachments?: Attachment[]; }
@@ -2855,6 +2928,79 @@ function sanitizeOther(ans: Record<string, QA>): Record<string, QA> {
     next[k] = { ...a, other: "", attachments: [] };
   });
   return next;
+}
+
+// ══════════ 可选题判定与补写（2026-11-17，REQ-2026-0072）══════════
+//
+// boss 原话：「某些问卷（非最后一题）的填空题，题目明明写着可为空跳过，
+// 但是实际因为必填门禁，是无法提交，导致题目与实际相悖」
+//
+// ★★ 词表与优先级必须与后端 `recommend.py:is_optional()` 完全一致 ★★
+//    否则自动模式（后端 runner）与手工模式（前端闸门）会对同一份问卷
+//    给出不同的必填集合（契约 AC-8）。
+//
+// 判定优先级（契约 OPTIONAL_FIELD_CONTRACT v1.1，不可变更）：
+//   1. optional === false → 必填（显式字段压过一切文案）
+//   2. optional === true  → 可选（字段优先是双向的，不因真假而不同）
+//   3. 题干命中反向词表   → 必填（字段缺省时才看文案；反向豁免优先）
+//   4. 题干命中可选词表   → 可选
+//   5. 以上均未命中       → 必填（默认从严）
+const OPT_REVERSE_WORDS = ["必须", "务必", "不得为空", "不能为空"];
+const OPT_WORDS = ["可为空", "可留空", "选填", "可选", "非必填"];
+
+function isOptionalQ(q: any): boolean {
+  if (!q || typeof q !== "object") return false;
+  if (q.optional === false) return false;   // 显式必填，压过文案
+  if (q.optional === true) return true;     // 显式可选，同样压过文案
+  const title = String(q.title || "");
+  if (!title) return false;
+  if (OPT_REVERSE_WORDS.some((w) => title.indexOf(w) !== -1)) return false;
+  return OPT_WORDS.some((w) => title.indexOf(w) !== -1);
+}
+
+/** 给「留空的可选题」补写 skipped_by="optional"（契约 §3.0 第①步）。
+ *
+ *  ★ 为什么必须有这一步：实测 `authoritativeAnswers()` 原本只做
+ *    `sanitizeOther(reconcileWithPersisted(...))` —— 合并已答与持久化缓存，
+ *    **从不遍历可见题补空条目**；后端 `/answer` 也零校验（missing/required/
+ *    未作答 命中全为 0）。不补写的话，契约 AC-1「回传含 skipped_by:optional」
+ *    永远不会成立（需求评审 R-3 抓到的缺口）。
+ *
+ *  ★ 两条硬约束：
+ *    1. **只补当前可见的题** —— 否则 showIf 隐藏的题会被写入跳过条目，
+ *       回传里凭空多出用户从未见过的题（AC-9）。
+ *    2. **只补可选题** —— 必填题留空仍要被闸门拦；给它补 skipped 会让闸门
+ *       形同虚设。
+ *
+ *  纯函数、幂等：已有任何答案痕迹（value/other/attachments/skipped）的题不动。
+ */
+function fillOptionalSkips(
+  questions: any[], ans: Record<string, QA>,
+): Record<string, QA> {
+  const out: Record<string, QA> = { ...(ans || {}) };
+  let vis: number[] = [];
+  try {
+    vis = visibleIndices(questions, out);
+  } catch (_) {
+    return out;   // 可见性计算异常时不补写（宁可少写，不可写错）
+  }
+  vis.forEach((i) => {
+    const q = questions[i];
+    if (!isOptionalQ(q)) return;             // 必填题不补
+    const key = `q${i}`;
+    const cur = out[key];
+    // 已有痕迹（含显式跳过）→ 不动，避免覆盖用户/驱动的真实意图
+    if (cur && (cur.skipped === true || filledAnswer(cur))) return;
+    const qt = qType(q);
+    out[key] = {
+      type: qt,
+      value: (qt === "multi" ? [] : "") as any,
+      other: "",
+      skipped: true,
+      skipped_by: "optional",
+    } as QA;
+  });
+  return out;
 }
 
 /** Compact question list, used when a skipped survey is expanded. */
@@ -5170,12 +5316,24 @@ function AskUserCard(props: { data?: any }) {
     // harness 的微任务顺序让 setAnMode 先落地，所以它一直是绿的。
     const cfgModeNow = normMode(cfgOf("mode", "manual"));
     if (cfgModeNow !== "manual") return;       // AI/只用推荐 会自己推进，不需要提醒
-    // 2026-11-14：提醒频道从布尔升级为单选枚举（off/browser/wechat/...）。
-    // 兼容旧键：老配置只有 notify_manual_mode=true 时按 browser 处理，
-    // 否则升级后用户会静默失去提醒。
-    const chanNow = String(cfgOf("notify_channel", "off") || "off");
-    const legacyOn = !!cfgOf("notify_manual_mode", false);
-    if (chanNow === "off" && !legacyOn) return;
+    // 双场景（2026-11-19）：前端只在「PC 场景配置了浏览器通知」时负责弹
+    // Notification；钉钉/飞书/微信由后端按页面心跳选场景发送（创建时），
+    // 避免同一份问卷被前端 + 后端双重打扰。
+    // 兼容旧键：effCfg 通常已由后端 resolve_effective 完成迁移（旧
+    // notify_channel=browser → notify_channel_pc=browser）；但快照里新键
+    // 可能缺失（如回归 harness 直接喂原始配置），此时按旧键同语义降级：
+    // 旧 browser（或仅 notify_manual_mode=true）→ 前端弹；旧 IM 渠道 →
+    // 前端不弹（由后端发），不再重演「页面开着时双份推送」。
+    let pcChan = String(cfgOf("notify_channel_pc", "") || "");
+    if (!pcChan) {
+      const legacy = String(cfgOf("notify_channel", "off") || "off");
+      const legacyOn = !!cfgOf("notify_manual_mode", false);
+      // 旧语义：notify_channel=off 且 notify_manual_mode=true → 视同 browser
+      //（布尔键的迁移链）。legacy="off" 是真值字符串，判空要用 === "off"。
+      pcChan = (legacy === "browser" || ((legacy === "off" || !legacy) && legacyOn))
+        ? "browser" : legacy;
+    }
+    if (pcChan !== "browser") return;
     if (answered || skippedAll || deadReason) return;  // 已经不在等作答
     if (!argsReady(args) || !questions.length) return; // 题还没到手
     // 用页面已有的 filledAnswer 判定（与「未作答拦截」同一套规则），
@@ -5280,9 +5438,17 @@ function AskUserCard(props: { data?: any }) {
    *  the authoritative map (persisted wins for any key this instance never
    *  touched — see `reconcileWithPersisted`).  Called at submit/skip time so a
    *  host-driven remount cannot ship an all-empty survey. */
+  //
+  // ★ 2026-11-17（REQ-2026-0072 / 契约 §3.0）：三步顺序**不可颠倒**
+  //    ① fillOptionalSkips —— 给「留空的可选题」补写 skipped_by="optional"
+  //    ② reconcileWithPersisted —— 让 localStorage 里用户真实答过的覆盖①
+  //    ③ sanitizeOther —— 既有净化
+  //   为什么必须先补后合并：反过来的话，补写会盖掉用户在另一标签页刚作答的
+  //   内容（真实丢答案）。先补只填空位，合并能纠正它。
   const authoritativeAnswers = (): Record<string, QA> =>
     sanitizeOther(reconcileWithPersisted(
-      answers, loadCardState(callId)?.answers, touchedRef.current));
+      fillOptionalSkips(questions, answers),
+      loadCardState(callId)?.answers, touchedRef.current));
 
   /** True when every visible question is still the pristine initializer (no
    *  value / other / attachment / skip).  Such a submit is almost always a lost
@@ -5300,20 +5466,29 @@ function AskUserCard(props: { data?: any }) {
    */
   const gateEnabled = (): boolean => !!cfgOf("gate_unsaved", true);
 
+  // 可选题判定复用模块级 `isOptionalQ`（词表与后端 recommend.py 同源）。
+  // ★ 不要再在这里定义第二份词表：两份副本必然漂移，那就是 AC-8 失败的开端。
+  const isOptional = (q: any): boolean => isOptionalQ(q);
+
   const missingOf = (eff: Record<string, QA>, only?: number): number[] => {
     // 关掉拦截 = 允许空题直接前进；返回空数组让所有调用点自然放行，
     // 闸门代码本身不需要第二套分支。
     if (!gateEnabled()) return [];
+    // 可选题留空不算「未作答」（2026-11-17 REQ-2026-0072）：
+    // 这是「题目明明写着可为空跳过、却被必填门禁卡住」的修复点。
+    // 只影响**是否拦截**；留空的可选题由 fillOptionalSkips 补写跳过条目。
+    //
+    // ★ visibleIndices 只算一次（首版写成在 needAns 内部反复调用，
+    //   O(n) 次调用 × O(n) 次计算 = O(n²)，没有理由留一个平方复杂度）。
+    const vis = new Set(visibleIndices(questions, eff));
+    const needAns = (i: number) =>
+      vis.has(i) && !filledAnswer(eff[`q${i}`]) && !isOptional(questions[i]);
     const out: number[] = [];
     if (typeof only === "number") {
-      if (visibleIndices(questions, eff).indexOf(only) !== -1
-          && !filledAnswer(eff[`q${only}`])) out.push(only + 1);
+      if (needAns(only)) out.push(only + 1);
       return out;
     }
-    const vis = new Set(visibleIndices(questions, eff));
-    questions.forEach((_q, i) => {
-      if (vis.has(i) && !filledAnswer(eff[`q${i}`])) out.push(i + 1);
-    });
+    questions.forEach((_q, i) => { if (needAns(i)) out.push(i + 1); });
     return out;
   };
 
@@ -6800,6 +6975,9 @@ const settingsState: {
    *  否则「面板说可用、发出去失败」两边判断不一致。 */
   notifyChannels: any[];
   notifyCurrent: string;
+  /** 双场景当前值（2026-11-19）：后端 /notify/channels 返回 pc_current/bg_current。 */
+  pcCurrent: string;
+  bgCurrent: string;
   /** 测试发送进行中的频道 key（空 = 无）。 */
   notifyTesting: string;
   /** 各频道「本次会话内刚测完」的即时文案（失败原因必须立即可见）。 */
@@ -6834,6 +7012,15 @@ const settingsState: {
      *  兼容既有分页渲染；分组只影响「全部释放」的作用域与警示位置。 */
     exceeded: any[];
     within: any[];
+    /** 性质二分（2026-11-18 boss 裁定）：后端按 has_live_future 切好的两组。
+     *  blocking = 正在阻塞会话（agent 真在等作答）；residual = 已结束但状态
+     *  未收尾（孤儿/无句柄/已 done）。分类判据唯一在后端，前端不重算。 */
+    blocking: any[];
+    residual: any[];
+    /** 残留区独立页码（两分区各自分页，互不干扰）。 */
+    resPage: number;
+    /** 刚完成「复制会话 ID」的行（tool_call_id），用于 1.6s 内的反馈文案。 */
+    copied: string;
     /** 生效阈值（秒）。0 = 自动释放已关闭。
      *  ★ 必须是 `number | null`：null 表示**尚未取到**，与 0（已关闭）
      *    语义完全不同。若把 null 也渲染成 0，用户会看到"自动释放已关闭"
@@ -6851,10 +7038,11 @@ const settingsState: {
   globalCfg: {},
   keyTs: {},
   conflictNote: "",
-  notifyChannels: [], notifyCurrent: "off", notifyTesting: "", notifyMsg: {},
+  notifyChannels: [], notifyCurrent: "off", pcCurrent: "off", bgCurrent: "off", notifyTesting: "", notifyMsg: {},
   notifyLog: {},
   stale: { rows: [], scanned: false, busy: false, msg: "", msgKind: "info", page: 0,
-           exceeded: [], within: [], threshold: null, thrBusy: false },
+           exceeded: [], within: [], threshold: null, thrBusy: false,
+           blocking: [], residual: [], resPage: 0, copied: "" },
 };
 let settingsPanelRoot: any = null;
 
@@ -7014,6 +7202,10 @@ async function loadNotifyChannels(): Promise<void> {
     const d = await resp.json();
     settingsState.notifyChannels = Array.isArray(d && d.channels) ? d.channels : [];
     settingsState.notifyCurrent = String((d && d.effective) || "off");
+    // 双场景当前值（2026-11-19）：迁移已在后端 resolve_effective 完成，
+    // 这两个值就是「此刻实际会用的渠道」。
+    settingsState.pcCurrent = String((d && d.pc_current) || "off");
+    settingsState.bgCurrent = String((d && d.bg_current) || "off");
     try { settingsRenderPanel(); } catch (_) { /* closed */ }
   } catch (_) { /* 探测失败不阻塞面板：保持上次结果 */ }
 }
@@ -7170,6 +7362,23 @@ async function cfgSave(): Promise<void> {
       settingsState.saving = false;
       settingsState.saveMsg = (d && d.detail) ? String(d.detail) : ("保存失败（" + resp.status + "）");
       settingsRenderPanel();
+      return;
+    }
+    // ★ 2026-11-17（契约 API_CONTRACT_v5 CHG-001 / 评审 R-5）：
+    //   全局保存走 `/prefs`，该端点现在是「部分成功」语义 ——
+    //   HTTP 200 只代表请求被受理，不代表每个键都写进去了。
+    //   不判 rejected 的话，「改 X 保存、实际被拒」会让界面显示保存成功。
+    const _rej: any[] = Array.isArray(d && d.rejected) ? d.rejected : [];
+    if (_rej.length) {
+      settingsState.saving = false;
+      const detail = _rej
+        .map((r: any) => `${r.key}：${r.reason || "取值不合法"}`)
+        .join("；");
+      settingsState.saveMsg = "部分设置未生效 —— " + detail;
+      settingsRenderPanel();
+      // 合法项已经写进去了，draft 必须清掉已生效部分以外的内容会误导，
+      // 这里保守起见整份保留 draft，让用户看到"还没保存成功"，
+      // 而不是假装都存好了（宁可让他再点一次，也不要谎报成功）。
       return;
     }
     settingsState.saving = false;
@@ -7473,6 +7682,8 @@ function openSettingsPanel(): void {
   settingsState.cfgError = "";
   // 模型与模板候选：只在设置面板用，异步补齐即可。
   void loadSettingsOptions();
+  // （「挂起释放阈值」不再单独发请求：主配置响应里就含 release_after_sec，
+  // 在 loadEffectiveConfigIntoSettings 成功分支里同步 —— 2026-11-19。）
   settingsState.agentId = _hostAgentId || (() => {
     try { return host().getSelectedAgentId ? host().getSelectedAgentId() : ""; }
     catch (_) { return ""; }
@@ -7559,6 +7770,46 @@ function openSettingsPanel(): void {
   });
 }
 
+/** 拉取「挂起超时自动释放」的当前生效值，填入 st.threshold。
+ *
+ *  ★ 2026-11-17（REQ-2026-0072 REQ-003 / TASK-006）：
+ *    缺陷症状（boss 原话）：「挂起清理，挂起超时自动释放无保存」。
+ *
+ *    根因：`settingsState.stale.threshold` 初值是 `null`，而唯一的赋值点是
+ *    `applyStaleResult()` —— 它只在**点「扫描」**或**改下拉之后**才被调用。
+ *    `openSettingsPanel()` 只加载配置与通知频道，`onTabChange` 又只对
+ *    `global`/`default` 调 `loadGlobalCfg()`。于是**一进页面下拉是空的**
+ *    （显示「加载中…」），用户根本无从确认当前值，自然会认为"没保存"。
+ *
+ *    这里补上「进页签即拉一次」：打开面板时、切到挂起清理页时都调用。
+ *
+ *  ★ null 与 0 语义必须分开：null = 尚未取到（显示「加载中…」）；
+ *    0 = 已关闭自动释放。把 null 渲染成 0 会让用户以为自己关掉了自动释放，
+ *    而实际是后台还在跑（或反之）—— 这类"看起来一样"的语义混淆最难排查。
+ */
+let _staleThrLoading = false;
+async function loadStaleThreshold(): Promise<void> {
+  if (_staleThrLoading) return;
+  _staleThrLoading = true;
+  try {
+    // 2026-11-19：带上当前会话身份（与主配置请求同源），避免发出
+    // chat_id/session_id/agent_id 全空的请求。
+    const cfg = await fetchEffectiveConfig(
+      "", true, settingsState.sessionId, settingsState.agentId,
+    );
+    const v = (cfg && cfg.config && cfg.config.release_after_sec);
+    // 只在拿到**数字**时赋值；取不到就保持 null（界面显示「加载中…」），
+    // 绝不猜一个默认值顶上——那等于给用户看一个不存在的当前值。
+    settingsState.stale.threshold =
+      typeof v === "number" && isFinite(v) ? v : null;
+  } catch (_) {
+    settingsState.stale.threshold = null;   // 失败也保持"未取到"，不伪装成 0
+  } finally {
+    _staleThrLoading = false;
+    try { settingsRenderPanel(); } catch (_) { /* panel closed */ }
+  }
+}
+
 /** One provider and the models it offers — the two-column picker's data. */
 type ProviderGroup = { id: string; name: string; models: string[] };
 
@@ -7643,7 +7894,16 @@ function loadEffectiveConfigIntoSettings(onDone?: () => void): void {
   ).then((d) => {
     // A late response for a previous panel must not overwrite the live one.
     if (settingsState.chatId !== target) { done(); return; }
-    if (d) { settingsState.cfg = d; settingsState.cfgError = ""; }
+    if (d) {
+      settingsState.cfg = d; settingsState.cfgError = "";
+      // 打开面板即同步「挂起释放阈值」当前值（原 loadStaleThreshold 在
+      // openSettingsPanel 里单独发一次请求的职责，2026-11-19 合并到这里）：
+      // 主配置响应本就含 release_after_sec，单独再发一次不带会话身份的
+      // effective-config 属于冗余请求，且空身份语义不完整。
+      const _rv = d.config && (d.config as any).release_after_sec;
+      settingsState.stale.threshold =
+        (typeof _rv === "number" && isFinite(_rv)) ? _rv : null;
+    }
     else {
       settingsState.cfgError = "读取配置失败（后端不可达）";
       // ★ 失败兜底（2026-11-13 方案A 的必备配套）。
@@ -7753,6 +8013,10 @@ function settingsRenderPanel(): void {
       // 诊断页需要缓存清单；打开就拉，避免显示「正在读取」后一直空着。
       // default / global 两页都读写全局磁盘值，切过去就刷新。
       if (t === "global" || t === "default") void loadGlobalCfg();
+      // 挂起清理页的阈值也必须在**切过去时**拉一次（TASK-006）：
+      // 面板是长期存在、靠 open 开关的，只在打开时拉不够 —— 用户可能在
+      // 面板开着的情况下从别的页签切过来，那时 threshold 仍是 null。
+      if (t === "stale") void loadStaleThreshold();
     },
     scope: settingsState.scope,
     scopeChoice: settingsState.scopeChoice,
@@ -7875,7 +8139,7 @@ const SETTINGS_TABS: Array<{ key: string; label: string; hint: string }> = [
   // 问卷永远停在 pending、对应会话一直 409。bug 已修，但历史残骸不会自愈
   // （pending 记录可能已丢失、只剩 survey_state；会话文件也早已不存在），
   // 所以需要一个能「先看清、再手动处置」的页签。
-  { key: "stale", label: "挂起清理", hint: "" },
+  { key: "stale", label: "问卷清理", hint: "" },
 ];
 
 /** Keys a per-session override may hold.
@@ -7961,27 +8225,39 @@ function setRowLocked(scope: string, itemScope: string): boolean {
  *    删掉「查看历史（N 条）」入口与历史列表。
  *    后端 `/notify/test-log` 仍保留（诊断价值），只是 UI 不再展示多条。
  */
-function notifyChannelRow(R: any, scope: string): any {
+function notifyChannelRow(
+  R: any, scope: string, scene: "pc" | "bg", rowLabel: string,
+): any {
+  // 双场景（2026-11-19 boss 需求：通知不再固定单选）：
+  //   pc 场景 = PC 端打开时（可选浏览器/微信/钉钉/飞书）
+  //   bg 场景 = 后台运行时（页面不在，浏览器通知必然无效 → 无 browser 选项）
+  // 后端按页面心跳自动选场景；这里只负责把两个场景的配置行都摆出来。
+  const cfgKey = scene === "pc" ? "notify_channel_pc" : "notify_channel_bg";
   const list = settingsState.notifyChannels || [];
-  const current = String(settingsState.notifyCurrent || "off");
+  const current = String(
+    (scene === "pc" ? settingsState.pcCurrent : settingsState.bgCurrent) || "off",
+  );
   // 读草稿优先（用户刚改还没保存时，下拉要停在新值上）。
-  const picked = String(cfgValue("notify_channel", "off", "global") || current || "off");
+  const picked = String(cfgValue(cfgKey, "off", "global") || current || "off");
 
   const find = (k: string) => list.filter((c: any) => String(c.channel) === k)[0];
   const cur = find(picked);
 
   // 选项文本把状态内联进去：不额外占行高。
   // 注意：**不要**把「待测试」写成「不可选」——它只是还没验证，仍可选中保存。
-  const options = list.map((c: any) => {
-    const key = String(c.channel || "");
-    const label = String(c.label || key);
-    const ready = c.ready !== false;
-    const verified = c.verified === true || key === "off";
-    let suffix = "";
-    if (!ready) suffix = "（不可用）";
-    else if (!verified) suffix = "（待测试）";
-    return { value: key, label: label + suffix, disabled: !ready };
-  });
+  // bg 场景过滤 browser：后台运行时浏览器通知无法送达（页面已不在）。
+  const options = list
+    .filter((c: any) => scene !== "bg" || String(c.channel) !== "browser")
+    .map((c: any) => {
+      const key = String(c.channel || "");
+      const label = String(c.label || key);
+      const ready = c.ready !== false;
+      const verified = c.verified === true || key === "off";
+      let suffix = "";
+      if (!ready) suffix = "（不可用）";
+      else if (!verified) suffix = "（待测试）";
+      return { value: key, label: label + suffix, disabled: !ready };
+    });
   if (!options.length) {
     options.push({ value: "off", label: "关闭", disabled: false });
   }
@@ -8002,10 +8278,11 @@ function notifyChannelRow(R: any, scope: string): any {
       key: "s", className: "qm-set-native",
       value: picked,
       "data-qm-notify-select": "1",
+      "data-qm-notify-scene": scene,
       style: { flex: "0 0 auto" },
       onChange: (e: any) => {
         const v = e && e.target ? String(e.target.value) : "off";
-        cfgEdit("notify_channel", v);
+        cfgEdit(cfgKey, v);
         // 切频道时顺手拉一次该频道的历史，保证切过去就能看到结果。
         void loadNotifyTestLog(v);
       },
@@ -8033,9 +8310,25 @@ function notifyChannelRow(R: any, scope: string): any {
     }, testing ? "发送中…" : "测试"));
   }
   // 只读状态说明（不可用原因 / 待测试），紧跟在控件右侧同一行。
+  //
+  // ★ 2026-11-17（boss：「使用明确的报错来显示」）：
+  //   原来一律用 #bfbfbf / 11px 的弱灰字。但「不可用」分两种性质，混在一起
+  //   会误导用户：
+  //     · reason_code=missing_agent_id / agent_not_found → **调用方配置错误**，
+  //       是必须让用户看见并去修的硬错误（红字）
+  //     · channel_disabled / missing_credentials → 宿主设置里的正常状态说明
+  //       （灰字即可，用户可能只是还没配）
+  //   `reason_code` 由后端给出（前端不再靠中文文案猜），见 plugin.py
+  //   _notify_channel_state。
   if (cur && cur.ready === false && cur.reason) {
+    const hardErr = cur.reason_code === "missing_agent_id"
+      || cur.reason_code === "agent_not_found";
     top.push(R.createElement("span", {
-      key: "rs", style: { marginLeft: 8, color: "#bfbfbf", fontSize: 11 },
+      key: "rs",
+      "data-qm-notify-reason": cur.reason_code || "",
+      style: hardErr
+        ? { marginLeft: 8, color: "var(--app-danger,#d93025)", fontSize: 12, fontWeight: 600 }
+        : { marginLeft: 8, color: "#bfbfbf", fontSize: 11 },
     }, cur.reason));
   }
   // ⚠️ 2026-11-14 用户裁定（第 5 轮 UI 调整）：
@@ -8097,7 +8390,7 @@ function notifyChannelRow(R: any, scope: string): any {
   }
 
   return setRow(
-    R, "e5", "人工模式提醒频道",
+    R, scene === "pc" ? "e5pc" : "e5bg", rowLabel,
     R.createElement("div", {
       key: "nc",
       // 2026-11-14 用户裁定（第 4 轮 UI 调整）：
@@ -8115,7 +8408,9 @@ function notifyChannelRow(R: any, scope: string): any {
         justifyContent: "flex-start", gap: "6px 8px", width: "100%", minWidth: 0,
       },
     }, top),
-    "弹问卷时提醒一次（仅人工模式）。频道须先「测试」通过才会真正发送；测试结果会保留，可随时重测。",
+    scene === "pc"
+      ? "PC 端打开问卷时提醒一次（仅人工模式）。后台场景自动改走下一行配置。"
+      : "页面已关闭或切后台时提醒一次（仅人工模式）。无浏览器选项：页面不在，浏览器通知必然无效。",
     "global", scope, false, true,
   );
 }
@@ -8542,7 +8837,11 @@ function settingsTabBody(
     // 用户裁定：q6 单选（一次只能选 1 个）；q4 所有频道必须先测试通过才
     // 允许真正投递；q5 纯全局作用域（不允许会话级覆盖）；q2 不可用频道
     // 置灰并显示原因。
-    bodyKids.push(notifyChannelRow(R, scope));
+    // 双场景两行（2026-11-19 boss 需求：通知不再固定单选）：
+    //   PC 端打开时（可选浏览器/IM）+ 后台运行时（仅 IM）。
+    // 后端按页面心跳自动选场景；测试闸门与结果展示两行各自独立。
+    bodyKids.push(notifyChannelRow(R, scope, "pc", "PC 端打开时提醒频道"));
+    bodyKids.push(notifyChannelRow(R, scope, "bg", "后台运行时提醒频道"));
 
     bodyKids.push(setRow(R, "e6", "单题分析超时",
       setSelect(R, "sel4", TO_LABEL[Number(cfgValue("model_timeout_sec", 120, "global"))] || "120 秒（默认）",
@@ -8718,17 +9017,36 @@ function settingsTabBody(
     const rows = (st && st.rows) || [];
     const exceeded = (st && st.exceeded) || [];
     const within = (st && st.within) || [];
+    // 性质二分（2026-11-18 boss 裁定）：后端已按 has_live_future 切好两组；
+    // 兜底按 nature 字段过滤，保证字段缺失时不至于两区全空、漏掉任何一行。
+    const blocking: any[] = ((st && st.blocking) || []).length
+      ? st.blocking : rows.filter((r: any) => r && r.nature === "blocking");
+    const residual: any[] = ((st && st.residual) || []).length
+      ? st.residual : rows.filter((r: any) => r && r.nature !== "blocking");
+    // 批量释放只作用于「阻塞 ∩ 已超阈值」：观察期内的可能正被作答（D10）。
+    const blockingExceeded: any[] = blocking.filter(
+      (r: any) => r && exceeded.some(
+        (e: any) => e.tool_call_id === r.tool_call_id));
     const thr = st ? st.threshold : null;
     const thrText = staleThresholdText(thr);
     const thrDisabled = thr !== null && thr <= 0;
     const allDisabled = !!(st && (st.busy || st.thrBusy))
-      || exceeded.length === 0 || thrDisabled;
+      || blockingExceeded.length === 0 || thrDisabled;
+    const cleanupDisabled = !!(st && (st.busy || st.thrBusy))
+      || residual.length === 0;
 
     bodyKids.push(R.createElement("div", {
       className: "qm-set-stalehead", key: "sh",
     }, [
       // ── 自动释放设置（P1-a）──────────────────────────────
-      // 改即保存：与「全局配置」页其它设置项同一语义，不另设"保存"按钮。
+      // ★ 2026-11-17（REQ-2026-0072 REQ-003 / TASK-007）：**改成草稿模式**。
+      //
+      //   改前是「改即保存」（下拉一变就 POST /prefs），而底部「保存」按钮
+      //   绑的是 `cfgSave()` —— 它只读 `settingsState.draft`，这一页从不写
+      //   draft，于是底部按钮**纯属摆设**，点下去还显示保存成功。
+      //   这比"没加载"更能骗人（boss 报的「无保存」就是这么来的）。
+      //
+      //   改后与其它页签一致：下拉只改草稿，底部「保存」真正落盘。
       //
       // ★ 结构沿用全局配置页的 `.qm-set-row`（label 弹性列 + 控件 auto 列右对齐），
       //   不自己拼 flex。2026-11-15 用户反馈「挂起超时自动释放：这个文字与
@@ -8738,7 +9056,7 @@ function settingsTabBody(
         className: "qm-set-row qm-set-stalerowset", key: "thr",
       }, [
         R.createElement("div", { className: "qm-set-rowlabel", key: "l" }, [
-          R.createElement("span", { key: "t" }, "挂起超时自动释放"),
+          R.createElement("span", { key: "t" }, "问卷阻塞超时自动释放"),
           R.createElement("span", { className: "qm-set-rownote", key: "n" },
             thrDisabled
               ? "当前已关闭：挂起的问卷不会被自动释放"
@@ -8750,7 +9068,18 @@ function settingsTabBody(
             className: "qm-set-input",
             disabled: !!(st && st.thrBusy),
             value: thr === null ? "" : String(thr),
-            onChange: (e: any) => { void staleSetThreshold(Number(e.target.value)); },
+            onChange: (e: any) => {
+              const v = Number(e.target.value);
+              // 写草稿（等底部「保存」落盘），不再即时 POST。
+              // draft 值是「用户此刻的选择」，threshold 同步更新只为让
+              // 上方说明文案立刻反映选择，不代表已经生效。
+              settingsState.draft.release_after_sec = v;
+              settingsState.stale.threshold = v;
+              settingsState.stale.msgKind = "";
+              settingsState.stale.msg =
+                "已选择「" + staleThresholdText(v) + "」，点下方「保存」后生效";
+              settingsRenderPanel();
+            },
           }, [
             // 未取到时不渲染任何具体档位，避免默认高亮误导
             thr === null
@@ -8794,18 +9123,31 @@ function settingsTabBody(
         R.createElement("button", {
           type: "button", className: "qm-set-btn qm-set-btnprimary", key: "all",
           "data-qm-stale-release-all": "1",
-          // ★ 只作用于「已超阈值」组：观察期内的问卷很可能正被另一个
+          // ★ 只作用于「阻塞 ∩ 已超阈值」：观察期内的问卷很可能正被另一个
           //   标签页作答，批量释放等于替用户交卷（boss 裁定 D10）。
           disabled: allDisabled,
           title: thrDisabled
             ? "自动释放已关闭，请逐条释放"
-            : exceeded.length
-              ? `释放全部 ${exceeded.length} 条已超阈值的问卷（观察期内 ${within.length} 条不参与）`
-              : "当前没有已超阈值的问卷",
+            : blockingExceeded.length
+              ? `释放全部 ${blockingExceeded.length} 条已超阈值的阻塞问卷`
+                + `（观察期内 ${within.length} 条不参与）`
+              : "当前没有已超阈值的阻塞问卷",
           onClick: () => { void staleReleaseAll(); },
-        }, exceeded.length
-          ? `全部释放（仅已超阈值 ${exceeded.length} 条）`
+        }, blockingExceeded.length
+          ? `全部释放（阻塞·已超阈值 ${blockingExceeded.length} 条）`
           : "全部释放"),
+        R.createElement("button", {
+          type: "button", className: "qm-set-btn", key: "cleanup",
+          "data-qm-stale-cleanup-all": "1",
+          // 残留 = agent 已不在等待，清理是纯收尾、无副作用，可整批执行。
+          disabled: cleanupDisabled,
+          title: residual.length
+            ? `清理全部 ${residual.length} 条残留问卷（仅收尾状态，无副作用）`
+            : "当前没有可清理的残留问卷",
+          onClick: () => { void staleCleanupAll(); },
+        }, residual.length
+          ? `全部清理（残留 ${residual.length} 条）`
+          : "全部清理"),
       ]),
     ]));
 
@@ -8832,37 +9174,54 @@ function settingsTabBody(
     }
 
     if (rows.length) {
-      // ── 两组分区（P1-b，2026-11-15）──────────────────────────
+      // ── 性质二分分区（2026-11-18 boss 裁定）────────────────────
       //
-      // 「已超阈值」= 后台本该已经释放它（或即将释放），是真正需要人工关注的；
-      // 「观察期内」= 还在等，很可能正被另一个标签页作答。
-      //
-      // ★ 两组共用同一套分页：合并渲染再按页切，避免"两组各自分页"
-      //   导致总条数与页码对不上。组内顺序沿用后端排序（idle 降序），
-      //   而 rows 就是 exceeded + within 的拼接，天然满足"先看该处理的"。
+      // 🔴 正在阻塞会话 = has_live_future（agent 真在等作答）：
+      //    「释放」会唤醒对应会话继续运行；「终止会话」是兜底。
+      // ⚪ 异常残留 = agent 已不在等待（孤儿/无句柄/已 done）：
+      //    只给「清理残留」（纯收尾，无副作用），不给「终止会话」。
+      // 阈值分组（已超阈值/观察期内）降级为行内小标签保留，不丢信息。
+      // 每区独立分页（每页 5 条），页码越界夹紧，扫描/清理后重置。
       const PAGE_SIZE = 5;
-      const totalPages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
-      const curPage = Math.min(Math.max(0, Number(st && st.page) || 0),
-        totalPages - 1);
-      const pageRows = rows.slice(curPage * PAGE_SIZE,
-        curPage * PAGE_SIZE + PAGE_SIZE);
-
-      // 每一行属于哪一组：用 tool_call_id 集合判断（顺序不能依赖，
-      // 因为排序是后端给的，前端不重算）。
       const exIds: Record<string, boolean> = {};
       exceeded.forEach((r: any) => { exIds[r.tool_call_id] = true; });
 
-      const head = R.createElement("div", {
-        className: "qm-set-stalerow qm-set-staleheader", key: "rh",
-      }, [
-        R.createElement("span", { className: "qm-set-stalec1", key: "c1" }, "问卷"),
-        R.createElement("span", { className: "qm-set-stalec2", key: "c2" }, "归属"),
-        R.createElement("span", { className: "qm-set-stalec3", key: "c3" }, "挂起"),
-        R.createElement("span", { className: "qm-set-stalec4", key: "c4" }, "操作"),
-      ]);
-      const body = pageRows.map((r: any) => {
+      // 归属列点击复制完整会话 UUID（boss 2026-11-18：UUID 显示不全、
+      // 需要拿完整值去定位会话）。写剪贴板后给 1.6s 的「已复制」反馈。
+      const copySessionId = (sid: string, tcid: string) => {
+        if (!sid) return;
+        const done = () => {
+          settingsState.stale.copied = tcid;
+          settingsRenderPanel();
+          setTimeout(() => {
+            if (settingsState.stale.copied === tcid) {
+              settingsState.stale.copied = "";
+              settingsRenderPanel();
+            }
+          }, 1600);
+        };
+        try {
+          const nav: any = (typeof navigator !== "undefined") ? navigator : null;
+          if (nav && nav.clipboard && nav.clipboard.writeText) {
+            nav.clipboard.writeText(sid).then(done, done);
+          } else {
+            const ta = document.createElement("textarea");
+            ta.value = sid;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand("copy");
+            document.body.removeChild(ta);
+            done();
+          }
+        } catch (_) { done(); }
+      };
+
+      // 卡片化（2026-11-19 boss 反馈：表格 4 列太拥挤、标题/会话 ID 展示不全）：
+      // 每条问卷一张卡片，标题完整换行，会话/问卷 ID 完整展示，操作按钮在卡底。
+      const renderCard = (r: any, kind: string) => {
         const canTerm = !!r.terminable;
         const isExceeded = !!exIds[r.tool_call_id];
+        const isBlocking = kind === "blocking";
         // 观察期内的释放是"替人交卷"，必须二次确认 + 标出正在作答。
         // 用与既有代码一致的防御式写法：宿主环境未必有 window.confirm
         // （非浏览器/被禁用的沙箱里它会 undefined），裸调用会抛 TypeError。
@@ -8876,15 +9235,32 @@ function settingsTabBody(
             + "强制释放等于替用户交卷，其正在填写的内容将丢失。确定继续？");
           if (ok) void staleRelease([r.tool_call_id]);
         };
+        const copied = !!(st && st.copied) && st.copied === r.tool_call_id;
+        // epoch 秒 → 本地时间；0/None 如实显示 "-"
+        const fmtTime = (v: any) => {
+          const n = Number(v);
+          if (!v || !isFinite(n) || n <= 0) return "-";
+          try { return new Date(n * 1000).toLocaleString(); } catch (_) { return "-"; }
+        };
+        const meta = (key: string, label: string, value: any, props?: any) =>
+          R.createElement("div", { className: "qm-set-stalemetaitem", key }, [
+            R.createElement("span", {
+              className: "qm-set-stalemetalabel", key: "l",
+            }, label),
+            R.createElement("span", {
+              className: "qm-set-stalemetavalue", key: "v", ...(props || {}),
+            }, value),
+          ]);
         return R.createElement("div", {
-          className: "qm-set-stalerow", key: r.tool_call_id,
+          className: "qm-set-stalecard", key: r.tool_call_id + ":" + kind,
           "data-qm-stale-row": r.tool_call_id,
+          "data-qm-stale-nature": kind,
           "data-qm-stale-group": isExceeded ? "exceeded" : "within",
         }, [
-          R.createElement("span", { className: "qm-set-stalec1", key: "c1" }, [
-            R.createElement("span", { className: "qm-set-staletitle", key: "t" },
+          R.createElement("div", { className: "qm-set-stalecardhead", key: "h" }, [
+            R.createElement("span", { className: "qm-set-stalecardtitle", key: "t" },
               r.title || "(无标题)"),
-            // 把「为什么它没被自动释放」直接写在行上，省得再去翻日志。
+            // 把「它是什么性质/为什么没被自动释放」直接写在卡上，省得翻日志。
             R.createElement("span", { className: "qm-set-staletag", key: "g" },
               r.reason_code === "orphan-no-pending" ? "孤儿·无待答记录"
                 : r.reason_code === "orphan-future-dead" ? "孤儿·唤醒已失效"
@@ -8895,77 +9271,140 @@ function settingsTabBody(
             r.has_live_subscriber
               ? R.createElement("span", {
                   className: "qm-set-staletag", key: "sub",
-                  "data-qm-stale-live": "1",
-                  style: { marginLeft: "6px", color: "#e67e22" },
+                  "data-qm-stale-live": "1", style: { color: "#e67e22" },
                 }, "正在作答")
               : null,
             r.in_flight
               ? R.createElement("span", {
                   className: "qm-set-staletag", key: "fl",
-                  style: { marginLeft: "6px" },
                 }, "模型分析中")
               : null,
           ]),
-          R.createElement("span", { className: "qm-set-stalec2", key: "c2" },
-            (r.agent_id || "-") + (r.session_id ? " · " + r.session_id : "")),
-          R.createElement("span", { className: "qm-set-stalec3", key: "c3" },
-            r.idle_text),
-          R.createElement("span", { className: "qm-set-stalec4", key: "c4" }, [
-            R.createElement("button", {
-              type: "button", className: "qm-set-mini", key: "rel",
-              "data-qm-stale-release": r.tool_call_id,
-              disabled: !!(st && st.busy),
-              title: isExceeded ? "释放该问卷" : "仍在观察期内，点击需二次确认",
-              onClick: () => {
-                if (isExceeded) void staleRelease([r.tool_call_id]);
-                else askConfirm();
-              },
-            }, isExceeded ? "释放" : "强制释放"),
-            R.createElement("button", {
-              type: "button", className: "qm-set-mini", key: "term",
-              "data-qm-stale-terminate": r.tool_call_id,
-              // 置灰而不是隐藏：让用户知道这个动作存在、以及为什么此刻不能用。
-              disabled: !!(st && st.busy) || !canTerm,
-              title: canTerm
-                ? "终止该会话并取消其前台工具调用"
-                : "该问卷已无活跃等待，对应会话通常也已不存在，无需终止",
-              onClick: () => { void staleTerminate([r.tool_call_id]); },
-            }, "终止会话"),
+          R.createElement("div", { className: "qm-set-stalecardmeta", key: "m" }, [
+            meta("agent", "归属", r.agent_id || "-"),
+            // 会话 ID：卡片有空间，完整展示（不再截断），点击复制交互保留。
+            meta("sid", "会话 ID",
+              copied ? "✓ 会话 ID 已复制" : (r.session_id || "-"), {
+                title: copied ? "已复制到剪贴板"
+                  : (r.session_id ? "点击复制完整会话 ID：" + r.session_id : ""),
+                style: r.session_id ? {
+                  cursor: "pointer", textDecoration: "underline dotted",
+                  color: copied ? "#16a34a" : undefined,
+                } : undefined,
+                "data-qm-stale-copy": r.tool_call_id,
+                onClick: () => {
+                  copySessionId(String(r.session_id || ""), r.tool_call_id);
+                },
+              }),
+            meta("tcid", "问卷 ID", r.tool_call_id || "-"),
+            meta("idle", "挂起时长", r.idle_text || "-"),
+            meta("created", "发起时间", fmtTime(r.created_at)),
+            meta("mode", "作答模式", r.mode || "-"),
+          ]),
+          R.createElement("div", { className: "qm-set-stalecardfoot", key: "f" }, [
+            ...(isBlocking ? [
+              R.createElement("button", {
+                type: "button", className: "qm-set-mini", key: "rel",
+                "data-qm-stale-release": r.tool_call_id,
+                disabled: !!(st && st.busy),
+                title: isExceeded ? "释放该问卷（唤醒对应会话）"
+                  : "仍在观察期内，点击需二次确认",
+                onClick: () => {
+                  if (isExceeded) void staleRelease([r.tool_call_id]);
+                  else askConfirm();
+                },
+              }, isExceeded ? "释放" : "强制释放"),
+              R.createElement("button", {
+                type: "button", className: "qm-set-mini", key: "term",
+                "data-qm-stale-terminate": r.tool_call_id,
+                // 置灰而不是隐藏：让用户知道这个动作存在、以及为什么此刻不能用。
+                disabled: !!(st && st.busy) || !canTerm,
+                title: canTerm
+                  ? "终止该会话并取消其前台工具调用"
+                  : "该问卷已无活跃等待，对应会话通常也已不存在，无需终止",
+                onClick: () => { void staleTerminate([r.tool_call_id]); },
+              }, "终止会话"),
+            ] : [
+              R.createElement("button", {
+                type: "button", className: "qm-set-mini", key: "clean",
+                "data-qm-stale-cleanup": r.tool_call_id,
+                disabled: !!(st && st.busy),
+                title: "清理该残留记录（仅收尾状态，无副作用）",
+                onClick: () => { void staleRelease([r.tool_call_id], "清理"); },
+              }, "清理残留"),
+            ]),
           ]),
         ]);
-      });
-      bodyKids.push(R.createElement("div", {
-        className: "qm-set-staletable", key: "tbl", "data-qm-stale-table": "1",
-      }, [head].concat(body)));
+      };
 
-      // ── 分页控件（仅在多于 1 页时出现）──────────────────────────
-      //
-      // 单页时刻意不显示：一个只有「1 / 1」且两个按钮都禁用的控件条
-      // 只是噪音，用户会去点它并疑惑为什么没反应。
-      if (totalPages > 1) {
-        const go = (p: number) => {
-          settingsState.stale.page = p;
-          settingsRenderPanel();
-        };
-        const btn = (label: string, target: number, dis: boolean, k: string) =>
-          R.createElement("button", {
-            type: "button", className: "qm-set-mini", key: k,
-            "data-qm-stale-page": String(target),
-            disabled: dis,
-            onClick: () => { go(target); },
-          }, label);
-        bodyKids.push(R.createElement("div", {
-          className: "qm-set-stalepager", key: "pg", "data-qm-stale-pager": "1",
-        }, [
-          btn("上一页", curPage - 1, curPage <= 0, "prev"),
-          R.createElement("span", {
-            className: "qm-set-stalepageinfo", key: "info",
-            "data-qm-stale-pageinfo": String(curPage + 1),
-          }, `第 ${curPage + 1} / ${totalPages} 页`
-            + `（共 ${rows.length} 条，每页 ${PAGE_SIZE} 条）`),
-          btn("下一页", curPage + 1, curPage >= totalPages - 1, "next"),
-        ]));
-      }
+      // 分区渲染：标题 + 卡片列表 + 该区独立分页。空区不渲染（而不是隐藏），
+      // 让「该类当前为 0」与「没扫到」永远可区分。
+      const renderSection = (kind: string, title: string, hint: string,
+                             list: any[], pageKey: "page" | "resPage") => {
+        if (!list || !list.length) return null;
+        const totalPages = Math.max(1, Math.ceil(list.length / PAGE_SIZE));
+        const curPage = Math.min(
+          Math.max(0, Number((st as any)[pageKey]) || 0), totalPages - 1);
+        const pageRows = list.slice(curPage * PAGE_SIZE,
+          curPage * PAGE_SIZE + PAGE_SIZE);
+        const kids: any[] = [
+          R.createElement("div", {
+            className: "qm-set-stalesect", key: "sec",
+            "data-qm-stale-section": kind,
+          }, [
+            R.createElement("span", {
+              className: "qm-set-stalesecttitle", key: "t",
+              "data-qm-stale-secttitle": kind,
+            }, title),
+            R.createElement("span", {
+              className: "qm-set-stalesecthint", key: "h",
+            }, hint),
+          ]),
+          R.createElement("div", {
+            className: "qm-set-stalecards", key: "cards",
+            "data-qm-stale-cards": kind,
+          }, pageRows.map((r: any) => renderCard(r, kind))),
+        ];
+        // 单页时刻意不显示分页条：一个只有「1 / 1」且两个按钮都禁用的
+        // 控件条只是噪音，用户会去点它并疑惑为什么没反应。
+        if (totalPages > 1) {
+          const go = (p: number) => {
+            (settingsState.stale as any)[pageKey] = p;
+            settingsRenderPanel();
+          };
+          const btn = (label: string, target: number, dis: boolean, k: string) =>
+            R.createElement("button", {
+              type: "button", className: "qm-set-mini", key: k,
+              "data-qm-stale-page": String(target),
+              disabled: dis,
+              onClick: () => { go(target); },
+            }, label);
+          kids.push(R.createElement("div", {
+            className: "qm-set-stalepager", key: "pg",
+            "data-qm-stale-pager": kind,
+          }, [
+            btn("上一页", curPage - 1, curPage <= 0, "prev"),
+            R.createElement("span", {
+              className: "qm-set-stalepageinfo", key: "info",
+              "data-qm-stale-pageinfo": String(curPage + 1),
+            }, `第 ${curPage + 1} / ${totalPages} 页`
+              + `（共 ${list.length} 条，每页 ${PAGE_SIZE} 条）`),
+            btn("下一页", curPage + 1, curPage >= totalPages - 1, "next"),
+          ]));
+        }
+        return kids;
+      };
+
+      const secBlocking = renderSection("blocking",
+        `🔴 正在阻塞会话（${blocking.length} 条）`,
+        "agent 正在等待这些问卷的作答结果；「释放」会唤醒对应会话继续运行。",
+        blocking, "page");
+      const secResidual = renderSection("residual",
+        `⚪ 异常残留（${residual.length} 条）`,
+        "对应会话已不在等待（历史孤儿 / 已结束未收尾）；「清理残留」仅收尾状态，无副作用。",
+        residual, "resPage");
+      if (secBlocking) bodyKids.push(...secBlocking);
+      if (secResidual) bodyKids.push(...secResidual);
     }
   }
 
@@ -9000,6 +9439,12 @@ function SettingsPanel(props: {
     within: any[];
     threshold: number | null;
     thrBusy: boolean;
+    /** 性质二分（2026-11-18）：后端切好的两组 + 残留区页码 + 复制反馈。
+     *  同样必须透传，否则两分区永远空白。 */
+    blocking: any[];
+    residual: any[];
+    resPage: number;
+    copied: string;
   };
 }): any {
   const { R, open, onClose } = props;

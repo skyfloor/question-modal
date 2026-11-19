@@ -26,7 +26,10 @@ GROUPS = {
         ("py",  "verify_d7_raw_json.py"),
     ],
     "settings": [
-        ("mjs", "verify_settings_entry.mjs"),
+        # 2026-11-19：verify_settings_entry.mjs 已废弃（旧契约 addPrefix 收 DOM
+        # 节点），脚本自身打印「跳过」说明；现行契约由 verify_settings_entry2.mjs
+        # 的 [OWN]/[ROOT] 覆盖。留在这里只会产生 UNKNOWN 噪音，移出清单。
+        # ("mjs", "verify_settings_entry.mjs"),
         ("mjs", "verify_settings_entry2.mjs"),
         ("mjs", "verify_settings_layout.mjs"),
         ("mjs", "verify_ui_modelpick.mjs"),
@@ -107,11 +110,13 @@ GROUPS = {
 
 # 判定输出里的成功/失败信号（多套脚本格式不同，统一归一）
 PASS_PAT = ["ALL PASS", "passed, 0 failed", "通过 / 0 失败", "0 failed", "全通过", "全绿",
-            "结果: 0 失败", "15/15 passed", "结果: 35 通过 / 0 失败"]
+            "结果: 0 失败", "15/15 passed", "结果: 35 通过 / 0 失败",
+            # 2026-11-19：补齐既有脚本的通过文案（此前归一漏配 → 误标 UNKNOWN）
+            "结果: PASS", "全部通过"]
 FAIL_PAT = ["HAS FAILURES", "passed, 1 failed", "FAILED", "Traceback", "AssertionError", "✗ "]
 
 
-def classify(out: str, rc: int) -> str:
+def classify(out: str, rc: int, name: str = "") -> str:
     low = out
     # 明确的失败信号优先
     if any(p in low for p in ["HAS FAILURES", "FAILED", "Traceback (most recent call last)"]):
@@ -143,6 +148,10 @@ def classify(out: str, rc: int) -> str:
         return "ENV"
     if rc != 0:
         return "FAIL"
+    # 信息收集型探针（probe_*）：无硬断言，失败形态 = rc!=0 或输出 ✗/Traceback
+    #（上方已判）。走到这里说明 rc=0 且无失败信号 → 视为 PASS（2026-11-19）。
+    if name.startswith("probe_"):
+        return "PASS"
     return "UNKNOWN"
 
 
@@ -150,14 +159,18 @@ def run_one(kind, name):
     cmd = ["node", name] if kind == "mjs" else [sys.executable, name]
     t0 = time.time()
     try:
-        p = subprocess.run(cmd, cwd=HERE, capture_output=True, text=True, timeout=420)
+        # 2026-11-19：verify_tests_can_catch.py 是「测试能否抓住回归」的
+        # 反证套件，内部含 2 次 npm build + 多个真机脚本（各自 300s 上限），
+        # 统一 420s 必然超时被杀（rc=124 假 FAIL）→ 单独放宽到 1800s。
+        tmo = 1800 if name == "verify_tests_can_catch.py" else 420
+        p = subprocess.run(cmd, cwd=HERE, capture_output=True, text=True, timeout=tmo)
         out = (p.stdout or "") + "\n" + (p.stderr or "")
         rc = p.returncode
     except subprocess.TimeoutExpired as e:
         out = (e.stdout or b"").decode(errors="ignore") + "\n[TIMEOUT]"
         rc = 124
     el = round(time.time() - t0, 1)
-    st = classify(out, rc)
+    st = classify(out, rc, name)
     # 失败时保留完整输出，便于事后归因（tail 只留最后 6 行不够）
     full = out if st in ("FAIL", "UNKNOWN") else ""
     # 抓最后几行诊断

@@ -59,11 +59,11 @@ def main():
     shutil.copy2(TSX, os.path.join(BAK, "index.tsx"))
     try:
         s = open(TSX, encoding="utf-8").read()
-        old = '''  // 参考稿提示词页没有顶部说明行，第一行就是「模板库共享范围」。
-  { key: "prompt", label: "提示词", hint: "" },
+        # 2026-11-19：SETTINGS_TABS 末行现在是「问卷清理」(stale)——
+        # 旧锚点（prompt 行 + 数组结束）已不存在，随结构更新。
+        old = '''  { key: "stale", label: "问卷清理", hint: "" },
 ];'''
-        new = '''  // 参考稿提示词页没有顶部说明行，第一行就是「模板库共享范围」。
-  { key: "prompt", label: "提示词", hint: "" },
+        new = '''  { key: "stale", label: "问卷清理", hint: "" },
   { key: "diag", label: "诊断", hint: "只读信息" },
 ];'''
         assert old in s, "SETTINGS_TABS 锚点未找到"
@@ -149,7 +149,10 @@ def main():
     shutil.copy2(f6, os.path.join(BAK, "symptoms.mjs"))
     try:
         s = open(f6, encoding="utf-8").read()
-        s2 = s.replace('const kept = isSelected("乙");', 'const kept = hasText(lastTree, "✓ 乙");')
+        # 2026-11-19：旧注入 hasText(lastTree,"✓ 乙") 在未开自动编号时渲染
+        # 恰为「✓ 乙」→ 断言仍通过，反证不确定命中（实测 R6 假失败）。
+        # 改注入恒假值：P2b kept===true 必失败，反证确定性生效。
+        s2 = s.replace('const kept = isSelected("乙");', 'const kept = false;')
         open(f6, "w", encoding="utf-8").write(s2)
         out6 = run("node probe_symptoms.mjs", 300)
         ck("[R6] 反证命中：硬匹配旧文案 → P2b 失败", "✗ [P2b]" in out6,

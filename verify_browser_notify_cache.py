@@ -210,8 +210,8 @@ def main():
               return { tabs, hasModal: !!document.querySelector('.ant-modal, [class*=qm-settings]') };
             }""")
             print("  页签:", modal)
-            check("[E2] 设置弹窗打开且 4 页签齐全",
-                  len(modal.get("tabs") or []) == 4, modal)
+            check("[E2] 设置弹窗打开且 5 页签齐全（2026-11-18 新增问卷清理）",
+                  len(modal.get("tabs") or []) == 5, modal)
 
             # ── 诊断页签已按用户裁定整体删除（2026-11-04）──
             # 原 E3~E9 断言的是诊断页的缓存清理 UI 与行为，该功能线已连后端

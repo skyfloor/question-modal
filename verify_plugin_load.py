@@ -159,7 +159,7 @@ def main():
         got = dict(st.answers or {}) if st else {}
         cursor = st.cursor if st else 0
         svc.stop_runner(tag)
-        svc.stop_watchdog(tag)
+        # watchdog 已改服务级单循环（2026-11-15），清理无需按 survey 停。
         svc._surveys().pop(tag, None)
         svc._persist_surveys()
         return got, cursor

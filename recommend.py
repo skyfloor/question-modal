@@ -275,6 +275,60 @@ _RE_OBSERVE = re.compile("|".join(_OBSERVE_PATTERNS))
 _RE_HUMAN_EXPLICIT = ("requires_human", "human_only", "observer_only")
 
 
+# ── 可选题（2026-11-17，REQ-2026-0072 / 契约 OPTIONAL_FIELD_CONTRACT v1.1）──
+#
+# boss 2026-11-17 实测反馈：
+#   「某些问卷（非最后一题）的填空题，题目明明写着可为空跳过，但是实际因为
+#     必填门禁，是无法提交，导致题目与实际相悖」
+#
+# 根因：插件原本没有「可选/必填」概念，missingOf() 对所有可见题一视同仁。
+#
+# ★★ 判定优先级（契约 v1.1，不可变更）★★
+#   1. optional === false  → 必填   （显式字段压过一切文案）
+#   2. optional === true   → 可选   （字段优先是双向的，不因真假而不同）
+#   3. 题干命中反向词表    → 必填   （字段缺省时才看文案；反向豁免优先）
+#   4. 题干命中可选词表    → 可选
+#   5. 以上均未命中        → 必填   （默认从严）
+#
+# 为什么显式字段必须双向优先（需求评审 R-1 抓到的契约矛盾）：
+#   v1.0 曾把反向词排在 optional===true 之前，于是
+#   {optional: true, title: "备注（必须填写）"} 会被判成必填 ——
+#   模型显式声明了 true 却被题干文案否决，字段彻底失去意义。
+#   字段存在的价值就是「比文案更权威」；文案兜底只补位、不推翻。
+#
+# 为什么不得复用 requires_human 的策略：
+#   requires_human 是「宁可漏跳不可误跳」（误跳 = 剥夺用户选择权）；
+#   optional 误判的后果是「放过一道必填题」，方向相反。套用同一套保守策略
+#   会得到完全错误的行为。
+_OPTIONAL_REVERSE_WORDS = ("必须", "务必", "不得为空", "不能为空")
+_OPTIONAL_WORDS = ("可为空", "可留空", "选填", "可选", "非必填")
+
+
+def is_optional(q: Any) -> bool:
+    """该题是否允许留空（留空不触发必填门禁）。
+
+    与前端 isOptional() 必须同词表、同优先级，否则自动模式与手工模式
+    会对同一份问卷给出不同的必填集合（契约 AC-8）。
+    """
+    if not isinstance(q, dict):
+        return False
+    # 1) 显式 false → 必填（压过一切文案）
+    if q.get("optional") is False:
+        return False
+    # 2) 显式 true → 可选（同样是显式字段，同样压过文案）
+    if q.get("optional") is True:
+        return True
+    # 3~5) 字段缺省 → 题干兜底
+    title = str(q.get("title") or "")
+    if not title:
+        return False
+    # 3) 反向词优先：宁可多拦一次，不可放过必填题
+    if any(w in title for w in _OPTIONAL_REVERSE_WORDS):
+        return False
+    # 4) 可选词
+    return any(w in title for w in _OPTIONAL_WORDS)
+
+
 def requires_human(q: Any) -> bool:
     """该题是否**只能由真人观察作答**（自动模式必须跳过）。
 
@@ -408,6 +462,25 @@ def step_once(state: dict) -> dict | None:
             "answer": {"type": q_type(q), "value": [],
                        "other": "", "skipped": True,
                        "skipped_by": "requires_human",
+                       "at": __import__("time").time()},
+            "cursor": cursor + 1, "done": False, "skipped": True,
+        }
+
+    # ── 可选题：自动模式不调模型，直接写一条 optional 跳过（REQ-001 / AC-7）──
+    #
+    # 放在「取推荐」之前：可选题不需要推荐值，调模型纯属浪费配额；
+    # 且若它恰好带了 recommended，采纳它等于替用户做了一个他本来不必做的选择。
+    #
+    # 记 `skipped_by="optional"` 而非 "no_recommend"：前者表示「这题本来就可以
+    # 不填」，后者表示「AI 想填但没有可用推荐」—— 两者在摘要里的含义完全不同，
+    # 混用会让一份正常问卷显示成「AI 有 3 题没搞定」。
+    if is_optional(q):
+        return {
+            "question_index": real_idx,
+            "answer": {"type": q_type(q),
+                       "value": [] if q_type(q) == "multi" else "",
+                       "other": "", "skipped": True,
+                       "skipped_by": "optional",
                        "at": __import__("time").time()},
             "cursor": cursor + 1, "done": False, "skipped": True,
         }
@@ -550,4 +623,16 @@ def next_ai_target(state: dict) -> dict | None:
     if requires_human(questions[real_idx]):
         return {"index": real_idx, "visible": vis, "cursor": cursor,
                 "human_skip": True}
+    # ── 可选题（2026-11-17，REQ-001 / 契约 AC-7）──
+    #
+    # 可选题在自动模式下也不该调模型：它本来就不要求作答，调一次模型纯属
+    # 浪费配额（本机 today 曾累计 480 次限流）。直接跳过并写一条
+    # `skipped_by="optional"`，与 requires_human / no_recommend 区分开 ——
+    # 摘要才能正确标注「可选题未填」，而不是误报成「AI 无推荐跳过」。
+    #
+    # 为什么放在 requires_human 之后：观察题即使被标 optional，也应该优先按
+    # 观察题处理（requires_human 的语义更具体，且它绝不编造观察结果）。
+    if is_optional(questions[real_idx]):
+        return {"index": real_idx, "visible": vis, "cursor": cursor,
+                "optional_skip": True}
     return {"index": real_idx, "visible": vis, "cursor": cursor}
