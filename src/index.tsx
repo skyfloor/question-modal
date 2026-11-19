@@ -7682,10 +7682,8 @@ function openSettingsPanel(): void {
   settingsState.cfgError = "";
   // 模型与模板候选：只在设置面板用，异步补齐即可。
   void loadSettingsOptions();
-  // 「挂起超时自动释放」的当前值：打开面板即拉一次（TASK-006）。
-  // 不这样做的话，用户切到「挂起清理」页看到的是空下拉（显示「加载中…」），
-  // 无从确认当前生效值 —— 这正是 boss 报「无保存」的直接观感来源。
-  void loadStaleThreshold();
+  // （「挂起释放阈值」不再单独发请求：主配置响应里就含 release_after_sec，
+  // 在 loadEffectiveConfigIntoSettings 成功分支里同步 —— 2026-11-19。）
   settingsState.agentId = _hostAgentId || (() => {
     try { return host().getSelectedAgentId ? host().getSelectedAgentId() : ""; }
     catch (_) { return ""; }
@@ -7794,7 +7792,11 @@ async function loadStaleThreshold(): Promise<void> {
   if (_staleThrLoading) return;
   _staleThrLoading = true;
   try {
-    const cfg = await fetchEffectiveConfig("");
+    // 2026-11-19：带上当前会话身份（与主配置请求同源），避免发出
+    // chat_id/session_id/agent_id 全空的请求。
+    const cfg = await fetchEffectiveConfig(
+      "", true, settingsState.sessionId, settingsState.agentId,
+    );
     const v = (cfg && cfg.config && cfg.config.release_after_sec);
     // 只在拿到**数字**时赋值；取不到就保持 null（界面显示「加载中…」），
     // 绝不猜一个默认值顶上——那等于给用户看一个不存在的当前值。
@@ -7892,7 +7894,16 @@ function loadEffectiveConfigIntoSettings(onDone?: () => void): void {
   ).then((d) => {
     // A late response for a previous panel must not overwrite the live one.
     if (settingsState.chatId !== target) { done(); return; }
-    if (d) { settingsState.cfg = d; settingsState.cfgError = ""; }
+    if (d) {
+      settingsState.cfg = d; settingsState.cfgError = "";
+      // 打开面板即同步「挂起释放阈值」当前值（原 loadStaleThreshold 在
+      // openSettingsPanel 里单独发一次请求的职责，2026-11-19 合并到这里）：
+      // 主配置响应本就含 release_after_sec，单独再发一次不带会话身份的
+      // effective-config 属于冗余请求，且空身份语义不完整。
+      const _rv = d.config && (d.config as any).release_after_sec;
+      settingsState.stale.threshold =
+        (typeof _rv === "number" && isFinite(_rv)) ? _rv : null;
+    }
     else {
       settingsState.cfgError = "读取配置失败（后端不可达）";
       // ★ 失败兜底（2026-11-13 方案A 的必备配套）。
