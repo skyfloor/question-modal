@@ -467,7 +467,29 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     "notify_channel": {
         "default": "off", "type": "enum", "scope": "global", "batch": 5,
         "values": ["off", "browser", "wechat", "dingtalk", "feishu"],
-        "label": "人工模式提醒频道",
+        "label": "（旧）人工模式提醒频道",
+    },
+    # ── 双场景通知频道（2026-11-19，boss 需求：通知不再固定单选）──────
+    #
+    # 旧 `notify_channel` 是全局单选，无法区分「人在 PC 前」与「页面已关」
+    # 两种场景。现拆成两个场景键，发送时按**页面心跳**自动选择：
+    #   notify_channel_pc  PC 端打开时（前端轮询 _PC_ALIVE_SEC 内有过触达）
+    #                      可选 browser / wechat / dingtalk / feishu
+    #   notify_channel_bg  后台运行时（页面关闭或长时间切后台）
+    #                      只可选 wechat / dingtalk / feishu —— **无 browser**：
+    #                      页面都不在了，浏览器通知必然无效。
+    #
+    # 旧键保留为只读迁移源（见 `_migrate_notify_channels`）：新键从未被
+    # 显式设置时从旧键推导；显式设置过（哪怕设成 off）一律尊重显式值。
+    "notify_channel_pc": {
+        "default": "off", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["off", "browser", "wechat", "dingtalk", "feishu"],
+        "label": "PC 端打开时提醒频道",
+    },
+    "notify_channel_bg": {
+        "default": "off", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["off", "wechat", "dingtalk", "feishu"],
+        "label": "后台运行时提醒频道",
     },
     # 向后兼容：老配置里可能存着 notify_manual_mode=true。保留该键作为
     # **只读的迁移来源**（resolve 时若 notify_channel 仍为 off 且旧键为
@@ -873,6 +895,16 @@ def resolve_effective(chat_id: str = "") -> dict:
                 sources[key] = "session"
     except Exception:  # noqa: BLE001
         pass
+    # 旧单选 notify_channel → 双场景（pc/bg）只读迁移（2026-11-19）。
+    # 必须在 merge 完成后做：只看磁盘全局 prefs 里「新键是否被显式设置过」，
+    # 显式值（哪怕 off）优先于迁移推导，绝不覆盖用户选择。
+    try:
+        _migrate_notify_channels(out)
+    except Exception:  # noqa: BLE001 — 迁移失败回落默认值，绝不阻断读配置
+        logger.warning(
+            "question_modal: notify channel migration failed", exc_info=True,
+        )
+
     out["__sources__"] = sources
     return out
 
@@ -913,6 +945,82 @@ def _config_version() -> int:
 # `{"message_id": <int>}` → 每次**已成功送达**的发送都会抛
 # `PLATFORM_RESULT_UNKNOWN`（用户实测 5/5 全部收到）。故这里把该错误码
 # 视为「已送达」，仅记日志，绝不因此丢弃提醒。
+
+# ── 前端页面心跳（双场景判定信号，2026-11-19）───────────────────────────
+#
+# 「PC 端打开」vs「后台运行」的判定依据：前端问卷面板本来就以秒级轮询
+# ``GET /pending``（页面关闭或长时间切后台会停轮询），后端在该接口入口
+# 记录每个会话的最近触达时间。发通知时：
+#   距上次触达 ≤ _PC_ALIVE_SEC → PC 端打开 → 用 notify_channel_pc
+#   否则                       → 后台运行 → 用 notify_channel_bg
+#
+# 已知取舍（boss 知情）：会话的第一份问卷在创建瞬间，前端面板尚未开始
+# 轮询，若该会话此前从无触达记录，会被判为「后台」→ 走 IM 渠道。
+# 误判方向是「宁发 IM、不丢通知」，可接受。
+_FRONTEND_SEEN: dict[str, float] = {}
+_FRONTEND_SEEN_LOCK = threading.Lock()
+_PC_ALIVE_SEC = 120
+
+
+def _mark_frontend_seen(session_id: str) -> None:
+    """记录一次前端触达（pending 轮询等）。内存态即可，重启丢失无妨。"""
+    sid = str(session_id or "").strip()
+    if not sid:
+        return
+    with _FRONTEND_SEEN_LOCK:
+        _FRONTEND_SEEN[sid] = time.time()
+        # 防无限增长：只保留活跃窗口相关的会话。
+        if len(_FRONTEND_SEEN) > 512:
+            cutoff = time.time() - _PC_ALIVE_SEC * 4
+            for stale in [k for k, v in _FRONTEND_SEEN.items() if v < cutoff]:
+                _FRONTEND_SEEN.pop(stale, None)
+
+
+def _frontend_recently_seen(session_id: str) -> bool:
+    """该会话的页面最近是否活跃（≤ _PC_ALIVE_SEC 内有过前端触达）。"""
+    sid = str(session_id or "").strip()
+    if not sid:
+        return False
+    with _FRONTEND_SEEN_LOCK:
+        ts = _FRONTEND_SEEN.get(sid)
+    return bool(ts and (time.time() - ts) <= _PC_ALIVE_SEC)
+
+
+def _migrate_notify_channels(out: dict) -> None:
+    """旧单选 ``notify_channel`` → 双场景（pc/bg）的**只读**迁移。
+
+    仅当新键**从未被显式设置**（磁盘全局 prefs 里不存在该键）时才从旧键
+    推导；用户显式设置过（哪怕设成 off）一律尊重显式值，绝不覆盖。
+
+    推导规则：
+      旧 off / 缺失                    → pc=off, bg=off（与旧行为一致：不发）
+      旧 browser                       → pc=browser, bg=off
+        （后台没有浏览器通知的语义；旧配置选 browser 时页面一关通知本就
+         失效，bg=off 是忠实迁移，不臆造渠道）
+      旧 wechat / dingtalk / feishu    → pc=旧值, bg=旧值（两边都走该频道）
+      仅有更老的 notify_manual_mode=true → 视同旧 browser（沿用原迁移链）
+    """
+    try:
+        raw = _load_prefs()
+        if not isinstance(raw, dict):
+            raw = {}
+    except Exception:  # noqa: BLE001 — 迁移失败回落默认，绝不阻断读配置
+        raw = {}
+    legacy = str(raw.get("notify_channel") or "").strip()
+    if not legacy and raw.get("notify_manual_mode"):
+        legacy = "browser"
+    if not legacy:
+        return
+    if "notify_channel_pc" not in raw:
+        out["notify_channel_pc"] = (
+            legacy if legacy in ("browser", "wechat", "dingtalk", "feishu")
+            else "off"
+        )
+    if "notify_channel_bg" not in raw:
+        out["notify_channel_bg"] = (
+            legacy if legacy in ("wechat", "dingtalk", "feishu") else "off"
+        )
+
 
 # 频道显示名（面板与日志共用；缺省回落 channel key）
 # 2026-11-14 用户裁定：删除 Slack / Discord 两个选项
@@ -1555,34 +1663,45 @@ def _notify_stamp(agent_id: str = "") -> str:
 
 async def notify_survey_pending(
     call_id: str, title: str, count: int, agent_id: str = "",
+    session_id: str = "",
 ) -> dict:
-    """提醒用户「有一份问卷在等你作答」。
+    """提醒用户「有一份问卷在等你作答」（双场景，2026-11-19）。
 
     由**后端**调用（q1 裁定的关键：关掉浏览器时只能走频道通知，前端
-    effect 关页即失效）。频道为单选（q6），且必须已过测试闸门（q4）。
+    effect 关页即失效）。频道必须已过测试闸门（q4）。
+
+    ## 双场景渠道选择（2026-11-19 boss 需求：通知不再固定单选）
+
+    按**页面心跳**判定场景，再取对应场景的配置频道：
+      PC 端打开（_PC_ALIVE_SEC 内前端轮询过）→ notify_channel_pc
+      后台运行（页面关闭/长时间切后台）      → notify_channel_bg
 
     文案（q0 裁定）：与浏览器通知同口径 —— 「问卷名」有 N 道题等你作答。
     注意：只发标题与题数，**不发题目正文**（2026-11-13 安全红线）。
     """
     cfg = resolve_effective("")
-    channel = str(cfg.get("notify_channel") or "off")
-
-    # 旧键迁移：老配置可能只有 notify_manual_mode=true
-    if channel == "off" and cfg.get("notify_manual_mode"):
-        channel = "browser"
+    scene = "pc" if _frontend_recently_seen(session_id) else "bg"
+    scene_label = "PC 端打开" if scene == "pc" else "后台运行"
+    channel = str(
+        cfg.get("notify_channel_pc" if scene == "pc" else "notify_channel_bg")
+        or "off",
+    )
 
     if channel == "off":
         return {"ok": True, "delivered": False, "channel": "off",
-                "reason": "通知频道已关闭"}
+                "scene": scene,
+                "reason": "通知频道已关闭（%s）" % scene_label}
 
     state = _notify_channel_state(channel, cfg, agent_id)
     if not state["ready"]:
         return {"ok": False, "delivered": False, "channel": channel,
+                "scene": scene,
                 "reason_code": state.get("reason_code") or "",
                 "reason": state["reason"] or "频道不可用"}
     if not state["verified"]:
         # q4：未通过测试的频道一律不许真正投递。
         return {"ok": False, "delivered": False, "channel": channel,
+                "scene": scene,
                 "reason": "该频道尚未通过测试发送，请先在设置里点「测试」"}
 
     # ── 文案（2026-11-14 用户要求追加来源与时间）──────────────────────
@@ -1601,11 +1720,16 @@ async def notify_survey_pending(
     body = base + "\n" + stamp
     if channel == "browser":
         # 浏览器通知只能前端发；后端标记为「交由前端处理」。
+        # （只有 pc 场景可能选到 browser：bg 枚举本就不含 browser。）
         return {"ok": True, "delivered": False, "channel": "browser",
-                "delegated": True, "text": body}
+                "scene": scene, "delegated": True, "text": body}
 
     info = _host_channel_info(channel, agent_id)
-    return await _send_via_channel(channel, body, info, agent_id)
+    out = await _send_via_channel(channel, body, info, agent_id)
+    # 场景标记随结果返回：调用方/日志可查证「这次为什么走这个渠道」。
+    if isinstance(out, dict):
+        out.setdefault("scene", scene)
+    return out
 
 
 # ── Per-session (per-chat) setting overrides ───────────────────────────
@@ -2152,6 +2276,7 @@ class NotifySendRequest(BaseModel):
     tool_call_id: str = Field("", description="问卷卡片标识（用于日志追踪）")
     title: str = Field("", description="问卷标题（不发题目正文）")
     count: int = Field(0, description="未作答题数")
+    session_id: str = Field("", description="会话 ID（双场景心跳判定依据，2026-11-19）")
 
 
 class AnswerResponse(BaseModel):
@@ -2401,6 +2526,9 @@ def build_router() -> APIRouter:
     @router.get("/pending")
     async def get_pending(session_id: str = Query(default="")):
         """Return all pending questions, optionally filtered by session."""
+        # 前端页面心跳（2026-11-19）：问卷面板以秒级轮询本接口，入口处
+        # 记录触达时间，供通知发送时判定「PC 端打开 vs 后台运行」。
+        _mark_frontend_seen(session_id)
         svc = get_question_service()
         items = []
         for pq in await svc.list_pending(session_id):
@@ -3511,6 +3639,10 @@ def build_router() -> APIRouter:
                 "browser" if current == "off" and cfg.get("notify_manual_mode")
                 else current
             ),
+            # 双场景当前值（2026-11-19）：迁移已在 resolve_effective 内完成，
+            # 这两个值就是「此刻实际会用的渠道」。
+            "pc_current": str(cfg.get("notify_channel_pc") or "off"),
+            "bg_current": str(cfg.get("notify_channel_bg") or "off"),
             "channels": channels,
         }
 
@@ -3527,7 +3659,23 @@ def build_router() -> APIRouter:
         return await notify_survey_pending(
             body.tool_call_id, body.title or "问卷", int(body.count or 0),
             _req_agent_id(request, ""),
+            session_id=str(body.session_id or ""),
         )
+
+    @router.post("/heartbeat")
+    async def post_heartbeat(request: Request) -> dict:
+        """前端页面心跳（2026-11-19 双场景通知）。
+
+        前端页面存活期间每 30s 打一次（独立于问卷面板，SSE 期间也有），
+        后端据此判定「PC 端打开 vs 后台运行」选择通知渠道。幂等、无副作用。
+        """
+        try:
+            body = await request.json()
+        except Exception:  # noqa: BLE001 — 空/坏 body 按缺省处理
+            body = {}
+        sid = str((body or {}).get("session_id") or "") if isinstance(body, dict) else ""
+        _mark_frontend_seen(sid)
+        return {"ok": True}
 
     @router.get("/notify/test-log")
     async def get_notify_test_log(channel: str = Query(default="")) -> dict:
@@ -4297,6 +4445,12 @@ class QuestionModalMiddleware(_MiddlewareBase):
             )
             return
 
+        # 题目规范化（2026-11-19 boss 报障后的根治点）：模型生成的题目结构
+        # 偶发畸形——options 自带「其他」与插件注入的「其他」重复、题干写
+        # 「可多选」却标 single、type 声明与 options 矛盾。在创建入口统一
+        # 修正（幂等、保守：不造 options、不改题干、不动 showIf/recommended）。
+        questions = _analysis.normalize_questions(questions)
+
         request_context = getattr(agent, "_request_context", None) or {}
         session_id = str(request_context.get("session_id", "") or "")
         agent_id = str(request_context.get("agent_id", "") or "")
@@ -4397,6 +4551,8 @@ class QuestionModalMiddleware(_MiddlewareBase):
                     title=title,
                     count=len(questions),
                     agent_id=agent_id,
+                    # 双场景判定依据：该会话前端页面是否活跃（2026-11-19）。
+                    session_id=session_id,
                 )
             except Exception:  # noqa: BLE001 — 提醒失败绝不能阻挡问卷本身
                 logger.warning(

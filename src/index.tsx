@@ -595,6 +595,35 @@ function currentSessionId(): string {
 // 仅供无头回归（harness_rescue.mjs [T2]）探测寻址结果；生产路径零消费。
 (globalThis as any).__qmSessionProbe = currentSessionId;
 
+// ── 前端页面心跳（2026-11-19 双场景通知）────────────────────────────
+// 后端按「最近触达 ≤120s」判定 PC 端打开 vs 后台运行，从而在发提醒时
+// 选择 notify_channel_pc / notify_channel_bg。问卷面板的 pending 轮询是
+// 副信号，但 SSE 长连接期间没有周期性 HTTP 请求 → 在线用户会被误判成
+// 「后台」。这里用独立于问卷面板的全局定时器：页面活着每 30s 打一次，
+// 与问卷面板是否挂载无关。
+let _qmHbTimer: any = null;
+function qmStartHeartbeat(): void {
+  if (_qmHbTimer) return;
+  // 定时器来源要兜底：无头回归 harness 的 fake window 不一定有 setInterval
+  // （实测 TypeError: window.setInterval is not a function，模块加载即崩）。
+  // 优先 window，退 globalThis；两者都没有（纯测试桩）就不启动心跳。
+  const S: any = (typeof window !== "undefined" && typeof (window as any).setInterval === "function")
+    ? window
+    : (typeof globalThis !== "undefined" && typeof (globalThis as any).setInterval === "function"
+      ? globalThis : null);
+  if (!S) return;
+  _qmHbTimer = S.setInterval(() => {
+    try {
+      void fetch(apiUrl("/heartbeat"), {
+        method: "POST",
+        headers: authHeaders(),
+        body: JSON.stringify({ session_id: currentSessionId() || "" }),
+      }).catch(() => { /* 心跳失败静默：不影响页面 */ });
+    } catch (_) { /* 静默 */ }
+  }, 30000);
+}
+qmStartHeartbeat();
+
 /** Agent id for this card's requests.
  *
  *  `_hostAgentId` is only learned after a `/resolve` round-trip, so on the very
@@ -5287,12 +5316,24 @@ function AskUserCard(props: { data?: any }) {
     // harness 的微任务顺序让 setAnMode 先落地，所以它一直是绿的。
     const cfgModeNow = normMode(cfgOf("mode", "manual"));
     if (cfgModeNow !== "manual") return;       // AI/只用推荐 会自己推进，不需要提醒
-    // 2026-11-14：提醒频道从布尔升级为单选枚举（off/browser/wechat/...）。
-    // 兼容旧键：老配置只有 notify_manual_mode=true 时按 browser 处理，
-    // 否则升级后用户会静默失去提醒。
-    const chanNow = String(cfgOf("notify_channel", "off") || "off");
-    const legacyOn = !!cfgOf("notify_manual_mode", false);
-    if (chanNow === "off" && !legacyOn) return;
+    // 双场景（2026-11-19）：前端只在「PC 场景配置了浏览器通知」时负责弹
+    // Notification；钉钉/飞书/微信由后端按页面心跳选场景发送（创建时），
+    // 避免同一份问卷被前端 + 后端双重打扰。
+    // 兼容旧键：effCfg 通常已由后端 resolve_effective 完成迁移（旧
+    // notify_channel=browser → notify_channel_pc=browser）；但快照里新键
+    // 可能缺失（如回归 harness 直接喂原始配置），此时按旧键同语义降级：
+    // 旧 browser（或仅 notify_manual_mode=true）→ 前端弹；旧 IM 渠道 →
+    // 前端不弹（由后端发），不再重演「页面开着时双份推送」。
+    let pcChan = String(cfgOf("notify_channel_pc", "") || "");
+    if (!pcChan) {
+      const legacy = String(cfgOf("notify_channel", "off") || "off");
+      const legacyOn = !!cfgOf("notify_manual_mode", false);
+      // 旧语义：notify_channel=off 且 notify_manual_mode=true → 视同 browser
+      //（布尔键的迁移链）。legacy="off" 是真值字符串，判空要用 === "off"。
+      pcChan = (legacy === "browser" || ((legacy === "off" || !legacy) && legacyOn))
+        ? "browser" : legacy;
+    }
+    if (pcChan !== "browser") return;
     if (answered || skippedAll || deadReason) return;  // 已经不在等作答
     if (!argsReady(args) || !questions.length) return; // 题还没到手
     // 用页面已有的 filledAnswer 判定（与「未作答拦截」同一套规则），
@@ -6934,6 +6975,9 @@ const settingsState: {
    *  否则「面板说可用、发出去失败」两边判断不一致。 */
   notifyChannels: any[];
   notifyCurrent: string;
+  /** 双场景当前值（2026-11-19）：后端 /notify/channels 返回 pc_current/bg_current。 */
+  pcCurrent: string;
+  bgCurrent: string;
   /** 测试发送进行中的频道 key（空 = 无）。 */
   notifyTesting: string;
   /** 各频道「本次会话内刚测完」的即时文案（失败原因必须立即可见）。 */
@@ -6994,7 +7038,7 @@ const settingsState: {
   globalCfg: {},
   keyTs: {},
   conflictNote: "",
-  notifyChannels: [], notifyCurrent: "off", notifyTesting: "", notifyMsg: {},
+  notifyChannels: [], notifyCurrent: "off", pcCurrent: "off", bgCurrent: "off", notifyTesting: "", notifyMsg: {},
   notifyLog: {},
   stale: { rows: [], scanned: false, busy: false, msg: "", msgKind: "info", page: 0,
            exceeded: [], within: [], threshold: null, thrBusy: false,
@@ -7158,6 +7202,10 @@ async function loadNotifyChannels(): Promise<void> {
     const d = await resp.json();
     settingsState.notifyChannels = Array.isArray(d && d.channels) ? d.channels : [];
     settingsState.notifyCurrent = String((d && d.effective) || "off");
+    // 双场景当前值（2026-11-19）：迁移已在后端 resolve_effective 完成，
+    // 这两个值就是「此刻实际会用的渠道」。
+    settingsState.pcCurrent = String((d && d.pc_current) || "off");
+    settingsState.bgCurrent = String((d && d.bg_current) || "off");
     try { settingsRenderPanel(); } catch (_) { /* closed */ }
   } catch (_) { /* 探测失败不阻塞面板：保持上次结果 */ }
 }
@@ -8166,27 +8214,39 @@ function setRowLocked(scope: string, itemScope: string): boolean {
  *    删掉「查看历史（N 条）」入口与历史列表。
  *    后端 `/notify/test-log` 仍保留（诊断价值），只是 UI 不再展示多条。
  */
-function notifyChannelRow(R: any, scope: string): any {
+function notifyChannelRow(
+  R: any, scope: string, scene: "pc" | "bg", rowLabel: string,
+): any {
+  // 双场景（2026-11-19 boss 需求：通知不再固定单选）：
+  //   pc 场景 = PC 端打开时（可选浏览器/微信/钉钉/飞书）
+  //   bg 场景 = 后台运行时（页面不在，浏览器通知必然无效 → 无 browser 选项）
+  // 后端按页面心跳自动选场景；这里只负责把两个场景的配置行都摆出来。
+  const cfgKey = scene === "pc" ? "notify_channel_pc" : "notify_channel_bg";
   const list = settingsState.notifyChannels || [];
-  const current = String(settingsState.notifyCurrent || "off");
+  const current = String(
+    (scene === "pc" ? settingsState.pcCurrent : settingsState.bgCurrent) || "off",
+  );
   // 读草稿优先（用户刚改还没保存时，下拉要停在新值上）。
-  const picked = String(cfgValue("notify_channel", "off", "global") || current || "off");
+  const picked = String(cfgValue(cfgKey, "off", "global") || current || "off");
 
   const find = (k: string) => list.filter((c: any) => String(c.channel) === k)[0];
   const cur = find(picked);
 
   // 选项文本把状态内联进去：不额外占行高。
   // 注意：**不要**把「待测试」写成「不可选」——它只是还没验证，仍可选中保存。
-  const options = list.map((c: any) => {
-    const key = String(c.channel || "");
-    const label = String(c.label || key);
-    const ready = c.ready !== false;
-    const verified = c.verified === true || key === "off";
-    let suffix = "";
-    if (!ready) suffix = "（不可用）";
-    else if (!verified) suffix = "（待测试）";
-    return { value: key, label: label + suffix, disabled: !ready };
-  });
+  // bg 场景过滤 browser：后台运行时浏览器通知无法送达（页面已不在）。
+  const options = list
+    .filter((c: any) => scene !== "bg" || String(c.channel) !== "browser")
+    .map((c: any) => {
+      const key = String(c.channel || "");
+      const label = String(c.label || key);
+      const ready = c.ready !== false;
+      const verified = c.verified === true || key === "off";
+      let suffix = "";
+      if (!ready) suffix = "（不可用）";
+      else if (!verified) suffix = "（待测试）";
+      return { value: key, label: label + suffix, disabled: !ready };
+    });
   if (!options.length) {
     options.push({ value: "off", label: "关闭", disabled: false });
   }
@@ -8207,10 +8267,11 @@ function notifyChannelRow(R: any, scope: string): any {
       key: "s", className: "qm-set-native",
       value: picked,
       "data-qm-notify-select": "1",
+      "data-qm-notify-scene": scene,
       style: { flex: "0 0 auto" },
       onChange: (e: any) => {
         const v = e && e.target ? String(e.target.value) : "off";
-        cfgEdit("notify_channel", v);
+        cfgEdit(cfgKey, v);
         // 切频道时顺手拉一次该频道的历史，保证切过去就能看到结果。
         void loadNotifyTestLog(v);
       },
@@ -8318,7 +8379,7 @@ function notifyChannelRow(R: any, scope: string): any {
   }
 
   return setRow(
-    R, "e5", "人工模式提醒频道",
+    R, scene === "pc" ? "e5pc" : "e5bg", rowLabel,
     R.createElement("div", {
       key: "nc",
       // 2026-11-14 用户裁定（第 4 轮 UI 调整）：
@@ -8336,7 +8397,9 @@ function notifyChannelRow(R: any, scope: string): any {
         justifyContent: "flex-start", gap: "6px 8px", width: "100%", minWidth: 0,
       },
     }, top),
-    "弹问卷时提醒一次（仅人工模式）。频道须先「测试」通过才会真正发送；测试结果会保留，可随时重测。",
+    scene === "pc"
+      ? "PC 端打开问卷时提醒一次（仅人工模式）。后台场景自动改走下一行配置。"
+      : "页面已关闭或切后台时提醒一次（仅人工模式）。无浏览器选项：页面不在，浏览器通知必然无效。",
     "global", scope, false, true,
   );
 }
@@ -8763,7 +8826,11 @@ function settingsTabBody(
     // 用户裁定：q6 单选（一次只能选 1 个）；q4 所有频道必须先测试通过才
     // 允许真正投递；q5 纯全局作用域（不允许会话级覆盖）；q2 不可用频道
     // 置灰并显示原因。
-    bodyKids.push(notifyChannelRow(R, scope));
+    // 双场景两行（2026-11-19 boss 需求：通知不再固定单选）：
+    //   PC 端打开时（可选浏览器/IM）+ 后台运行时（仅 IM）。
+    // 后端按页面心跳自动选场景；测试闸门与结果展示两行各自独立。
+    bodyKids.push(notifyChannelRow(R, scope, "pc", "PC 端打开时提醒频道"));
+    bodyKids.push(notifyChannelRow(R, scope, "bg", "后台运行时提醒频道"));
 
     bodyKids.push(setRow(R, "e6", "单题分析超时",
       setSelect(R, "sel4", TO_LABEL[Number(cfgValue("model_timeout_sec", 120, "global"))] || "120 秒（默认）",
