@@ -122,7 +122,7 @@ async def main():
     svc.unsubscribe(tag4, q_new)
 
     for t in (tag, tag2, tag3, tag4):
-        svc.stop_watchdog(t)
+        # watchdog 已改服务级单循环（2026-11-15），清理无需按 survey 停。
         svc._surveys().pop(t, None)
     svc._persist_surveys()
 

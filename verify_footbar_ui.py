@@ -16,11 +16,20 @@
   [F6] 点开关 → dirty 提示出现、取消解禁；点取消 → 值恢复、dirty 消失、取消再禁用
 安全：只点开关后取消，绝不点保存；不写 session_prefs.json（无备份恢复需求）。
 """
-import json, sys
+import json, sys, urllib.request
 from playwright.sync_api import sync_playwright
 
 BASE = "http://127.0.0.1:8088"
 SID, AG = "1791724819571-muuetab", "wb74Jn"
+
+
+def api(path, method="GET", body=None):
+    req = urllib.request.Request(BASE + "/api" + path, method=method,
+        data=json.dumps(body).encode() if body is not None else None,
+        headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=10) as r:
+        raw = r.read().decode()
+        return json.loads(raw) if raw.strip() else {}
 
 ok = fail = 0
 def ck(n, c, d=""):
@@ -83,7 +92,10 @@ window.__pick=(c)=>{
 window.__foot=()=>{
   const root=document.getElementById("qm-settings-root")||document.body;
   const q=(s)=>root.querySelector(s);
-  const cancel=q("[data-qm-cancel]"), save=q("[data-qm-save]"), revert=q("[data-qm-revert]");
+  // 2026-11-15 boss 需求 3 第二轮重做：原「取消」按钮改为「撤销」
+  // （data-qm-undo），语义=有未保存修改（dirty>0）才出现，点击=纯前端
+  // 放弃草稿、恢复到上一次保存值、零请求。锚点与断言随之更新。
+  const cancel=q("[data-qm-undo]"), save=q("[data-qm-save]"), revert=q("[data-qm-revert]");
   const sessClear=q("[data-qm-sessclear]");
   const wrap=q(".qm-set-wrap");
   const fr=save?save.getBoundingClientRect():null;
@@ -130,9 +142,9 @@ window.__parallelState=()=>{
 };
 window.__cancel=()=>{
   const root=document.getElementById("qm-settings-root")||document.body;
-  const b=root.querySelector("[data-qm-cancel]");
-  if(b){ b.click(); return "cancelled"; }
-  return "no-cancel";
+  const b=root.querySelector("[data-qm-undo]");
+  if(b){ b.click(); return "undone"; }
+  return "no-undo";
 };
 window.__ready=true;
 </script></body></html>
@@ -154,6 +166,11 @@ def main():
             pg.wait_for_function("window.__ready===true", timeout=30000)
 
             pg.evaluate("try{localStorage.removeItem('qm:v1:scopeChoice')}catch(e){}")
+            # 2026-11-19：清掉本会话的历史覆盖（此前测试轮次可能留有
+            # mode=recommend 等残留），保证本套件「无会话覆盖」的前提成立。
+            # settings={} 且不带 set_scope = 真清空（后端 3795 行语义）。
+            api("/question-modal/session-prefs", "POST",
+                {"chat_id": "", "session_id": SID, "agent_id": AG, "settings": {}})
             pg.evaluate("window.__open()")
             pg.wait_for_timeout(1800)
             f1 = pg.evaluate("window.__foot()")
@@ -163,8 +180,8 @@ def main():
                not f1["hasSessClear"] and not f1["sessClearText"], "")
             ck("[F2] 无「还原」按钮与文本",
                not f1["hasRevert"] and not f1["revertText"], "")
-            ck("[F3a] 取消按钮存在且初始禁用",
-               f1["hasCancel"] and f1["cancelDisabled"] is True, f1["cancelDisabled"])
+            ck("[F3a] 撤销按钮初始不出现（2026-11-15 重做：有改动即现）",
+               f1["hasCancel"] is False, f1["hasCancel"])
             ck("[F3b] 保存按钮存在、primary 高亮、无修改也可点（2026-11-12 裁定）",
                f1["hasSave"] and f1["savePrimary"] and f1["saveDisabled"] is False,
                (f1["savePrimary"], f1["saveDisabled"]))
@@ -177,8 +194,8 @@ def main():
             ck("[F4b] 保存按钮位于底部区域",
                f1["saveBottomGap"] is not None and 0 <= f1["saveBottomGap"] < 80,
                f1["saveBottomGap"])
-            ck("[F4c] 取消按钮在保存按钮左侧",
-               f1["cancelLeftOfSave"] is True, f1["cancelLeftOfSave"])
+            # [F4c] 撤销按钮与保存按钮的相对位置在「点开关后」（撤销出现时）
+            # 检查，见下方 F6b 段。初始态撤销按钮不出现，无位置可言。
             ck("[F5a] 无覆盖圆点 qm-set-srcdot", f1["srcdotCount"] == 0, f1["srcdotCount"])
             bad_tags = [t for t in f1["scopeTags"] if t in ("会话", "全局", "全局·可覆盖")]
             ck("[F5b] 无「会话/全局/全局·可覆盖」行内标签",
@@ -196,14 +213,18 @@ def main():
                not [t for t in f2["scopeTags"] if t in ("会话", "全局", "全局·可覆盖")],
                (f2["srcdotCount"], f2["scopeTags"]))
 
-            # ── 交互：点「并行分析」开关 → dirty → 取消恢复 ──
+            # ── 交互：点「并行分析」开关 → dirty → 撤销恢复 ──
+            pstate0 = pg.evaluate("window.__parallelState()")
             t = pg.evaluate("window.__toggleParallel()")
             pg.wait_for_timeout(500)
             f3 = pg.evaluate("window.__foot()")
             print("  [点开关后]", t, json.dumps(f3, ensure_ascii=False))
             ck("[F6a] 点开关后出现未保存提示", "有 1 项未保存" in f3["dirtyText"],
                f3["dirtyText"])
-            ck("[F6b] 取消按钮解禁", f3["cancelDisabled"] is False, f3["cancelDisabled"])
+            ck("[F6b] 撤销按钮出现（有改动即现）", f3["hasCancel"] is True,
+               f3["hasCancel"])
+            ck("[F4c] 撤销按钮在保存按钮左侧", f3["cancelLeftOfSave"] is True,
+               f3["cancelLeftOfSave"])
             ck("[F6c] 保存按钮解禁", f3["saveDisabled"] is False, f3["saveDisabled"])
 
             c = pg.evaluate("window.__cancel()")
@@ -211,13 +232,14 @@ def main():
             f4 = pg.evaluate("window.__foot()")
             pstate = pg.evaluate("window.__parallelState()")
             print("  [点取消后]", c, "parallel=", pstate, json.dumps(f4, ensure_ascii=False))
-            ck("[F6d] 取消后未保存提示消失", f4["dirtyText"] == "", f4["dirtyText"])
-            ck("[F6e] 取消后取消按钮重新禁用", f4["cancelDisabled"] is True,
-               f4["cancelDisabled"])
+            ck("[F6d] 撤销后未保存提示消失", f4["dirtyText"] == "", f4["dirtyText"])
+            ck("[F6e] 撤销后撤销按钮消失（有改动即现的反向）", f4["hasCancel"] is False,
+               f4["hasCancel"])
             ck("[F6f] 取消后保存按钮仍可点（只丢改动，不禁用保存；2026-11-12 裁定）",
                f4["saveDisabled"] is False,
                f4["saveDisabled"])
-            ck("[F6g] 取消后开关恢复原值（未保存的修改被丢弃）", pstate == "0", pstate)
+            ck("[F6g] 撤销后开关恢复原值（未保存的修改被丢弃；原值动态取，不硬编码）",
+               pstate == pstate0, (pstate0, pstate))
             ck("[F6h] 取消后仍无圆点/还原/清空",
                f4["srcdotCount"] == 0 and not f4["hasRevert"] and not f4["hasSessClear"], "")
 

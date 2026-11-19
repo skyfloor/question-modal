@@ -9,7 +9,8 @@ tree = ast.parse(src)
 names = ("_load_prefs", "_save_prefs", "_save_prefs_locked",
          "_load_session_prefs", "_save_session_prefs",
          "_iter_agent_chats", "schema_defaults", "_coerce_setting",
-         "sanitize_settings", "_session_writable", "resolve_effective",
+         "sanitize_settings", "_reject_reason", "_session_writable",
+         "resolve_effective", "_migrate_notify_channels",
          "_config_version")
 keep = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name in names]
 
@@ -98,10 +99,13 @@ ck("[S1-11] 负数被钳到下限", mod._coerce_setting("slow_question_sec", -5)
 ck("[S1-12] 非法枚举被拒", mod._coerce_setting("mode", "bogus") == (False, None))
 ck("[S1-13] 字符串冒充 bool 被拒", mod._coerce_setting("parallel", "yes") == (False, None))
 ck("[S1-14] 未知键被拒", mod._coerce_setting("evil", "x") == (False, None))
-ck("[S1-15] sanitize 只保留合法键",
-   mod.sanitize_settings({"mode": "ai", "evil": 1, "parallel": "x",
-                          "slow_question_sec": "60"}) == {"mode": "ai"},
-   mod.sanitize_settings({"mode": "ai", "evil": 1, "parallel": "x"}))
+_s15_clean, _s15_rej = mod.sanitize_settings(
+    {"mode": "ai", "evil": 1, "parallel": "x", "slow_question_sec": "60"})
+ck("[S1-15] sanitize 只保留合法键（新签名返回 clean+rejected）",
+   _s15_clean == {"mode": "ai"} and len(_s15_rej) == 2,
+   # 依据 plugin.sanitize_settings docstring：未知键（evil）历来静默忽略、
+   # 不计入 rejected；只有「schema 认识但值不合法」才算 rejected。
+   f"clean={_s15_clean} rejected={[(r.get('key')) for r in _s15_rej]}")
 
 # ⑥ 会话覆盖不能写 global-only 键
 mod._save_session_prefs({"c3": {"gate_log_limit": 500, "mode": "ai"}})
@@ -117,14 +121,18 @@ v2 = mod._config_version()
 ck("[S1-17] 版本号随配置写入变化", v2 != v1, (v1, v2))
 
 # ⑧ schema 完整性
-ck("[S1-18] schema 共 20 项可配置（p0 只读说明不计入；含 notify_* 3 项）",
-   len(mod.SETTINGS_SCHEMA) == 20, len(mod.SETTINGS_SCHEMA))
+# 2026-11-19：23 项 = 20（通知频道改造后基线）+ notify_channel_pc +
+# notify_channel_bg（双场景通知）+ release_after_sec（挂起释放阈值），
+# 三项均为 boss 确认的功能；下次新增请同步更新此处与 [S1-18b] 必备清单。
+ck("[S1-18] schema 共 23 项可配置（p0 只读说明不计入；含 notify_* 5 项）",
+   len(mod.SETTINGS_SCHEMA) == 23, len(mod.SETTINGS_SCHEMA))
 # 用「必要键必须都在」而非只数总数：数字会随功能增加而变（2026-11-14
 # 通知频道改造把 18 项加到 20 项），只断总数会让下次新增又假失败。
 _REQUIRED_KEYS = [
     "mode", "model_id", "template_id", "with_context", "parallel",
     "model_timeout_sec", "wait_hint_sec", "slow_question_sec",
-    "notify_channel", "notify_verified", "notify_manual_mode",
+    "notify_channel", "notify_channel_pc", "notify_channel_bg",
+    "notify_verified", "notify_manual_mode", "release_after_sec",
 ]
 ck("[S1-18b] 关键配置项齐全（含通知频道三项）",
    all(k in mod.SETTINGS_SCHEMA for k in _REQUIRED_KEYS),

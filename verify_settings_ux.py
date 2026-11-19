@@ -105,15 +105,21 @@ window.__noteLine=()=>{
   // 「人工模式提醒频道」（单选枚举，见 plugin.py SETTINGS_SCHEMA.notify_channel）。
   // 旧用例仍查旧文案 → 找不到行 → 恒返回 null → 本项恒失败。
   // 改为按**新旧两种文案**匹配，避免下次再改标签时又假失败。
-  const row=rows.find(r=>{
+  // 2026-11-19：双场景通知把「人工模式提醒频道」拆成两行
+  // （「PC 端打开时提醒频道」「后台运行时提醒频道」），按新标题匹配，
+  // 返回全部命中行的 note 高度（断言逐行单行）。
+  const hit=rows.filter(r=>{
     const t=r.innerText||"";
-    return t.includes("人工模式提醒") || t.includes("人工模式时提醒");
+    return t.includes("提醒频道");
   });
-  if(!row) return null;
-  const note=row.querySelector(".qm-set-rownote")||row;
-  const cs=getComputedStyle(note);
-  return { h: note.clientHeight, sh: note.scrollHeight, ws: cs.whiteSpace,
-    text:(note.innerText||"").slice(0,60) };
+  if(!hit.length) return null;
+  return hit.map(row=>{
+    const note=row.querySelector(".qm-set-rownote")||row;
+    const cs=getComputedStyle(note);
+    return { h: note.clientHeight, sh: note.scrollHeight, ws: cs.whiteSpace,
+      label: ((row.querySelector(".qm-set-rowtitle")||{}).textContent||"").trim(),
+      text:(note.innerText||"").slice(0,60) };
+  });
 };
 // 提示词页全部说明文字（用于对齐用户 HTML 稿）
 window.__promptText=()=>{
@@ -182,6 +188,35 @@ def main():
             print("== [4] 分组小标题已移除 ==")
             check(".qm-set-section 数量 = 0", pg.evaluate("window.__sections()") == 0)
 
+            print("== [4b] 显隐规则：切「只用推荐」→ 4 行即刻隐藏（2026-11-13 q1 澄清） ==")
+            # 该行为在 harness（verify_settings_layout.mjs [N3]）中因 React stub
+            # 的 setState 为空函数而无法可靠驱动，故以真机为准（2026-11-19 探针实测）。
+            pg.evaluate("window.__pickTab('默认模式')")
+            pg.wait_for_timeout(600)
+
+            def panel_state():
+                return pg.evaluate("""() => {
+                  const rootEl = document.getElementById('qm-settings-root') || document.body;
+                  const titles = [...rootEl.querySelectorAll('.qm-set-rowtitle')].map(x => (x.textContent||'').trim());
+                  const tabon = [...rootEl.querySelectorAll('.qm-set-tabon')].map(x => (x.textContent||'').trim());
+                  return {titles, tabon};
+                }""")
+
+            r0 = panel_state()
+            check("默认模式页初始含 4 分析行",
+                  all(k in r0["titles"] for k in ("默认模型", "提示词模板", "携带上下文", "并行分析各题")),
+                  r0["titles"])
+            pg.evaluate("window.__pickMode('只用推荐')")
+            pg.wait_for_timeout(700)
+            r1 = panel_state()
+            check("切「只用推荐」后 4 行即刻隐藏",
+                  all(k not in r1["titles"] for k in ("默认模型", "提示词模板", "携带上下文", "并行分析各题")),
+                  r1["titles"])
+            check("答题模式行仍在（不是整页消失）", "默认答题模式" in r1["titles"], r1["titles"])
+            check("页签仍停在默认模式（不跳页）", r1["tabon"] == ["默认模式"], r1["tabon"])
+            pg.evaluate("window.__pickMode('自动分析')")
+            pg.wait_for_timeout(400)
+
             print("== [3] 页签选中高亮 = 背景色 ==")
             ts = pg.evaluate("window.__tabOnStyle()")
             print("  tabon:", json.dumps(ts, ensure_ascii=False))
@@ -193,7 +228,10 @@ def main():
             pg.wait_for_timeout(1500)  # 等 loadGlobalCfg
             nl = pg.evaluate("window.__noteLine()")
             print("  note:", json.dumps(nl, ensure_ascii=False))
-            check("note 高度单行", nl and nl["h"] <= 20 and nl["sh"] <= 20, nl and (nl["h"], nl["sh"]))
+            check("提醒频道两行均在（双端化后）", nl and len(nl) == 2, nl)
+            check("note 高度单行（两行逐行验证）",
+                  nl and all(x["h"] <= 20 and x["sh"] <= 20 for x in nl),
+                  nl and [(x["label"], x["h"], x["sh"]) for x in nl])
 
             print("== [5b] 提示词页文字说明对齐用户 HTML 稿 ==")
             print("  ", pg.evaluate("window.__pickTab('提示词')"))

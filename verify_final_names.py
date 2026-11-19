@@ -114,9 +114,10 @@ def main():
             print("  激活:", json.dumps(s1["active"], ensure_ascii=False))
             print("  徽章:", json.dumps(s1["badge"], ensure_ascii=False))
 
-            # 2026-11-04 用户裁定删除「诊断」页签 → 现为 4 页签。
-            ck("[N1] 页签为 会话模式/默认模式/全局配置/提示词",
-               s1["tabs"] == ["会话模式", "默认模式", "全局配置", "提示词"],
+            # 2026-11-04 用户裁定删除「诊断」页签；2026-11-18 新增「问卷清理」
+            # 页签（挂起问卷管理入口，boss 需求）→ 现为 5 页签。
+            ck("[N1] 页签为 会话模式/默认模式/全局配置/提示词/问卷清理",
+               s1["tabs"] == ["会话模式", "默认模式", "全局配置", "提示词", "问卷清理"],
                json.dumps(s1["tabs"], ensure_ascii=False))
             ck("[N1b] 「诊断」页签已按裁定移除",
                "诊断" not in s1["tabs"], json.dumps(s1["tabs"], ensure_ascii=False))
@@ -165,8 +166,11 @@ def main():
             # （功能由 verify_builtin_cfg_functions.py 验证仍生效）。
             # 2026-11-14：标签由「人工模式时提醒」升级为「人工模式提醒频道」
             # （布尔开关→单选枚举，见 plugin.py notify_channel）。
-            ck("[N6] 全局配置页含行为项（人工模式提醒频道 / 单题分析超时）",
-               "人工模式提醒" in t3 and "单题分析超时" in t3, "")
+            # 2026-11-19：双场景通知把「人工模式提醒频道」拆成
+            # 「PC 端打开时提醒频道」「后台运行时提醒频道」两行（boss 需求），
+            # 旧单标题断言随之更新为按「提醒频道」匹配（功能增强非回归）。
+            ck("[N6] 全局配置页含行为项（提醒频道×2 / 单题分析超时）",
+               t3.count("提醒频道") >= 2 and "单题分析超时" in t3, "")
             ck("[N6b] 内置默认值 4 项不出现在 UI（按裁定隐藏）",
                not any(k in t3 for k in ("显示 AI 推荐标记","未作答时拦截翻页","题级计时提示","跳过方式")),
                "")
@@ -195,9 +199,21 @@ def main():
             cs2 = pg.evaluate("window.__cardState()")
             ck("[N10] 卡片胶囊不显示「跟随当前对话模型」前缀",
                "跟随当前对话模型" not in cs2["text"], cs2["text"][:160])
-            # 胶囊应直接显示实际模型名（deepseek）
-            has_model = ("deepseek" in cs2["text"].lower())
-            ck("[N11] 胶囊直接显示实际模型名", has_model, cs2["text"][:160])
+            # 胶囊应直接显示实际模型名。2026-11-19：断言不再硬编码
+            # "deepseek"——真实判据是 effective-config 解析出的 model_id
+            # （本会话为 myccy:Qwen3.5-397B-A17B；models/active 只是「未配置
+            # 时」的回落源，本会话已显式配置，故以 effective-config 为准）。
+            import urllib.request as _u
+            _req = _u.Request(
+                BASE + "/api/question-modal/effective-config?chat_id=&session_id="
+                + SID + "&agent_id=" + AG, headers={"X-Agent-Id": AG})
+            with _u.urlopen(_req, timeout=10) as _r:
+                _eff = json.loads(_r.read().decode())
+            _mid = str((_eff.get("config") or {}).get("model_id") or "")
+            _mname = _mid.split(":")[-1].strip().lower()
+            has_model = bool(_mname) and _mname in cs2["text"].lower()
+            ck("[N11] 胶囊直接显示实际模型名（effective-config 解析值）",
+               has_model, cs2["text"][:160] + " | model=" + _mname)
 
             ck("[B0] 无 JS 异常", not errs, errs[:2])
             b.close()

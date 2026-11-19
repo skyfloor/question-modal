@@ -97,13 +97,15 @@ window.__tabOnStyle=()=>{const t=root().querySelector(".qm-set-tabon");if(!t)ret
   const cs=getComputedStyle(t);return {bg:cs.backgroundColor,bb:cs.borderBottomColor,br:cs.borderBottomLeftRadius};};
 window.__noteLine=()=>{
   const rows=[...root().querySelectorAll(".qm-set-row")];
-  // 2026-11-14：标签由「人工模式时提醒」升级为「人工模式提醒频道」，两种都认。
-  const row=rows.find(r=>{
-    const t=r.innerText||"";
-    return t.includes("人工模式提醒") || t.includes("人工模式时提醒");
+  // 2026-11-19：双场景通知拆成「PC 端打开时/后台运行时提醒频道」两行，
+  // 旧单标题匹配找不到行 → 恒 null。改为按「提醒频道」匹配、逐行返回。
+  const hit=rows.filter(r=>(r.innerText||"").includes("提醒频道"));
+  if(!hit.length) return null;
+  return hit.map(row=>{
+    const note=row.querySelector(".qm-set-rownote")||row;
+    return {h:note.clientHeight,sh:note.scrollHeight,
+      label:((row.querySelector(".qm-set-rowtitle")||{}).textContent||"").trim()};
   });
-  const note=row&&(row.querySelector(".qm-set-rownote")||row);
-  return note?{h:note.clientHeight,sh:note.scrollHeight}:null;
 };
 window.__clearMem=()=>{localStorage.removeItem("qm:v1:scopeChoice");return "cleared";};
 window.__close=()=>{window.__modalCancel&&window.__modalCancel();return "closed";};
@@ -170,6 +172,12 @@ def main():
             print("\n== 第 2 轮：切「默认模式」→ 硬刷新 → 重开（问题 2 用户路径）==")
             pg.evaluate("window.__pickScope('default')")
             pg.wait_for_timeout(1500)
+            # 2026-11-13 起页签只是"看哪一页"，**切模式必须点保存**才会
+            # POST session-prefs(set_scope=default) 落盘。旧版点选择器即切换，
+            # 本脚本跟进现行交互：点页签后补一次保存，否则磁盘上没有
+            # __active_scope__=default 标记，硬刷新后必然弹回会话模式。
+            pg.evaluate("window.__clickSave()")
+            pg.wait_for_timeout(1500)
             s2 = pg.evaluate("window.__state()")
             check("④ 点击后选中=默认模式、页签=默认模式", s2["sel"] == "默认模式" and s2["active"] == "默认模式", (s2["sel"], s2["active"]))
             # 硬刷新（等价 Ctrl+Shift+R）
@@ -230,7 +238,9 @@ def main():
             pg.evaluate("window.__pickTab('全局配置')")
             pg.wait_for_timeout(800)
             nl = pg.evaluate("window.__noteLine()")
-            check("⑩ 提醒小字单行", nl and nl["h"] <= 20 and nl["sh"] <= 20, nl)
+            check("⑩ 提醒小字单行（双端两行逐行验证）",
+                  nl and len(nl) == 2 and all(x["h"] <= 20 and x["sh"] <= 20 for x in nl),
+                  nl)
 
             print("\npageerror:", errs[:3])
             check("⑪ 全程无 JS 异常", not errs, errs[:2])

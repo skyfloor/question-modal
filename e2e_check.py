@@ -34,7 +34,7 @@ PROMPT = (
 H = {"Content-Type": "application/json", "X-Agent-Id": AGENT_ID}
 
 
-def main() -> int:
+def _run(client: "httpx.Client") -> int:
     payload = {
         "channel": "console",
         "user_id": "default",
@@ -49,7 +49,6 @@ def main() -> int:
     }
 
     print("① 发送真实请求 POST /api/console/chat ...")
-    client = httpx.Client(timeout=None)
 
     # 用后台线程读流，主线程轮询 pending
     lines: "queue.Queue[str]" = queue.Queue()
@@ -151,6 +150,34 @@ def main() -> int:
     ok = hit_answer and hit_att
     print("\n" + ("✅ 端到端验证通过" if ok else "❌ 端到端验证未通过"))
     return 0 if ok else 2
+
+
+def main() -> int:
+    """套壳：强制 manual 模式跑 _run，结束后恢复原模式。
+
+    2026-11-19：与 verify_release_semantics 同根因 —— 全局 prefs 被此前
+    测试轮次留成 mode=ai 时，问卷由后端 AI 自动作答、pending 瞬时消失，
+    本脚本轮询 pending 恒空 → 误报。跑前切 manual、跑后恢复。
+    """
+    client = httpx.Client(timeout=None)
+    old_mode = ""
+    try:
+        r = client.get(f"{BASE}/api/question-modal/prefs", headers=H)
+        old_mode = (r.json().get("prefs") or {}).get("mode") or "manual"
+    except Exception:  # noqa: BLE001
+        old_mode = "manual"
+    client.post(f"{BASE}/api/question-modal/prefs",
+                json={"mode": "manual"}, headers=H)
+    print(f"[setup] 全局 mode: {old_mode} -> manual（跑完恢复）")
+    try:
+        return _run(client)
+    finally:
+        try:
+            client.post(f"{BASE}/api/question-modal/prefs",
+                        json={"mode": old_mode}, headers=H)
+            print(f"[teardown] 全局 mode 已恢复为 {old_mode}")
+        except Exception:  # noqa: BLE001
+            print("[teardown] 恢复 mode 失败，请手动检查 /prefs")
 
 
 if __name__ == "__main__":

@@ -65,7 +65,7 @@ async def make(tag, mode="ai"):
 
 def cleanup(svc, tag):
     svc.stop_runner(tag)
-    svc.stop_watchdog(tag)
+    # watchdog 已改服务级单循环（2026-11-15），清理无需按 survey 停。
     svc._surveys().pop(tag, None)
     svc._persist_surveys()
 
@@ -94,7 +94,7 @@ async def main():
     analysis.analyze_survey = slow
     tag = "cancel1"
     svc2, pq = await make(tag)
-    svc2.ensure_watchdog(tag)
+    # watchdog 已改服务级单循环（2026-11-15），无需 per-survey ensure。
     svc2._sync_runners(tag)
     await asyncio.sleep(0.15)                     # 让分析真的开始
     ck("[1] 分析已开始（模型在飞）", started["t"] > 0, started)
@@ -125,7 +125,7 @@ async def main():
     started["t"] = 0.0
     tag = "cancel2"
     svc3, pq3 = await make(tag)
-    svc3.ensure_watchdog(tag)
+    # watchdog 已改服务级单循环（2026-11-15），无需 per-survey ensure。
     svc3._sync_runners(tag)
     await asyncio.sleep(0.15)
     svc3.apply_action(tag, "set_mode", {"mode": "manual"})
@@ -157,7 +157,7 @@ async def main():
     analysis.analyze_survey = fast
     tag = "cancel3"
     svc4, pq4 = await make(tag)
-    svc4.ensure_watchdog(tag)
+    # watchdog 已改服务级单循环（2026-11-15），无需 per-survey ensure。
     svc4._sync_runners(tag)
     for _ in range(60):
         await asyncio.sleep(0.1)

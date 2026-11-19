@@ -131,7 +131,7 @@ def main():
         st = svc.get_survey(tag)
         out = (len(calls), len(st.answers or {}), st.status)
         svc.stop_runner(tag)
-        svc.stop_watchdog(tag)
+        # watchdog 已改服务级单循环（2026-11-15），无需按 survey 停。
         svc._surveys().pop(tag, None)
         svc._persist_surveys()
         return out

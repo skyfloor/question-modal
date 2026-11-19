@@ -62,7 +62,8 @@ Q = lambda i, r=None: ({"type": "single", "title": f"Q{i}",
 
 def cleanup(svc, tag):
     svc.stop_runner(tag)
-    svc.stop_watchdog(tag)
+    # 2026-11-15 起 watchdog 改为服务级单循环巡检（_sweep_loop），
+    # 不再按 survey 起协程；清理只需停 runner + 移除记录。
     svc._surveys().pop(tag, None)
     svc._persist_surveys()
 
@@ -128,7 +129,7 @@ async def runtime_checks():
     pq = await svc.create(session_id="s", agent_id="a", title="t",
                           questions=[Q(0, "甲"), Q(1, "甲"), Q(2, "甲")],
                           tool_call_id=tag, mode="ai", prefs={})
-    svc.ensure_watchdog(tag)
+    # 2026-11-15 起 watchdog 为服务级单循环，无需 per-survey ensure。
     svc._sync_runners(tag)
     await asyncio.sleep(0.3)
     task_before = svc._runners().get(tag)
@@ -177,7 +178,7 @@ async def runtime_checks():
     pq2 = await svc.create(session_id="s", agent_id="a", title="t",
                            questions=[Q(0, "甲")], tool_call_id=tag2,
                            mode="ai", prefs={})
-    svc.ensure_watchdog(tag2)
+    # watchdog 已改服务级单循环（2026-11-15），无需 per-survey ensure。
     svc._sync_runners(tag2)
     await asyncio.sleep(0.3)
     try:
@@ -240,7 +241,7 @@ async def runtime_checks():
     pq3 = await svc.create(session_id="s", agent_id="a", title="t",
                            questions=[Q(0), Q(1), Q(2)], tool_call_id=tag3,
                            mode="ai", prefs={})
-    svc.ensure_watchdog(tag3)
+    # watchdog 已改服务级单循环（2026-11-15），无需 per-survey ensure。
     svc._sync_runners(tag3)
     for _ in range(200):
         await asyncio.sleep(0.02)

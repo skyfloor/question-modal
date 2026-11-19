@@ -253,7 +253,7 @@ console.log("    30s 后卡片文本 =", JSON.stringify(treeText(lastTree).slice
 check("[P3a] 阻塞提示出现后仍保留已选「乙」（回归守卫）",
   isSelected("乙"), treeText(lastTree).slice(0, 160));
 
-console.log("\n════════ 结果: " + pass + " passed, " + fail + " failed ════");
+console.log("\n════════ 阶段小结(P1-P3): " + pass + " passed, " + fail + " failed ════");
 
 // ══════════════════════════════════════════════════════════════════
 console.log("\n[P4] 症状1 机制 — 参数「流式半成品」时卡片渲染什么？");
@@ -303,3 +303,7 @@ check("[P6a] 有 output 的卡片 → 渲染已完成视图，而非加载骨架
   treeText(lastTree).slice(0, 140));
 
 console.log("\n════════ 结果: " + pass + " passed, " + fail + " failed ════");
+// 2026-11-19：断言全部跑完后显式退出。此前脚本残留活跃句柄导致 node
+// 不退出，回归 runner 只能超时强杀（rc=124）——所有「跑完即挂」的假
+// FAIL/假 PASS 都源于此。退出码与结果联动，runner 可直接判定。
+process.exit(fail ? 1 : 0);
