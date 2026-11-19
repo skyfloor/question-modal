@@ -3124,7 +3124,7 @@ def build_router() -> APIRouter:
             try:
                 changed = await svc.release_survey(
                     tcid, "manual-admin",
-                    reason="管理员在「挂起清理」页签手动释放",
+                    reason="管理员在「问卷清理」页签手动释放",
                 )
                 results.append({"tool_call_id": tcid,
                                 "ok": bool(changed),

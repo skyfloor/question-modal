@@ -229,6 +229,26 @@ function injectStyles(): void {
       "@keyframes qm-set-pulse{0%,100%{opacity:.45}50%{opacity:.9}}",
       "@media (prefers-reduced-motion: reduce){",
       ".qm-set-skeleton>div{animation:none!important}}",
+      // ── 设置面板移动端适配（2026-11-19 boss 反馈：窄屏显示有问题）──────
+      // 问题一：5 个页签在 92vw 容器里被 flex 压缩，页签文字逐字竖排。
+      // 问题二：表单行 grid「标签 minmax(0,1fr) + 控件 auto」，窄屏下
+      //         标签列被控件列挤到每字一行（「默认答题模式」竖排）。
+      // 解法：页签换行排布 + 文字不折行；表单行窄屏整体改单列块布局
+      //         （复用 .qm-set-rowblock 既有模式：标签在上、控件占满下排）。
+      // 仅 max-width:640px 生效，桌面渲染不变。
+      "@media (max-width:640px){",
+      ".qm-set-head{padding:14px 16px 4px;gap:8px}",
+      ".qm-set-tabs{flex-wrap:wrap;padding:10px 16px 14px;row-gap:8px}",
+      ".qm-set-tab{white-space:nowrap;padding:7px 13px}",
+      ".qm-set-wrap .qm-set-row{grid-template-columns:minmax(0,1fr);row-gap:6px;align-items:start}",
+      ".qm-set-wrap .qm-set-row .qm-set-rowctl{min-width:0;flex:1 1 auto;justify-content:flex-start;",
+      "flex-wrap:wrap;overflow-wrap:anywhere;word-break:break-word}",
+      // 清理页操作按钮：窄屏下按钮被 flex 挤压导致「扫描」等两字竖排，
+      // 文字不折行 + 按钮组允许换行排列。
+      ".qm-set-stalebtns{flex-wrap:wrap}",
+      ".qm-set-stalebtns .qm-set-btn{white-space:nowrap}",
+      ".qm-set-foot{margin:8px 16px 0;padding:14px 0 16px}",
+      "}",
       // ── 作用域切换条 ──
       ".qm-set-scopebar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 10px;margin:0 0 12px;border:1px solid var(--app-border-subtle,rgba(127,127,127,.28));border-radius:8px;background:var(--app-bg-secondary,rgba(127,127,127,.05))}",
       ".qm-set-scopebarlabel{font-size:12px;color:var(--app-text-tertiary,#86909c)}",
@@ -383,21 +403,29 @@ function injectStyles(): void {
       "color:var(--app-text-primary,#1e293b);white-space:nowrap}",
       ".qm-set-stalesecthint{font-size:11px;line-height:1.5;",
       "color:var(--app-text-tertiary,#94a3b8);min-width:0}",
-      ".qm-set-staletable{border-top:1px solid var(--app-border,#e5e7eb)}",
-      ".qm-set-stalerow{display:grid;grid-template-columns:minmax(0,1fr) 190px 96px 132px;",
-      "gap:12px;align-items:center;padding:10px 0;",
-      "border-bottom:1px solid var(--app-border,#eef1f5);font-size:12px}",
-      ".qm-set-staleheader{font-size:11px;font-weight:600;padding:8px 0;",
-      "color:var(--app-text-tertiary,#94a3b8)}",
-      ".qm-set-stalec1{display:flex;flex-direction:column;gap:3px;min-width:0}",
-      ".qm-set-staletitle{font-size:12px;overflow:hidden;text-overflow:ellipsis;",
-      "white-space:nowrap;color:var(--app-text-primary,#1e293b)}",
+      // ── 扫描结果卡片（2026-11-19 boss 反馈：表格太拥挤、信息展示不全）──
+      // 表格 4 列固定宽（190/96/132px）+ nowrap/ellipsis，标题与会话 ID
+      // 都被截断。改为卡片：标题完整换行、会话/问卷 ID 完整展示（可复制）、
+      // 每条独占一张卡；性质用左侧色条区分（🔴阻塞红 / ⚪残留灰）。
+      ".qm-set-stalecards{display:flex;flex-direction:column;gap:8px;padding:6px 0 2px}",
+      ".qm-set-stalecard{border:1px solid var(--app-border,#e5e7eb);border-radius:10px;",
+      "background:var(--app-bg-secondary,#fff);padding:10px 12px;",
+      "display:flex;flex-direction:column;gap:8px}",
+      ".qm-set-stalecard[data-qm-stale-nature=blocking]{border-left:3px solid #ef4444}",
+      ".qm-set-stalecard[data-qm-stale-nature=residual]{border-left:3px solid #94a3b8}",
+      ".qm-set-stalecardhead{display:flex;align-items:flex-start;gap:6px;flex-wrap:wrap}",
+      ".qm-set-stalecardtitle{font-size:13px;font-weight:600;line-height:1.45;",
+      "color:var(--app-text-primary,#1e293b);flex:1 1 auto;min-width:0;",
+      "word-break:break-word}",
       ".qm-set-staletag{font-size:10px;line-height:1;padding:3px 6px;border-radius:4px;",
-      "background:#fef3c7;color:#b45309;align-self:flex-start;white-space:nowrap}",
-      ".qm-set-stalec2{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;",
-      "font-size:11px;color:var(--app-text-secondary,#64748b)}",
-      ".qm-set-stalec3{font-size:12px;color:var(--app-text-primary,#1e293b);white-space:nowrap}",
-      ".qm-set-stalec4{display:flex;gap:6px;justify-content:flex-end}",
+      "background:#fef3c7;color:#b45309;flex:0 0 auto;white-space:nowrap}",
+      ".qm-set-stalecardmeta{display:flex;flex-direction:column;gap:3px;",
+      "font-size:11px;line-height:1.5;color:var(--app-text-secondary,#64748b)}",
+      ".qm-set-stalemetaitem{display:flex;gap:8px;align-items:baseline;min-width:0}",
+      ".qm-set-stalemetalabel{flex:0 0 62px;color:var(--app-text-tertiary,#94a3b8)}",
+      ".qm-set-stalemetavalue{flex:1 1 auto;min-width:0;word-break:break-all;",
+      "color:var(--app-text-primary,#1e293b)}",
+      ".qm-set-stalecardfoot{display:flex;justify-content:flex-end;gap:6px;flex-wrap:wrap}",
       // 分页条（2026-11-15）：与表格同宽、右对齐信息文字，
       // 上下留白与 .qm-set-row 的密度口径一致，避免页面突然变松。
       ".qm-set-stalepager{display:flex;align-items:center;justify-content:flex-end;",
@@ -8052,7 +8080,7 @@ const SETTINGS_TABS: Array<{ key: string; label: string; hint: string }> = [
   // 问卷永远停在 pending、对应会话一直 409。bug 已修，但历史残骸不会自愈
   // （pending 记录可能已丢失、只剩 survey_state；会话文件也早已不存在），
   // 所以需要一个能「先看清、再手动处置」的页签。
-  { key: "stale", label: "挂起清理", hint: "" },
+  { key: "stale", label: "问卷清理", hint: "" },
 ];
 
 /** Keys a per-session override may hold.
@@ -8950,7 +8978,7 @@ function settingsTabBody(
         className: "qm-set-row qm-set-stalerowset", key: "thr",
       }, [
         R.createElement("div", { className: "qm-set-rowlabel", key: "l" }, [
-          R.createElement("span", { key: "t" }, "挂起超时自动释放"),
+          R.createElement("span", { key: "t" }, "问卷阻塞超时自动释放"),
           R.createElement("span", { className: "qm-set-rownote", key: "n" },
             thrDisabled
               ? "当前已关闭：挂起的问卷不会被自动释放"
@@ -9110,17 +9138,9 @@ function settingsTabBody(
         } catch (_) { done(); }
       };
 
-      const renderHead = (key: string) => R.createElement("div", {
-        className: "qm-set-stalerow qm-set-staleheader", key: key,
-      }, [
-        R.createElement("span", { className: "qm-set-stalec1", key: "c1" }, "问卷"),
-        R.createElement("span", { className: "qm-set-stalec2", key: "c2" },
-          "归属（点击复制会话ID）"),
-        R.createElement("span", { className: "qm-set-stalec3", key: "c3" }, "挂起"),
-        R.createElement("span", { className: "qm-set-stalec4", key: "c4" }, "操作"),
-      ]);
-
-      const renderRow = (r: any, kind: string) => {
+      // 卡片化（2026-11-19 boss 反馈：表格 4 列太拥挤、标题/会话 ID 展示不全）：
+      // 每条问卷一张卡片，标题完整换行，会话/问卷 ID 完整展示，操作按钮在卡底。
+      const renderCard = (r: any, kind: string) => {
         const canTerm = !!r.terminable;
         const isExceeded = !!exIds[r.tool_call_id];
         const isBlocking = kind === "blocking";
@@ -9138,16 +9158,31 @@ function settingsTabBody(
           if (ok) void staleRelease([r.tool_call_id]);
         };
         const copied = !!(st && st.copied) && st.copied === r.tool_call_id;
+        // epoch 秒 → 本地时间；0/None 如实显示 "-"
+        const fmtTime = (v: any) => {
+          const n = Number(v);
+          if (!v || !isFinite(n) || n <= 0) return "-";
+          try { return new Date(n * 1000).toLocaleString(); } catch (_) { return "-"; }
+        };
+        const meta = (key: string, label: string, value: any, props?: any) =>
+          R.createElement("div", { className: "qm-set-stalemetaitem", key }, [
+            R.createElement("span", {
+              className: "qm-set-stalemetalabel", key: "l",
+            }, label),
+            R.createElement("span", {
+              className: "qm-set-stalemetavalue", key: "v", ...(props || {}),
+            }, value),
+          ]);
         return R.createElement("div", {
-          className: "qm-set-stalerow", key: r.tool_call_id + ":" + kind,
+          className: "qm-set-stalecard", key: r.tool_call_id + ":" + kind,
           "data-qm-stale-row": r.tool_call_id,
           "data-qm-stale-nature": kind,
           "data-qm-stale-group": isExceeded ? "exceeded" : "within",
         }, [
-          R.createElement("span", { className: "qm-set-stalec1", key: "c1" }, [
-            R.createElement("span", { className: "qm-set-staletitle", key: "t" },
+          R.createElement("div", { className: "qm-set-stalecardhead", key: "h" }, [
+            R.createElement("span", { className: "qm-set-stalecardtitle", key: "t" },
               r.title || "(无标题)"),
-            // 把「它是什么性质/为什么没被自动释放」直接写在行上，省得翻日志。
+            // 把「它是什么性质/为什么没被自动释放」直接写在卡上，省得翻日志。
             R.createElement("span", { className: "qm-set-staletag", key: "g" },
               r.reason_code === "orphan-no-pending" ? "孤儿·无待答记录"
                 : r.reason_code === "orphan-future-dead" ? "孤儿·唤醒已失效"
@@ -9158,35 +9193,37 @@ function settingsTabBody(
             r.has_live_subscriber
               ? R.createElement("span", {
                   className: "qm-set-staletag", key: "sub",
-                  "data-qm-stale-live": "1",
-                  style: { marginLeft: "6px", color: "#e67e22" },
+                  "data-qm-stale-live": "1", style: { color: "#e67e22" },
                 }, "正在作答")
               : null,
             r.in_flight
               ? R.createElement("span", {
                   className: "qm-set-staletag", key: "fl",
-                  style: { marginLeft: "6px" },
                 }, "模型分析中")
               : null,
           ]),
-          R.createElement("span", {
-            className: "qm-set-stalec2", key: "c2",
-            title: copied ? "已复制到剪贴板"
-              : (r.session_id ? "点击复制完整会话 ID：" + r.session_id : ""),
-            style: r.session_id ? {
-              cursor: "pointer", textDecoration: "underline dotted",
-              color: copied ? "#16a34a" : undefined,
-            } : undefined,
-            "data-qm-stale-copy": r.tool_call_id,
-            onClick: () => {
-              copySessionId(String(r.session_id || ""), r.tool_call_id);
-            },
-          }, copied
-            ? "✓ 会话 ID 已复制"
-            : (r.agent_id || "-") + (r.session_id ? " · " + r.session_id : "")),
-          R.createElement("span", { className: "qm-set-stalec3", key: "c3" },
-            r.idle_text),
-          R.createElement("span", { className: "qm-set-stalec4", key: "c4" }, [
+          R.createElement("div", { className: "qm-set-stalecardmeta", key: "m" }, [
+            meta("agent", "归属", r.agent_id || "-"),
+            // 会话 ID：卡片有空间，完整展示（不再截断），点击复制交互保留。
+            meta("sid", "会话 ID",
+              copied ? "✓ 会话 ID 已复制" : (r.session_id || "-"), {
+                title: copied ? "已复制到剪贴板"
+                  : (r.session_id ? "点击复制完整会话 ID：" + r.session_id : ""),
+                style: r.session_id ? {
+                  cursor: "pointer", textDecoration: "underline dotted",
+                  color: copied ? "#16a34a" : undefined,
+                } : undefined,
+                "data-qm-stale-copy": r.tool_call_id,
+                onClick: () => {
+                  copySessionId(String(r.session_id || ""), r.tool_call_id);
+                },
+              }),
+            meta("tcid", "问卷 ID", r.tool_call_id || "-"),
+            meta("idle", "挂起时长", r.idle_text || "-"),
+            meta("created", "发起时间", fmtTime(r.created_at)),
+            meta("mode", "作答模式", r.mode || "-"),
+          ]),
+          R.createElement("div", { className: "qm-set-stalecardfoot", key: "f" }, [
             ...(isBlocking ? [
               R.createElement("button", {
                 type: "button", className: "qm-set-mini", key: "rel",
@@ -9222,7 +9259,7 @@ function settingsTabBody(
         ]);
       };
 
-      // 分区渲染：标题 + 表格 + 该区独立分页。空区不渲染（而不是隐藏），
+      // 分区渲染：标题 + 卡片列表 + 该区独立分页。空区不渲染（而不是隐藏），
       // 让「该类当前为 0」与「没扫到」永远可区分。
       const renderSection = (kind: string, title: string, hint: string,
                              list: any[], pageKey: "page" | "resPage") => {
@@ -9246,10 +9283,9 @@ function settingsTabBody(
             }, hint),
           ]),
           R.createElement("div", {
-            className: "qm-set-staletable", key: "tbl",
-            "data-qm-stale-table": kind,
-          }, [renderHead("rh-" + kind)].concat(
-            pageRows.map((r: any) => renderRow(r, kind)))),
+            className: "qm-set-stalecards", key: "cards",
+            "data-qm-stale-cards": kind,
+          }, pageRows.map((r: any) => renderCard(r, kind))),
         ];
         // 单页时刻意不显示分页条：一个只有「1 / 1」且两个按钮都禁用的
         // 控件条只是噪音，用户会去点它并疑惑为什么没反应。
