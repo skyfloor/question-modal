@@ -117,6 +117,8 @@ function injectStyles(): void {
       ".qm-md pre{background:var(--app-surface-subtle,rgba(127,127,127,0.08));",
       "border-radius:8px;padding:8px 10px;overflow:auto;margin:6px 0}",
       ".qm-md pre code{background:transparent;padding:0}",
+      // US-001: header 弹出层菜单项 hover 高亮（内联样式无法表达 :hover）。
+      ".qm-hdr-menu-item:hover{background:var(--app-surface-subtle,rgba(127,127,127,0.08))}",
       ".qm-md blockquote{margin:6px 0;padding:2px 0 2px 10px;",
       "border-left:2px solid var(--app-border-strong,rgba(127,127,127,0.45));",
       "color:var(--app-text-secondary,inherit)}",
@@ -4016,6 +4018,26 @@ function AskUserCard(props: { data?: any }) {
   const [anResult, setAnResult] = R.useState<any>(null);
   const [anError, setAnError] = R.useState("");
   const [anOpen, setAnOpen] = R.useState(false);
+  // ── US-001: 卡片 header 弹出层基础设施 ──
+  // 「更多」(⋮) 菜单与「查看上下文」(ⓘ) 气泡的受控开关。本 story 只搭
+  // 基础设施：菜单项为占位（点击仅收起，不接任何现有逻辑），气泡为占位
+  // 文案；后续 story 在此基础上接通模板选择 / 跳过 / 释放阻塞等入口。
+  const [moreOpen, setMoreOpen] = R.useState(false);
+  const [ctxOpen, setCtxOpen] = R.useState(false);
+  // 弹出层根容器：点击外部区域（容器之外）时统一收起两个弹出层。
+  const hdrPopRef = R.useRef<any>(null);
+  R.useEffect(() => {
+    if (!moreOpen && !ctxOpen) return undefined;
+    const onDocDown = (ev: any) => {
+      const el = hdrPopRef.current;
+      if (el && ev && ev.target && el.contains(ev.target)) return;
+      setMoreOpen(false);
+      setCtxOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moreOpen, ctxOpen]);
   // Popover open/state for the capsule picker lives here (its component is
   // hook-free by design — see ModelCapsule).
   const [capOpen, setCapOpen] = R.useState(false);
@@ -6643,6 +6665,103 @@ function AskUserCard(props: { data?: any }) {
   const total2 = totalVis + 1;
   const stepLabel = isOtherPage ? total2 + "/" + total2 : (visStep + 1) + "/" + total2;
 
+  // ── US-001: header 弹出层（「更多」菜单 + 「查看上下文」气泡）──
+  // 纯增量控件：不移除、不改变任何现有 header 控件与底部按钮的行为。
+  // 菜单四项均为占位（后续 story 接通 模板选择/skipCurrent/submit/skipAll）；
+  // 气泡展示占位文案（本版不接后端）。
+  const hdrIconBtn = (label: string, active: boolean, onClick: () => void, icon: any) =>
+    R.createElement("button", {
+      type: "button", title: label, "aria-label": label,
+      onClick,
+      style: {
+        width: 24, height: 24, padding: 0, flex: "none", lineHeight: 1,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        borderRadius: 6, cursor: "pointer",
+        border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+        background: active
+          ? "var(--app-surface-subtle, rgba(127,127,127,0.10))"
+          : "transparent",
+        color: "var(--app-text-secondary, inherit)",
+      },
+    }, icon);
+  // 更多：三点竖排。
+  const moreIconNode = R.createElement("svg", {
+    width: 14, height: 14, viewBox: "0 0 24 24", fill: "currentColor",
+    "aria-hidden": "true",
+  },
+    R.createElement("circle", { cx: 12, cy: 5, r: 1.7 }),
+    R.createElement("circle", { cx: 12, cy: 12, r: 1.7 }),
+    R.createElement("circle", { cx: 12, cy: 19, r: 1.7 }));
+  // 查看上下文：圆圈 i。
+  const ctxIconNode = R.createElement("svg", {
+    width: 14, height: 14, viewBox: "0 0 24 24", fill: "none",
+    stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round",
+    strokeLinejoin: "round", "aria-hidden": "true",
+  },
+    R.createElement("circle", { cx: 12, cy: 12, r: 10 }),
+    R.createElement("path", { d: "M12 16v-4" }),
+    R.createElement("path", { d: "M12 8h.01" }));
+  // 弹出面板通用样式：贴 header 右侧（top 30 / right 0）、带小三角，
+  // 沿用与卡片同源的表面/边框 CSS 变量体系。
+  const hdrPopPanel: any = {
+    position: "absolute", top: 30, right: 0, zIndex: 60, minWidth: 168,
+    background: "var(--app-surface-raised, #fff)",
+    border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+    borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+  };
+  const hdrPopArrow: any = {
+    position: "absolute", top: -5, right: 9, width: 8, height: 8,
+    transform: "rotate(45deg)", background: "var(--app-surface-raised, #fff)",
+    borderLeft: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+    borderTop: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+  };
+  // 「更多」菜单项：本 story 为占位，点击仅收起菜单，不触碰任何现有逻辑。
+  const hdrMenuItem = (label: string) => R.createElement("button", {
+    type: "button", key: label, className: "qm-hdr-menu-item", role: "menuitem",
+    onClick: () => { setMoreOpen(false); },
+    style: {
+      display: "block", width: "100%", textAlign: "left", cursor: "pointer",
+      padding: "7px 12px", fontSize: 12, border: "none", background: "transparent",
+      color: "var(--app-text, inherit)",
+    },
+  }, label);
+  const hdrMoreMenu = R.createElement("div", { style: hdrPopPanel, role: "menu" },
+    R.createElement("div", { style: hdrPopArrow }),
+    hdrMenuItem("选择模板"),
+    hdrMenuItem("跳过本题"),
+    hdrMenuItem("跳过并提交"),
+    hdrMenuItem("跳过问卷 ⚠"));
+  // 「查看上下文」气泡：占位文案（后续 story 接入真实上下文，不接后端）。
+  const hdrCtxBubble = R.createElement("div", {
+    style: { ...hdrPopPanel, width: 260, padding: "10px 12px", fontSize: 12 },
+  },
+    R.createElement("div", { style: hdrPopArrow }),
+    R.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, "上下文"),
+    R.createElement("div", {
+      style: { color: "var(--app-text-secondary, inherit)", lineHeight: 1.6 },
+    }, "（占位）这里将展示本次问卷的发起原因与最近对话上下文。"),
+    R.createElement("div", {
+      style: { marginTop: 8, fontSize: 11, color: "var(--app-text-tertiary, inherit)" },
+    }, "来自本次问卷创建时的会话快照 · 仅本会话可见"));
+  // 两个 icon 微按钮 + 各自弹出层的容器：ref 供「点击外部关闭」判定。
+  const headerPopups = R.createElement("div", {
+    key: "qm-hdr-pop", ref: hdrPopRef,
+    style: {
+      position: "relative", display: "inline-flex",
+      alignItems: "center", gap: 4, flex: "none",
+    },
+  },
+    hdrIconBtn("更多操作", moreOpen, () => {
+      setMoreOpen((v: boolean) => !v);
+      setCtxOpen(false);
+    }, moreIconNode),
+    hdrIconBtn("查看上下文", ctxOpen, () => {
+      setCtxOpen((v: boolean) => !v);
+      setMoreOpen(false);
+    }, ctxIconNode),
+    moreOpen ? hdrMoreMenu : null,
+    ctxOpen ? hdrCtxBubble : null);
+
   // Compact secondary button (footer has three of them side by side).
   const btnGhost: any = {
     ...btnBase, minWidth: 0, height: 32, padding: "0 14px", fontSize: 12,
@@ -6758,6 +6877,9 @@ function AskUserCard(props: { data?: any }) {
                 : "暂停自动答题，交给你手动作答",
             }, autoPaused ? "▶ 继续" : "⏸ 停止")
           : null,
+        // US-001: 「更多」(⋮) 与「查看上下文」(ⓘ) 两个 icon 微按钮 + 弹出层，
+        // 纯增量插在现有控件之后、进度 pill 之前（demo v5 形态）。
+        headerPopups,
         // #1 the progress counter now lives in the SAME flex row, so it can no
         // longer crowd the controls; #2 the permanent completion chip is gone
         // (replaced by the one-shot toast in runAnalysis).
