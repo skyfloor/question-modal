@@ -4161,6 +4161,24 @@ function AskUserCard(props: { data?: any }) {
     return () => document.removeEventListener("mousedown", onDocDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tplOpen]);
+  // ── US-004: 「跳过问卷」二次确认气泡 ──
+  // 跳过整卷是不可逆动作（PRD 需求 F：提交区防误触）。菜单里点「跳过问卷」
+  // 不再直接 skipAll，先弹确认气泡；确认后才走原 skipAll 逻辑。
+  // 状态提升到卡片体（hook-free 手法同 US-001~003）；弹层渲染在
+  // headerPopups 容器内，外部点击关闭独立监听（手法同 tplOpen 的
+  // useEffect，不触碰已验证的 more/ctx 关闭逻辑）。
+  const [skipConfirmOpen, setSkipConfirmOpen] = R.useState(false);
+  R.useEffect(() => {
+    if (!skipConfirmOpen) return undefined;
+    const onDocDown = (ev: any) => {
+      const el = hdrPopRef.current;
+      if (el && ev && ev.target && el.contains(ev.target)) return;
+      setSkipConfirmOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [skipConfirmOpen]);
 
   // ── AI autopilot (无人值守自动答题) ──
   // When AI mode is on and NOT paused, each analysed question is auto-filled
@@ -5708,9 +5726,6 @@ function AskUserCard(props: { data?: any }) {
   // Marks the current question as skipped, clears any partial answer to it,
   // and moves to the next visible question.  Nothing is sent to the backend
   // yet — question_modal resolves the whole survey once, on submit.
-  /** 「跳过方式」是否设为整卷跳过。读配置而非捕获，理由同 gateEnabled。 */
-  const skipWholeMode = (): boolean => cfgOf("skip_mode", "per_question") === "whole";
-
   const skipCurrent = () => {
     if (curIdx < 0) return;                 // already on the 其他意见 page
     if (gateBlocked) setGateBlocked("");     // 显式表态（跳过本题）→ 清除拦截提示
@@ -6805,11 +6820,12 @@ function AskUserCard(props: { data?: any }) {
   };
   // 「更多」菜单项：占位项点击仅收起菜单；接通项传自己的 onClick。
   // disabled 时置灰且按钮原生不响应（对齐原模板胶囊的 disabled 语义）。
-  const hdrMenuItem = (label: string, opts?: { onClick?: () => void; disabled?: boolean }) =>
+  const hdrMenuItem = (label: string, opts?: { onClick?: () => void; disabled?: boolean; title?: string }) =>
     R.createElement("button", {
       type: "button", key: label, className: "qm-hdr-menu-item", role: "menuitem",
       onClick: opts && opts.onClick ? opts.onClick : () => { setMoreOpen(false); },
       disabled: opts ? !!opts.disabled : false,
+      title: opts && opts.title ? opts.title : undefined,
       style: {
         display: "block", width: "100%", textAlign: "left",
         cursor: opts && opts.disabled ? "default" : "pointer",
@@ -6831,12 +6847,31 @@ function AskUserCard(props: { data?: any }) {
         setMoreOpen(false);
         setCtxOpen(false);
         setModeOpen(false);
+        setSkipConfirmOpen(false);   // US-004: header 弹出层互斥
         setTplOpen(true);
       },
     }),
-    hdrMenuItem("跳过本题"),
-    hdrMenuItem("跳过并提交"),
-    hdrMenuItem("跳过问卷 ⚠"));
+    // US-004: 跳过类菜单项接通——复用原底部按钮的 skipCurrent/submit/skipAll
+    // 逻辑，只改触发入口；语义（allowEmpty / 空答卷闸门 / busy 防重复）不变。
+    hdrMenuItem("跳过本题", {
+      // 与原底部按钮对齐：busy 防重复；末页（其他意见页）没有当前题可跳，
+      // skipCurrent 无意义 → 置灰（原按钮此时文案变「跳过并提交」）。
+      disabled: answered || busy || isOtherPage,
+      onClick: () => { setMoreOpen(false); skipCurrent(); },
+    }),
+    hdrMenuItem("跳过并提交", {
+      // 与原底部按钮的 whole/末页分支等价：明确的提交意图，
+      // 不套空答卷闸门（allowEmpty=true），空白按跳过表态一并提交。
+      disabled: answered || busy,
+      onClick: () => { setMoreOpen(false); submit(undefined, true); },
+    }),
+    hdrMenuItem("跳过问卷 ⚠", {
+      // US-004: 不可逆动作不再直接执行——收起菜单，弹二次确认气泡，
+      // 确认后才调用原 skipAll。title 保留原按钮的不可恢复警示语义。
+      disabled: answered || busy,
+      title: "跳过后本次问卷立即结束，未答题目不再收集，不可恢复",
+      onClick: () => { setMoreOpen(false); setSkipConfirmOpen(true); },
+    }));
   // 「查看上下文」气泡：占位文案（后续 story 接入真实上下文，不接后端）。
   const hdrCtxBubble = R.createElement("div", {
     style: { ...hdrPopPanel, width: 260, padding: "10px 12px", fontSize: 12 },
@@ -6861,6 +6896,45 @@ function AskUserCard(props: { data?: any }) {
       onSelect: (id: string) => { selectTemplate(id); setTplOpen(false); },
       onManage: () => { setTplOpen(false); setTplMgrOpen(true); },
     }));
+  // US-004: 「跳过问卷」二次确认气泡——demo v5 形态。挂在 headerPopups
+  // 容器内共享外部点击关闭；与 更多/上下文/模式/模板 互斥。原「跳过问卷」
+  // 按钮的不可恢复警示语义保留在说明文案中；确定后走原 skipAll 逻辑。
+  const hdrSkipConfirmPanel = R.createElement("div", {
+    role: "dialog", "aria-label": "确认跳过问卷",
+    style: { ...hdrPopPanel, width: 260, padding: "12px 14px" },
+  },
+    R.createElement("div", { style: hdrPopArrow }),
+    R.createElement("div", {
+      style: { fontWeight: 600, fontSize: 13, marginBottom: 6 },
+    }, "确定跳过整份问卷吗？"),
+    R.createElement("div", {
+      style: {
+        fontSize: 12, lineHeight: 1.6,
+        color: "var(--app-text-secondary, inherit)",
+      },
+    }, "跳过后本次问卷按「已跳过」结束，未答题目不再收集，不可恢复。"),
+    R.createElement("div", {
+      style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 },
+    },
+      R.createElement("button", {
+        type: "button", className: "qm-hdr-menu-item",
+        style: {
+          width: "auto", padding: "4px 12px", fontSize: 12, cursor: "pointer",
+          border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+          borderRadius: 6, background: "transparent",
+          color: "var(--app-text-secondary, inherit)",
+        },
+        onClick: () => setSkipConfirmOpen(false),
+      }, "取消"),
+      R.createElement("button", {
+        type: "button", disabled: busy,
+        style: {
+          padding: "4px 12px", fontSize: 12, cursor: busy ? "default" : "pointer",
+          border: "none", borderRadius: 6, opacity: busy ? 0.5 : 1,
+          background: "#d92d20", color: "#fff", fontWeight: 500,
+        },
+        onClick: () => { setSkipConfirmOpen(false); skipAll(); },
+      }, "确定")));
   // 两个 icon 微按钮 + 各自弹出层的容器：ref 供「点击外部关闭」判定。
   const headerPopups = R.createElement("div", {
     key: "qm-hdr-pop", ref: hdrPopRef,
@@ -6874,16 +6948,19 @@ function AskUserCard(props: { data?: any }) {
       setCtxOpen(false);
       setModeOpen(false);   // US-002: header 弹出层互斥
       setTplOpen(false);    // US-003: header 弹出层互斥
+      setSkipConfirmOpen(false);   // US-004: header 弹出层互斥
     }, moreIconNode),
     hdrIconBtn("查看上下文", ctxOpen, () => {
       setCtxOpen((v: boolean) => !v);
       setMoreOpen(false);
       setModeOpen(false);   // US-002: header 弹出层互斥
       setTplOpen(false);    // US-003: header 弹出层互斥
+      setSkipConfirmOpen(false);   // US-004: header 弹出层互斥
     }, ctxIconNode),
     moreOpen ? hdrMoreMenu : null,
     ctxOpen ? hdrCtxBubble : null,
-    tplOpen ? hdrTplPanel : null);
+    tplOpen ? hdrTplPanel : null,
+    skipConfirmOpen ? hdrSkipConfirmPanel : null);
 
   // Compact secondary button (footer has three of them side by side).
   const btnGhost: any = {
@@ -6930,7 +7007,8 @@ function AskUserCard(props: { data?: any }) {
             setModeOpen(v);
             // US-002: header 弹出层互斥——打开模式下拉时收起「更多/上下文」。
             // US-003: 模板选择弹层并入同一互斥组。
-            if (v) { setMoreOpen(false); setCtxOpen(false); setTplOpen(false); }
+            // US-004: 跳过问卷确认气泡并入同一互斥组。
+            if (v) { setMoreOpen(false); setCtxOpen(false); setTplOpen(false); setSkipConfirmOpen(false); }
           },
           popRef: modePopRef,
           onChange: (m: AnMode) => {
@@ -7116,32 +7194,11 @@ function AskUserCard(props: { data?: any }) {
         style: { ...btnGhost, marginRight: "auto", opacity: visStep === 0 ? 0.5 : 1 },
         onClick: () => setVisStep((s: number) => s - 1),
       }, "上一步"),
-      // Skip one question: advances without answering, survey stays open.
-      // On the 其他意见 page there is no question left, so this becomes
-      // "skip and submit" (the remaining answers are sent as-is).
-      R.createElement("button", {
-        type: "button", disabled: busy, style: btnGhost,
-        // 「跳过并提交」是明确的提交意图，不套空答卷闸门（allowEmpty=true）。
-        // 跳过方式的落点（设置 → 作答 → 跳过方式）：
-        //   per_question（默认）= 逐题跳过，只表态当前题
-        //   whole               = 整卷跳过，直接结束这份问卷
-        // 末页始终是「跳过并提交」（跳过整卷的「其他意见」）。
-        // 这一个按钮始终是「只处理当前页」的语义：
-        //   per_question → 跳过本题（前进，问卷继续）
-        //   whole        → 跳过并提交（把当前页留空直接提交，问卷结束）
-        // 真正的「整卷跳过」由下面那个常驻按钮负责——把两者都写成
-        // 「跳过问卷」会出现两个同名按钮，用户无法分辨点哪个。
-        onClick: isOtherPage
-          ? (() => submit(undefined, true))
-          : (skipWholeMode() ? (() => submit(undefined, true)) : skipCurrent),
-      },
-        isOtherPage
-          ? "跳过并提交"
-          : (skipWholeMode() ? "跳过并提交" : "跳过本题")),
-      // Skip the whole survey: resolves the tool call and collapses the card.
-      R.createElement("button", {
-        type: "button", disabled: busy, style: btnGhost, onClick: skipAll,
-      }, "跳过问卷"),
+      // US-004: 底部操作行只保留导航/提交语义按钮。跳过类动作（跳过本题 /
+      // 跳过并提交 / 跳过问卷）是破坏性或替代性动作，已全部收进 header 的
+      // 「更多」菜单（与「提交」在空间上分离，防提交误触，PRD 需求 F）；
+      // 「跳过问卷」在菜单中需经二次确认气泡才执行，逻辑（skipCurrent /
+      // submit(allowEmpty) / skipAll）与原按钮完全一致，仅触发入口变化。
       R.createElement("button", {
         type: "button", disabled: busy, style: btnPrimary,
         onClick: goNext,
