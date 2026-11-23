@@ -156,13 +156,22 @@ function injectStyles(): void {
       "row-gap:10px!important}",
       ".qm-title{white-space:normal!important;word-break:break-word!important}",
       // Controls: full-width row of their own, wrapping instead of clipping.
+      // US-006: 第二行控件区右对齐（demo v5 形态）。
       ".qm-actions{flex:1 1 100%!important;flex-wrap:wrap!important;",
-      "justify-content:flex-start!important;gap:6px!important}",
+      "justify-content:flex-end!important;gap:6px!important}",
       // The analysis bubble was a fixed 460px, which cannot fit a phone.
       ".qm-bubble{width:auto!important;min-width:0!important;",
       "max-width:calc(100vw - 32px)!important}",
       // Footer keeps its four actions on one or two rows without squashing.
       ".qm-footer{flex-wrap:wrap!important;row-gap:8px!important}",
+      // US-006: 窄屏下底部两键均分可用宽度（上一步 / 下一步·提交各占一半）。
+      // 「上一步」的内联 marginRight:"auto" 在均分布局下必须归零。
+      ".qm-footer button{flex:1 1 0!important;min-width:0!important}",
+      ".qm-footer button:first-child{margin-right:0!important}",
+      // US-006: header 弹出层（更多菜单 / 上下文气泡 / 模板选择 / 跳过确认 /
+      // 模式下拉）统一挂 .qm-hdr-pop 类；窄屏下宽度封顶为视口减两侧边距，
+      // 面板贴 right:0 与卡片右缘对齐，max-width 兜住不溢出屏幕。
+      ".qm-hdr-pop{max-width:calc(100vw - 24px)}",
       "}",
       // ── 设置弹窗 UI（2026-11-12 柔和通透风，参照用户 HTML 稿）──
       // 字体沿用宿主继承（用户要求保持原字体）；颜色/圆角/布局对齐参考稿：
@@ -245,8 +254,12 @@ function injectStyles(): void {
       // 仅 max-width:640px 生效，桌面渲染不变。
       "@media (max-width:640px){",
       ".qm-set-head{padding:14px 16px 4px;gap:8px}",
-      ".qm-set-tabs{flex-wrap:wrap;padding:10px 16px 14px;row-gap:8px}",
-      ".qm-set-tab{white-space:nowrap;padding:7px 13px}",
+      // US-006: 页签改横向滚动（demo v5 形态）—— nowrap 不换行、超宽可滚；
+      // 滚动条隐藏口径与 .qm-set-scroll 一致；页签 flex:0 0 auto 防被压缩。
+      ".qm-set-tabs{flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;",
+      "scrollbar-width:none;padding:10px 16px 14px}",
+      ".qm-set-tabs::-webkit-scrollbar{width:0;height:0;display:none}",
+      ".qm-set-tab{white-space:nowrap;padding:7px 13px;flex:0 0 auto}",
       ".qm-set-wrap .qm-set-row{grid-template-columns:minmax(0,1fr);row-gap:6px;align-items:start}",
       ".qm-set-wrap .qm-set-row .qm-set-rowctl{min-width:0;flex:1 1 auto;justify-content:flex-start;",
       "flex-wrap:wrap;overflow-wrap:anywhere;word-break:break-word}",
@@ -3369,7 +3382,7 @@ function ModeSwitch(props: {
       }, "▾")),
     open
       ? R.createElement("div", {
-          role: "menu",
+          role: "menu", className: "qm-hdr-pop",
           style: {
             position: "absolute", top: 30, right: 0, zIndex: 60, width: 220,
             padding: 6,
@@ -6860,7 +6873,7 @@ function AskUserCard(props: { data?: any }) {
   // US-003: 当前模板名（菜单项文案随选择实时同步；取值逻辑同原胶囊）。
   const tplCur = (templates || []).find((t: any) => t.id === tplId);
   const tplLabel = tplCur ? tplCur.name : "默认模板";
-  const hdrMoreMenu = R.createElement("div", { style: hdrPopPanel, role: "menu" },
+  const hdrMoreMenu = R.createElement("div", { style: hdrPopPanel, role: "menu", className: "qm-hdr-pop" },
     R.createElement("div", { style: hdrPopArrow }),
     hdrMenuItem("选择模板（当前：" + tplLabel + "）", {
       disabled: answered || busy,
@@ -6898,7 +6911,7 @@ function AskUserCard(props: { data?: any }) {
   // 发起原因与最近上下文都是静态示例文案，不调用任何后端接口、不读真实
   // 会话数据；后端零改动（真实接入待走法 b 的宿主读取途径确证后另批）。
   const hdrCtxBubble = R.createElement("div", {
-    role: "dialog", "aria-label": "查看上下文",
+    role: "dialog", "aria-label": "查看上下文", className: "qm-hdr-pop",
     style: { ...hdrPopPanel, width: 300, padding: "10px 12px", fontSize: 12 },
   },
     R.createElement("div", { style: hdrPopArrow }),
@@ -6929,7 +6942,7 @@ function AskUserCard(props: { data?: any }) {
   // US-003: 「选择模板」弹层——复用原模板选择列表（TemplatePickList），
   // 挂在 headerPopups 容器内共享外部点击关闭；与 更多/上下文/模式 互斥。
   const hdrTplPanel = R.createElement("div", {
-    role: "dialog", "aria-label": "选择模板",
+    role: "dialog", "aria-label": "选择模板", className: "qm-hdr-pop",
     style: { ...hdrPopPanel, padding: 4, minWidth: 240 },
   },
     R.createElement("div", { style: hdrPopArrow }),
@@ -6942,7 +6955,7 @@ function AskUserCard(props: { data?: any }) {
   // 容器内共享外部点击关闭；与 更多/上下文/模式/模板 互斥。原「跳过问卷」
   // 按钮的不可恢复警示语义保留在说明文案中；确定后走原 skipAll 逻辑。
   const hdrSkipConfirmPanel = R.createElement("div", {
-    role: "dialog", "aria-label": "确认跳过问卷",
+    role: "dialog", "aria-label": "确认跳过问卷", className: "qm-hdr-pop",
     style: { ...hdrPopPanel, width: 260, padding: "12px 14px" },
   },
     R.createElement("div", { style: hdrPopArrow }),
