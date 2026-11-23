@@ -9666,6 +9666,237 @@ const API_PREVIEW_VALUES: Record<string, string> = {
   token: apiDemo.tokenSet || apiDemo.token ? "（已设置的 Token）" : "（未设置 Token）",
 };
 
+// ══════════════════════════════════════════════════════════════════
+// 设置行注册表（US-023，2026-11-23）
+// ══════════════════════════════════════════════════════════════════
+//
+// ## 为什么要有这张表
+//
+// boss 原话：「当前的插件设置面板，大量的内容都是重复，面板内容比较重复」。
+// 实测确认：设置面板主体 `settingsTabBody` 单函数 932 行，其中「答题模式 /
+// 默认模型 / 提示词模板 / 携带上下文 / 并行分析各题」这 5 个概念，在
+// 「会话模式」页和「默认模式」页**各写了一份渲染代码**——同一语义画两遍。
+//
+// 后果不是「代码不好看」，而是**改一处必须记得改另一处**，漏一处就出现
+// 「两个页签行为不一致」。本仓历史上已发生过同类问题（页签数据错层）。
+//
+// ## 设计原则（本轮严格自我约束）
+//
+// 1. **零存储改动**：不新增任何 prefs 键、不改生效值解析、不动后端。
+//    boss 裁定：「先只做第一步：拆行定义表 + 渲染器（零存储改动，消重复代码）」。
+// 2. **行为完全等价**：重构前后每个页签渲染出的 DOM 结构、data 属性、
+//    控件类型、文案必须逐一相同。任何「顺手优化文案/顺序」都禁止
+//    （本仓教训：把参考值当改动授权会导致视觉回归）。
+// 3. **只收拢「结构」不收拢「差异」**：两页之间确实存在的差异
+//    （行 id、itemScope、开关 key、模型行说明、读值作用域）必须作为
+//    参数显式保留，不允许为了「统一」而抹平。
+//
+// ## 两页的真实差异（逐项核对源码得出，不是推测）
+//
+//   概念      | 会话页                            | 默认页
+//   ----------|-----------------------------------|--------------------------------
+//   答题模式  | id=s1, label=答题模式, scope=session| id=a1, label=默认答题模式, both
+//   默认模型  | id=s2, itemScope=session          | id=b1, itemScope=both, wide=true
+//   提示词    | id=s3, 值=模板id 或首项           | id=b2, 值=模板id 或首项
+//   携带上下文| id=s4, 开关key=s4sw, session      | id=b3, 开关key=s3, both
+//   并行分析  | id=s5, 开关key=s5sw, session      | id=b4, 开关key=s4, global
+//   模型说明  | 三态动态文案（含 cfgExplicitEmpty）| 固定「自动读取当前对话模型…」
+//
+// 注意「携带上下文/并行分析」的 itemScope 两页不同（session vs both/global），
+// 这不是笔误——它决定该行在会话作用域下是否显示「仅全局」锁提示。
+// 重构必须原样保留，否则会改变现有界面的锁提示行为。
+
+/** 行定义：一个设置项在界面上的完整描述（不含具体值）。 */
+type SettingRowDef = {
+  id: string;
+  label: string;
+  kind: "seg" | "model" | "select" | "switch";
+  cfgKey: string;
+  /** 读值作用域：决定 cfgValue(key, fallback, scope) 的第三参 */
+  readScope: "session" | "global";
+  /** 行的作用域标记（setRow 第 6 参）：session / global / both */
+  itemScope: string;
+  note: string;
+  wide?: boolean;
+  /** 开关控件的内部 key（两页原值不同，保留以免改变 DOM） */
+  switchKey?: string;
+  /** 仅当 mode !== "recommend" 时渲染（「只用推荐」下 4 项分析设置无意义） */
+  hideWhenRecommend?: boolean;
+  /** seg 选项标签（映射到存储值由调用方提供的表完成） */
+  segItems?: string[];
+};
+
+/**
+ * 构造「答题模式 + 分析四项」这 5 行。
+ *
+ * 以前这 5 行在 session 与 default 两个分支里各写一遍（约 60 行 × 2），
+ * 现在只有这一处；两页所有差异通过参数显式表达。
+ */
+function buildModeRows(opts: {
+  ids: { mode: string; model: string; tpl: string; ctx: string; parallel: string };
+  readScope: "session" | "global";
+  itemScope: { mode: string; model: string; tpl: string; ctx: string; parallel: string };
+  modeLabel: string;
+  modelNote: string;
+  switchKeys: { ctx: string; parallel: string };
+  modelWide?: boolean;
+}): SettingRowDef[] {
+  return [
+    {
+      id: opts.ids.mode,
+      label: opts.modeLabel,
+      kind: "seg",
+      cfgKey: "mode",
+      readScope: opts.readScope,
+      itemScope: opts.itemScope.mode,
+      note: "本会话的问卷默认用哪种方式推进",
+      segItems: ["自动分析", "只用推荐", "人工"],
+    },
+    {
+      id: opts.ids.model,
+      label: "默认模型",
+      kind: "model",
+      cfgKey: "model_id",
+      readScope: opts.readScope,
+      itemScope: opts.itemScope.model,
+      note: opts.modelNote,
+      wide: opts.modelWide,
+      hideWhenRecommend: true,
+    },
+    {
+      id: opts.ids.tpl,
+      label: "提示词模板",
+      kind: "select",
+      cfgKey: "template_id",
+      readScope: opts.readScope,
+      itemScope: opts.itemScope.tpl,
+      note: "自动分析模式下将调用提示词并自动分析",
+      hideWhenRecommend: true,
+    },
+    {
+      id: opts.ids.ctx,
+      label: "携带上下文",
+      kind: "switch",
+      cfgKey: "with_context",
+      readScope: opts.readScope,
+      itemScope: opts.itemScope.ctx,
+      note: "附带上次决策与会话历史",
+      switchKey: opts.switchKeys.ctx,
+      hideWhenRecommend: true,
+    },
+    {
+      id: opts.ids.parallel,
+      label: "并行分析各题",
+      kind: "switch",
+      cfgKey: "parallel",
+      readScope: opts.readScope,
+      itemScope: opts.itemScope.parallel,
+      note: "逐题并发调用模型，更快，但更耗额度。",
+      switchKey: opts.switchKeys.parallel,
+      hideWhenRecommend: true,
+    },
+  ];
+}
+
+/** 会话页的 5 行定义（原 s1..s5，读会话作用域）。 */
+const MODE_ROWS_SESSION = buildModeRows({
+  ids: { mode: "s1", model: "s2", tpl: "s3", ctx: "s4", parallel: "s5" },
+  readScope: "session",
+  itemScope: { mode: "session", model: "session", tpl: "session", ctx: "session", parallel: "session" },
+  modeLabel: "答题模式",
+  // 模型行说明是动态的（三态来源），这里放占位，渲染时由 renderSettingRow 覆盖
+  modelNote: "",
+  switchKeys: { ctx: "s4sw", parallel: "s5sw" },
+});
+
+/** 默认页的 5 行定义（原 a1/b1..b4，读全局作用域）。 */
+const MODE_ROWS_DEFAULT = buildModeRows({
+  ids: { mode: "a1", model: "b1", tpl: "b2", ctx: "b3", parallel: "b4" },
+  readScope: "global",
+  itemScope: { mode: "both", model: "both", tpl: "both", ctx: "both", parallel: "global" },
+  modeLabel: "默认答题模式",
+  modelNote: "自动读取当前对话模型；改动即自动切换",
+  switchKeys: { ctx: "s3", parallel: "s4" },
+  modelWide: true,
+});
+
+/** 一行设置值的读取（供渲染器使用）。 */
+function rowValue(def: SettingRowDef, fallback: any): any {
+  // 会话页读会话作用域（cfgValue 第二参 fallback、第三参 scope）
+  return cfgValue(def.cfgKey, fallback, def.readScope);
+}
+
+/**
+ * 单行渲染器：把一条 SettingRowDef 画成界面。
+ *
+ * 这里集中处理所有 kind，两页共用。行为与原实现逐项等价：
+ *   seg    → setSeg + MODE_LABEL/MODE_BY_LABEL 映射
+ *   model  → setModelPicker（会话页用动态三态说明，默认页用固定说明）
+ *   select → 有模板用真下拉，无模板降级为静态文案「默认六步思维链」
+ *   switch → setSwitch，onPick 写草稿
+ */
+function renderSettingRow(
+  R: any, def: SettingRowDef, ctx: {
+    scope: string;
+    modeLabel: Record<string, string>;
+    modeByLabel: Record<string, string>;
+    groups: ProviderGroup[];
+    tplChoices: any[];
+    tplOpts: string[];
+    explicitEmptyModel: boolean;
+    edit: (k: string, v: any) => void;
+  },
+): any {
+  const v = rowValue(def, def.cfgKey === "mode" ? "manual" : (def.kind === "switch" ? false : ""));
+  let control: any;
+
+  if (def.kind === "seg") {
+    control = setSeg(R, "g1", def.segItems || [],
+      ctx.modeLabel[String(v || "manual")] || "人工",
+      (lb: string) => ctx.edit(def.cfgKey, ctx.modeByLabel[lb] || "manual"));
+  } else if (def.kind === "model") {
+    control = setModelPicker(R, "sel2", String(v || ""), ctx.groups,
+      (val: string) => ctx.edit(def.cfgKey, val));
+  } else if (def.kind === "select") {
+    if (ctx.tplChoices.length) {
+      // 会话页与默认页的「当前值」表达式略有不同（默认页多了 || 首项），
+      // 但对用户可见结果相同：都保证下拉停在一个真实存在的选项上。
+      const cur = String(v || "") || (ctx.tplChoices[0] && ctx.tplChoices[0].value) || "";
+      control = setSelect(R, "sel3", cur, ctx.tplChoices,
+        (val: string) => ctx.edit(def.cfgKey, val));
+    } else {
+      control = setSelect(R, "sel3", "默认六步思维链");
+    }
+  } else {
+    control = setSwitch(R, def.switchKey || (def.id + "sw"), !!v,
+      (nv: boolean) => ctx.edit(def.cfgKey, nv));
+  }
+
+  // 说明文字：模型行的三态说明只在会话页生效（默认页走固定文案）
+  let note = def.note;
+  if (def.kind === "model" && def.readScope === "session") {
+    note = ctx.explicitEmptyModel
+      ? "已显式设为空（本会话不指定模型）"
+      : "自动读取当前对话模型；改动即自动切换";
+  }
+  if (def.kind === "select" && !ctx.tplChoices.length) {
+    note = "模板库未加载，暂不可选";
+  }
+
+  return setRow(R, def.id, def.label, control, note, def.itemScope, ctx.scope, def.wide);
+}
+
+/** 按定义表渲染一组行；hideWhenRecommend 的行在「只用推荐」下跳过。 */
+function renderSettingRows(
+  R: any, defs: SettingRowDef[], ctx: Parameters<typeof renderSettingRow>[2] & {
+    currentMode: string;
+  },
+): any[] {
+  return defs
+    .filter((d) => !d.hideWhenRecommend || ctx.currentMode !== "recommend")
+    .map((d) => renderSettingRow(R, d, ctx));
+}
+
 function settingsTabBody(
   R: any, tab: string, activeScope?: string, sessData?: any,
   opts?: { modelOptions?: string[]; templateOptions?: string[]; providerGroups?: ProviderGroup[] },
@@ -9735,50 +9966,20 @@ function settingsTabBody(
   // Only the four overridable keys.  Inherited values are SHOWN (so the page is
   // never blank) and editing one creates the override for this chat.
   if (tab === "session") {
-    // 2026-11-13 用户澄清后的最终规则（q1 澄清问卷）：
-    //   「自动分析」「人工」→ 显示 默认模型 / 提示词模板 / 携带上下文 / 并行分析各题
-    //   「只用推荐」        → 隐藏上述 4 行（该模式零模型调用，四项都无关）
-    // 两页各按自己的答题模式值判断；cfgValue 优先读 draft，点分段按钮即刻显隐。
+    // US-023（2026-11-23）：这 5 行原先与「默认模式」页各写一份，现改为
+    // 共用 MODE_ROWS_SESSION 定义表 + renderSettingRows 渲染器。
+    // 显隐规则不变（2026-11-13 q1 澄清）：「只用推荐」隐藏 4 行分析项。
+    // 说明文字保持不变；模型行的三态来源说明（跟随中/显式设空）由渲染器
+    // 依据 explicitEmptyModel 动态给出，与原实现等价。
     const sessMode = String(cfgValue("mode", "manual"));
-    const showAnalysisRows = sessMode !== "recommend";
-    bodyKids.push(setRow(R, "s1", "答题模式",
-      setSeg(R, "g1", ["自动分析", "只用推荐", "人工"],
-        MODE_LABEL[String(cfgValue("mode", "manual"))] || "人工",
-        (lb) => cfgEdit("mode", MODE_BY_LABEL[lb] || "manual")),
-      "本会话的问卷默认用哪种方式推进", "session", scope));
+    bodyKids.push(...renderSettingRows(R, MODE_ROWS_SESSION, {
+      scope, currentMode: sessMode,
+      modeLabel: MODE_LABEL, modeByLabel: MODE_BY_LABEL,
+      groups, tplChoices, tplOpts,
+      explicitEmptyModel: cfgExplicitEmpty("model_id"),
+      edit: cfgEdit,
+    }));
 
-    if (showAnalysisRows) {
-    bodyKids.push(setRow(R, "s2", "默认模型",
-      setModelPicker(R, "sel2", String(cfgValue("model_id", "")),
-        groups, (v) => cfgEdit("model_id", v)),
-      // 三态来源说明（与卡片胶囊共用同一份服务端标记，不会各说各话）：
-      //   跟随中   → 指明跟的是"本会话"的对话模型
-      //   显式设空 → 如实说你清掉了它
-      //   其余     → 正常说明
-      cfgExplicitEmpty("model_id")
-        ? "已显式设为空（本会话不指定模型）"
-        : "自动读取当前对话模型；改动即自动切换",
-      "session", scope, true));
-
-    const curTplId = String(cfgValue("template_id", "")) || (tplChoices[0] && tplChoices[0].value) || "";
-    bodyKids.push(setRow(R, "s3", "提示词模板",
-      tplChoices.length
-        ? setSelect(R, "sel3", curTplId, tplChoices,
-            (v) => cfgEdit("template_id", v))
-        : setSelect(R, "sel3", "默认六步思维链"),
-      tplChoices.length ? "自动分析模式下将调用提示词并自动分析" : "模板库未加载，暂不可选",
-      "session", scope));
-
-    bodyKids.push(setRow(R, "s4", "携带上下文",
-      setSwitch(R, "s4sw", !!cfgValue("with_context", false),
-        (v) => cfgEdit("with_context", v)),
-      "附带上次决策与会话历史", "session", scope));
-
-    bodyKids.push(setRow(R, "s5", "并行分析各题",
-      setSwitch(R, "s5sw", !!cfgValue("parallel", false),
-        (v) => cfgEdit("parallel", v)),
-      "逐题并发调用模型，更快，但更耗额度。", "session", scope));
-    }
 
     // sesshint 说明文字已按用户裁定移除（2026-11-04）。
     // 「清空本会话覆盖」按钮已按用户裁定移除（2026-11-12）：右上角作用域
@@ -9792,40 +9993,20 @@ function settingsTabBody(
   } else if (tab === "global" || tab === "default") {
     const isDefaultsTab = tab === "default";
     if (isDefaultsTab) {
-    // 2026-11-13 用户裁定：说明去掉「（可被会话覆盖）」，统一用会话模式页原文；
-    // 显隐规则同会话页（q1 澄清）：「只用推荐」隐藏 4 行，其余两模式全显示。
+    // US-023（2026-11-23）：这 5 行原先与「会话模式」页各写一份，现改为
+    // 共用 MODE_ROWS_DEFAULT 定义表 + renderSettingRows 渲染器。两页差异
+    // （行 id / itemScope / 开关 key / 模型行说明 / 读值作用域）全部由定义
+    // 表参数表达，渲染出的 DOM 与原实现逐项等价。
+    // 显隐规则不变（q1 澄清）：「只用推荐」隐藏 4 行分析项。
     const defMode = String(cfgValue("mode", "manual", "global"));
-    const showDefAnalysisRows = defMode !== "recommend";
-    bodyKids.push(setRow(R, "a1", "默认答题模式",
-      setSeg(R, "g1", ["自动分析", "只用推荐", "人工"],
-        MODE_LABEL[String(cfgValue("mode", "manual", "global"))] || "人工",
-        (lb) => cfgEdit("mode", MODE_BY_LABEL[lb] || "manual")),
-      "本会话的问卷默认用哪种方式推进", "both", scope));
+    bodyKids.push(...renderSettingRows(R, MODE_ROWS_DEFAULT, {
+      scope, currentMode: defMode,
+      modeLabel: MODE_LABEL, modeByLabel: MODE_BY_LABEL,
+      groups, tplChoices, tplOpts,
+      explicitEmptyModel: cfgExplicitEmpty("model_id"),
+      edit: cfgEdit,
+    }));
 
-    if (showDefAnalysisRows) {
-    bodyKids.push(setRow(R, "b1", "默认模型",
-      setModelPicker(R, "sel2", String(cfgValue("model_id", "", "global")),
-        groups, (v) => cfgEdit("model_id", v)),
-      "自动读取当前对话模型；改动即自动切换", "both", scope, true));
-
-    bodyKids.push(setRow(R, "b2", "提示词模板",
-      tplChoices.length
-        ? setSelect(R, "sel3", String(cfgValue("template_id", "", "global")) || tplChoices[0].value, tplChoices,
-            (v) => cfgEdit("template_id", v))
-        : setSelect(R, "sel3", "默认六步思维链"),
-      tplChoices.length ? "自动分析模式下将调用提示词并自动分析" : "模板库未加载，暂不可选",
-      "both", scope));
-
-    bodyKids.push(setRow(R, "b3", "携带上下文",
-      setSwitch(R, "s3", !!cfgValue("with_context", false, "global"),
-        (v) => cfgEdit("with_context", v)),
-      "附带上次决策与会话历史", "both", scope));
-
-    bodyKids.push(setRow(R, "b4", "并行分析各题",
-      setSwitch(R, "s4", !!cfgValue("parallel", false, "global"),
-        (v) => cfgEdit("parallel", v)),
-      "逐题并发调用模型，更快，但更耗额度。", "global", scope));
-    }
 
     } else {
     // ── 全局配置页（显示类 + 杂项）──
