@@ -123,7 +123,8 @@ function injectStyles(): void {
       ".qm-mode-opt:hover{background:var(--app-surface-subtle,rgba(127,127,127,0.08))}",
       // US-005: 释放阻塞 🔒 icon hover（对齐 demo 的 iconbtn.warn:hover：
       // 边框转 warning 实色；内联样式无法表达 :hover）。
-      ".qm-release-lock:hover{border-color:var(--app-warning,#d46b08)!important;",
+      ".qm-release-lock:hover{color:var(--app-warning-text,#d46b08)!important;",
+      "border-color:var(--app-warning,#d46b08)!important}",
       ".qm-md blockquote{margin:6px 0;padding:2px 0 2px 10px;",
       "border-left:2px solid var(--app-border-strong,rgba(127,127,127,0.45));",
       "color:var(--app-text-secondary,inherit)}",
