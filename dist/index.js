@@ -44,7 +44,7 @@ function ai(t) {
   return t.replace(ri, (e, n) => (n = n.toLowerCase(), n === "colon" ? ":" : n.charAt(0) === "#" ? n.charAt(1) === "x" ? String.fromCharCode(parseInt(n.substring(2), 16)) : String.fromCharCode(+n.substring(1)) : ""));
 }
 const si = /(^|[^\[])\^/g;
-function W(t, e) {
+function F(t, e) {
   let n = typeof t == "string" ? t : t.source;
   e = e || "";
   const r = {
@@ -579,7 +579,7 @@ class $n {
     }
   }
 }
-const li = /^(?: *(?:\n|$))+/, ci = /^( {4}[^\n]+(?:\n(?: *(?:\n|$))*)?)+/, di = /^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/, Zt = /^ {0,3}((?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/, pi = /^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/, xs = /(?:[*+-]|\d{1,9}[.)])/, ks = W(/^(?!bull |blockCode|fences|blockquote|heading|html)((?:.|\n(?!\s*?\n|bull |blockCode|fences|blockquote|heading|html))+?)\n {0,3}(=+|-+) *(?:\n+|$)/).replace(/bull/g, xs).replace(/blockCode/g, / {4}/).replace(/fences/g, / {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g, / {0,3}>/).replace(/heading/g, / {0,3}#{1,6}/).replace(/html/g, / {0,3}<[^\n>]+>\n/).getRegex(), ea = /^([^\n]+(?:\n(?!hr|heading|lheading|blockquote|fences|list|html|table| +\n)[^\n]+)*)/, ui = /^[^\n]+/, ta = /(?!\s*\])(?:\\.|[^\[\]\\])+/, fi = W(/^ {0,3}\[(label)\]: *(?:\n *)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n *)?| *\n *)(title))? *(?:\n+|$)/).replace("label", ta).replace("title", /(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/).getRegex(), mi = W(/^( {0,3}bull)([ \t][^\n]+?)?(?:\n|$)/).replace(/bull/g, xs).getRegex(), Fn = "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul", na = /<!--(?:-?>|[\s\S]*?(?:-->|$))/, gi = W("^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n+|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>\\n*|$)|<![A-Z][\\s\\S]*?(?:>\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n *)+\\n|$)|<(?!script|pre|style|textarea)([a-z][\\w-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n *)+\\n|$)|</(?!script|pre|style|textarea)[a-z][\\w-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n *)+\\n|$))", "i").replace("comment", na).replace("tag", Fn).replace("attribute", / +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>`]+)?/).getRegex(), vs = W(ea).replace("hr", Zt).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("|table", "").replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Fn).getRegex(), hi = W(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/).replace("paragraph", vs).getRegex(), ra = {
+const li = /^(?: *(?:\n|$))+/, ci = /^( {4}[^\n]+(?:\n(?: *(?:\n|$))*)?)+/, di = /^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/, Zt = /^ {0,3}((?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/, pi = /^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/, xs = /(?:[*+-]|\d{1,9}[.)])/, ks = F(/^(?!bull |blockCode|fences|blockquote|heading|html)((?:.|\n(?!\s*?\n|bull |blockCode|fences|blockquote|heading|html))+?)\n {0,3}(=+|-+) *(?:\n+|$)/).replace(/bull/g, xs).replace(/blockCode/g, / {4}/).replace(/fences/g, / {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g, / {0,3}>/).replace(/heading/g, / {0,3}#{1,6}/).replace(/html/g, / {0,3}<[^\n>]+>\n/).getRegex(), ea = /^([^\n]+(?:\n(?!hr|heading|lheading|blockquote|fences|list|html|table| +\n)[^\n]+)*)/, ui = /^[^\n]+/, ta = /(?!\s*\])(?:\\.|[^\[\]\\])+/, fi = F(/^ {0,3}\[(label)\]: *(?:\n *)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n *)?| *\n *)(title))? *(?:\n+|$)/).replace("label", ta).replace("title", /(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/).getRegex(), mi = F(/^( {0,3}bull)([ \t][^\n]+?)?(?:\n|$)/).replace(/bull/g, xs).getRegex(), Wn = "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul", na = /<!--(?:-?>|[\s\S]*?(?:-->|$))/, gi = F("^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n+|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>\\n*|$)|<![A-Z][\\s\\S]*?(?:>\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n *)+\\n|$)|<(?!script|pre|style|textarea)([a-z][\\w-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n *)+\\n|$)|</(?!script|pre|style|textarea)[a-z][\\w-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n *)+\\n|$))", "i").replace("comment", na).replace("tag", Wn).replace("attribute", / +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>`]+)?/).getRegex(), vs = F(ea).replace("hr", Zt).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("|table", "").replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Wn).getRegex(), hi = F(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/).replace("paragraph", vs).getRegex(), ra = {
   blockquote: hi,
   code: ci,
   def: fi,
@@ -593,21 +593,21 @@ const li = /^(?: *(?:\n|$))+/, ci = /^( {4}[^\n]+(?:\n(?: *(?:\n|$))*)?)+/, di =
   paragraph: vs,
   table: Ht,
   text: ui
-}, Qa = W("^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)").replace("hr", Zt).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("blockquote", " {0,3}>").replace("code", " {4}[^\\n]").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Fn).getRegex(), bi = {
+}, Qa = F("^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)").replace("hr", Zt).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("blockquote", " {0,3}>").replace("code", " {4}[^\\n]").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Wn).getRegex(), bi = {
   ...ra,
   table: Qa,
-  paragraph: W(ea).replace("hr", Zt).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("table", Qa).replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Fn).getRegex()
+  paragraph: F(ea).replace("hr", Zt).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("table", Qa).replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Wn).getRegex()
 }, yi = {
   ...ra,
-  html: W(`^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`).replace("comment", na).replace(/tag/g, "(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\\b)\\w+(?!:|[^\\w\\s@]*@)\\b").getRegex(),
+  html: F(`^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`).replace("comment", na).replace(/tag/g, "(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\\b)\\w+(?!:|[^\\w\\s@]*@)\\b").getRegex(),
   def: /^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +(["(][^\n]+[")]))? *(?:\n+|$)/,
   heading: /^(#{1,6})(.*)(?:\n+|$)/,
   fences: Ht,
   // fences not supported
   lheading: /^(.+?)\n {0,3}(=+|-+) *(?:\n+|$)/,
-  paragraph: W(ea).replace("hr", Zt).replace("heading", ` *#{1,6} *[^
+  paragraph: F(ea).replace("hr", Zt).replace("heading", ` *#{1,6} *[^
 ]`).replace("lheading", ks).replace("|table", "").replace("blockquote", " {0,3}>").replace("|fences", "").replace("|list", "").replace("|html", "").replace("|tag", "").getRegex()
-}, ws = /^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/, xi = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/, qs = /^( {2,}|\\)\n(?!\s*$)/, ki = /^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/, Kt = "\\p{P}\\p{S}", vi = W(/^((?![*_])[\spunctuation])/, "u").replace(/punctuation/g, Kt).getRegex(), wi = /\[[^[\]]*?\]\([^\(\)]*?\)|`[^`]*?`|<[^<>]*?>/g, qi = W(/^(?:\*+(?:((?!\*)[punct])|[^\s*]))|^_+(?:((?!_)[punct])|([^\s_]))/, "u").replace(/punct/g, Kt).getRegex(), Si = W("^[^_*]*?__[^_*]*?\\*[^_*]*?(?=__)|[^*]+(?=[^*])|(?!\\*)[punct](\\*+)(?=[\\s]|$)|[^punct\\s](\\*+)(?!\\*)(?=[punct\\s]|$)|(?!\\*)[punct\\s](\\*+)(?=[^punct\\s])|[\\s](\\*+)(?!\\*)(?=[punct])|(?!\\*)[punct](\\*+)(?!\\*)(?=[punct])|[^punct\\s](\\*+)(?=[^punct\\s])", "gu").replace(/punct/g, Kt).getRegex(), _i = W("^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)[punct](_+)(?=[\\s]|$)|[^punct\\s](_+)(?!_)(?=[punct\\s]|$)|(?!_)[punct\\s](_+)(?=[^punct\\s])|[\\s](_+)(?!_)(?=[punct])|(?!_)[punct](_+)(?!_)(?=[punct])", "gu").replace(/punct/g, Kt).getRegex(), Ei = W(/\\([punct])/, "gu").replace(/punct/g, Kt).getRegex(), Ci = W(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/).replace("scheme", /[a-zA-Z][a-zA-Z0-9+.-]{1,31}/).replace("email", /[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/).getRegex(), Ti = W(na).replace("(?:-->|$)", "-->").getRegex(), Ni = W("^comment|^</[a-zA-Z][\\w:-]*\\s*>|^<[a-zA-Z][\\w-]*(?:attribute)*?\\s*/?>|^<\\?[\\s\\S]*?\\?>|^<![a-zA-Z]+\\s[\\s\\S]*?>|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>").replace("comment", Ti).replace("attribute", /\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*"[^"]*"|\s*=\s*'[^']*'|\s*=\s*[^\s"'=<>`]+)?/).getRegex(), Rn = /(?:\[(?:\\.|[^\[\]\\])*\]|\\.|`[^`]*`|[^\[\]\\`])*?/, Ai = W(/^!?\[(label)\]\(\s*(href)(?:\s+(title))?\s*\)/).replace("label", Rn).replace("href", /<(?:\\.|[^\n<>\\])+>|[^\s\x00-\x1f]*/).replace("title", /"(?:\\"?|[^"\\])*"|'(?:\\'?|[^'\\])*'|\((?:\\\)?|[^)\\])*\)/).getRegex(), Ss = W(/^!?\[(label)\]\[(ref)\]/).replace("label", Rn).replace("ref", ta).getRegex(), _s = W(/^!?\[(ref)\](?:\[\])?/).replace("ref", ta).getRegex(), Ii = W("reflink|nolink(?!\\()", "g").replace("reflink", Ss).replace("nolink", _s).getRegex(), aa = {
+}, ws = /^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/, xi = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/, qs = /^( {2,}|\\)\n(?!\s*$)/, ki = /^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/, Kt = "\\p{P}\\p{S}", vi = F(/^((?![*_])[\spunctuation])/, "u").replace(/punctuation/g, Kt).getRegex(), wi = /\[[^[\]]*?\]\([^\(\)]*?\)|`[^`]*?`|<[^<>]*?>/g, qi = F(/^(?:\*+(?:((?!\*)[punct])|[^\s*]))|^_+(?:((?!_)[punct])|([^\s_]))/, "u").replace(/punct/g, Kt).getRegex(), Si = F("^[^_*]*?__[^_*]*?\\*[^_*]*?(?=__)|[^*]+(?=[^*])|(?!\\*)[punct](\\*+)(?=[\\s]|$)|[^punct\\s](\\*+)(?!\\*)(?=[punct\\s]|$)|(?!\\*)[punct\\s](\\*+)(?=[^punct\\s])|[\\s](\\*+)(?!\\*)(?=[punct])|(?!\\*)[punct](\\*+)(?!\\*)(?=[punct])|[^punct\\s](\\*+)(?=[^punct\\s])", "gu").replace(/punct/g, Kt).getRegex(), _i = F("^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)[punct](_+)(?=[\\s]|$)|[^punct\\s](_+)(?!_)(?=[punct\\s]|$)|(?!_)[punct\\s](_+)(?=[^punct\\s])|[\\s](_+)(?!_)(?=[punct])|(?!_)[punct](_+)(?!_)(?=[punct])", "gu").replace(/punct/g, Kt).getRegex(), Ei = F(/\\([punct])/, "gu").replace(/punct/g, Kt).getRegex(), Ci = F(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/).replace("scheme", /[a-zA-Z][a-zA-Z0-9+.-]{1,31}/).replace("email", /[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/).getRegex(), Ti = F(na).replace("(?:-->|$)", "-->").getRegex(), Ni = F("^comment|^</[a-zA-Z][\\w:-]*\\s*>|^<[a-zA-Z][\\w-]*(?:attribute)*?\\s*/?>|^<\\?[\\s\\S]*?\\?>|^<![a-zA-Z]+\\s[\\s\\S]*?>|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>").replace("comment", Ti).replace("attribute", /\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*"[^"]*"|\s*=\s*'[^']*'|\s*=\s*[^\s"'=<>`]+)?/).getRegex(), Rn = /(?:\[(?:\\.|[^\[\]\\])*\]|\\.|`[^`]*`|[^\[\]\\`])*?/, Ai = F(/^!?\[(label)\]\(\s*(href)(?:\s+(title))?\s*\)/).replace("label", Rn).replace("href", /<(?:\\.|[^\n<>\\])+>|[^\s\x00-\x1f]*/).replace("title", /"(?:\\"?|[^"\\])*"|'(?:\\'?|[^'\\])*'|\((?:\\\)?|[^)\\])*\)/).getRegex(), Ss = F(/^!?\[(label)\]\[(ref)\]/).replace("label", Rn).replace("ref", ta).getRegex(), _s = F(/^!?\[(ref)\](?:\[\])?/).replace("ref", ta).getRegex(), Ii = F("reflink|nolink(?!\\()", "g").replace("reflink", Ss).replace("nolink", _s).getRegex(), aa = {
   _backpedal: Ht,
   // only used for GFM url
   anyPunctuation: Ei,
@@ -630,19 +630,19 @@ const li = /^(?: *(?:\n|$))+/, ci = /^( {4}[^\n]+(?:\n(?: *(?:\n|$))*)?)+/, di =
   url: Ht
 }, zi = {
   ...aa,
-  link: W(/^!?\[(label)\]\((.*?)\)/).replace("label", Rn).getRegex(),
-  reflink: W(/^!?\[(label)\]\s*\[([^\]]*)\]/).replace("label", Rn).getRegex()
+  link: F(/^!?\[(label)\]\((.*?)\)/).replace("label", Rn).getRegex(),
+  reflink: F(/^!?\[(label)\]\s*\[([^\]]*)\]/).replace("label", Rn).getRegex()
 }, Qr = {
   ...aa,
-  escape: W(ws).replace("])", "~|])").getRegex(),
-  url: W(/^((?:ftp|https?):\/\/|www\.)(?:[a-zA-Z0-9\-]+\.?)+[^\s<]*|^email/, "i").replace("email", /[A-Za-z0-9._+-]+(@)[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![-_])/).getRegex(),
+  escape: F(ws).replace("])", "~|])").getRegex(),
+  url: F(/^((?:ftp|https?):\/\/|www\.)(?:[a-zA-Z0-9\-]+\.?)+[^\s<]*|^email/, "i").replace("email", /[A-Za-z0-9._+-]+(@)[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![-_])/).getRegex(),
   _backpedal: /(?:[^?!.,:;*_'"~()&]+|\([^)]*\)|&(?![a-zA-Z0-9]+;$)|[?!.,:;*_'"~)]+(?!$))+/,
   del: /^(~~?)(?=[^\s~])([\s\S]*?[^\s~])\1(?=[^~]|$)/,
   text: /^([`~]+|[^`~])(?:(?= {2,}\n)|(?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)|[\s\S]*?(?:(?=[\\<!\[`*~_]|\b_|https?:\/\/|ftp:\/\/|www\.|$)|[^ ](?= {2,}\n)|[^a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-](?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)))/
 }, Oi = {
   ...Qr,
-  br: W(qs).replace("{2,}", "*").getRegex(),
-  text: W(Qr.text).replace("\\b_", "\\b_| {2,}\\n").replace(/\{2,\}/g, "*").getRegex()
+  br: F(qs).replace("{2,}", "*").getRegex(),
+  text: F(Qr.text).replace("\\b_", "\\b_| {2,}\\n").replace(/\{2,\}/g, "*").getRegex()
 }, Sn = {
   normal: ra,
   gfm: bi,
@@ -1403,35 +1403,35 @@ Please report this to https://github.com/markedjs/marked.`, e) {
   };
 };
 const lt = new $i();
-function F(t, e) {
+function W(t, e) {
   return lt.parse(t, e);
 }
-F.options = F.setOptions = function(t) {
-  return lt.setOptions(t), F.defaults = lt.defaults, hs(F.defaults), F;
+W.options = W.setOptions = function(t) {
+  return lt.setOptions(t), W.defaults = lt.defaults, hs(W.defaults), W;
 };
-F.getDefaults = Yr;
-F.defaults = dt;
-F.use = function(...t) {
-  return lt.use(...t), F.defaults = lt.defaults, hs(F.defaults), F;
+W.getDefaults = Yr;
+W.defaults = dt;
+W.use = function(...t) {
+  return lt.use(...t), W.defaults = lt.defaults, hs(W.defaults), W;
 };
-F.walkTokens = function(t, e) {
+W.walkTokens = function(t, e) {
   return lt.walkTokens(t, e);
 };
-F.parseInline = lt.parseInline;
-F.Parser = Pe;
-F.parser = Pe.parse;
-F.Renderer = Mn;
-F.TextRenderer = sa;
-F.Lexer = Me;
-F.lexer = Me.lex;
-F.Tokenizer = $n;
-F.Hooks = Ut;
-F.parse = F;
-F.options;
-F.setOptions;
-F.use;
-F.walkTokens;
-F.parseInline;
+W.parseInline = lt.parseInline;
+W.Parser = Pe;
+W.parser = Pe.parse;
+W.Renderer = Mn;
+W.TextRenderer = sa;
+W.Lexer = Me;
+W.lexer = Me.lex;
+W.Tokenizer = $n;
+W.Hooks = Ut;
+W.parse = W;
+W.options;
+W.setOptions;
+W.use;
+W.walkTokens;
+W.parseInline;
 Pe.parse;
 Me.lex;
 const Cs = "question-modal", Xa = "question_modal", Mr = 3, Va = "gate-v2@2026.10.21";
@@ -1545,7 +1545,7 @@ function Li() {
       ".qm-actions{flex:1 1 100%!important;flex-wrap:wrap!important;",
       "justify-content:flex-end!important;gap:6px!important}",
       // The analysis bubble was a fixed 460px, which cannot fit a phone.
-      // US-013: 口径统一为 100vw-44px（对齐 .qm-hdr-pop 与宽面板内联 min()）。
+      // US-013: 口径统一为 100vw-44px（对齐 .qm-hdr-pop 与宽面板 width+maxWidth 双保险）。
       ".qm-bubble{width:auto!important;min-width:0!important;",
       "max-width:calc(100vw - 44px)!important}",
       // Footer keeps its four actions on one or two rows without squashing.
@@ -1558,7 +1558,7 @@ function Li() {
       // 模式下拉）统一挂 .qm-hdr-pop 类；窄屏下宽度封顶为视口减两侧边距，
       // 面板贴 right:0 与卡片右缘对齐，max-width 兜住不溢出屏幕。
       // US-012: 口径同步为 100vw-44px（对齐 demo v5 移动端 width 口径，与宽
-      // 面板内联 min(固有宽, calc(100vw - 44px)) 一致）；宽面板实际宽度由内联
+      // 面板内联 width+maxWidth 双保险一致）；宽面板实际宽度由内联
       // style 控制，本规则对其余 .qm-hdr-pop（更多菜单/跳过确认）仅作超窄屏兜底。
       ".qm-hdr-pop{max-width:calc(100vw - 44px);z-index:10000}",
       "}",
@@ -2013,9 +2013,9 @@ function L(t) {
   }
   return "/api" + t;
 }
-let Wn = "", Ts = "";
+let Fn = "", Ts = "";
 function oa(t, e) {
-  t && (Ts = t), e && (Wn = e);
+  t && (Ts = t), e && (Fn = e);
 }
 function B() {
   const t = { "Content-Type": "application/json" };
@@ -2023,7 +2023,7 @@ function B() {
     const e = Ne(), n = typeof e.getApiToken == "function" ? e.getApiToken() : "";
     n && (t.Authorization = "Bearer " + n);
     let r = typeof e.getSelectedAgentId == "function" ? e.getSelectedAgentId() : "";
-    r || (r = Wn), r && (t["X-Agent-Id"] = r);
+    r || (r = Fn), r && (t["X-Agent-Id"] = r);
   } catch {
   }
   return t;
@@ -2070,7 +2070,7 @@ function Lt() {
     if (e) return e;
   } catch {
   }
-  return Wn;
+  return Fn;
 }
 const Lr = {};
 async function ji(t, e, n) {
@@ -2118,7 +2118,7 @@ function ae(t) {
   const e = Gt(t);
   return e && e.session_id ? e.session_id : Qt();
 }
-const Br = 180, Di = 20, Ns = 6e3, Fi = 60, Wi = 8;
+const Br = 180, Di = 20, Ns = 6e3, Wi = 60, Fi = 8;
 function Hi() {
   try {
     return typeof document < "u" && document && typeof document.querySelectorAll == "function" ? document : null;
@@ -2554,7 +2554,7 @@ async function $s() {
 function il(t) {
   if (!t) return "";
   try {
-    return String(F.parse(t, { async: !1, breaks: !0 }));
+    return String(W.parse(t, { async: !1, breaks: !0 }));
   } catch {
     return "<pre style='white-space:pre-wrap'>" + t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</pre>";
   }
@@ -2577,7 +2577,7 @@ function Te(t) {
 function qt(t) {
   return t ? t.skipped === !0 ? !0 : Array.isArray(t.value) ? t.value.length > 0 : !!(String(t.value ?? "").trim() || String(t.other ?? "").trim() || t.attachments && t.attachments.length) : !1;
 }
-function Fr(t, e, n) {
+function Wr(t, e, n) {
   const r = { ...t };
   return !e || typeof e != "object" || Object.keys(e).forEach((a) => {
     if (n && n.has(a) || !Object.prototype.hasOwnProperty.call(r, a)) return;
@@ -2796,7 +2796,7 @@ async function bl(t) {
   }
 }
 const Ln = "qm:v1:stash_att:", ss = 25 * 1024 * 1024, In = /* @__PURE__ */ new Map(), zn = /* @__PURE__ */ new Map();
-let Bn = null, jn = 0, Wr = null;
+let Bn = null, jn = 0, Fr = null;
 function os() {
   const t = jn > 0;
   zn.forEach((e) => {
@@ -2807,7 +2807,7 @@ function os() {
   });
 }
 function yl() {
-  if (Wr) return Wr;
+  if (Fr) return Fr;
   if (typeof document > "u" || !document.createElement) return null;
   let t = null;
   try {
@@ -2839,7 +2839,7 @@ function yl() {
     e && typeof e.appendChild == "function" && e.appendChild(t);
   } catch {
   }
-  return Wr = t, t;
+  return Fr = t, t;
 }
 function xl(t, e, n) {
   if (!t) {
@@ -3074,7 +3074,7 @@ function Gt(t) {
   }
 }
 const ca = "qm:v1:state:";
-function Wt(t) {
+function Ft(t) {
   if (!t) return null;
   try {
     const e = localStorage.getItem(ca + t);
@@ -3093,11 +3093,11 @@ function Dn() {
     return "tab-anon";
   }
 }
-const Fs = Dn(), ls = "qm:v1:sessionprefs-ping";
+const Ws = Dn(), ls = "qm:v1:sessionprefs-ping";
 function ot(t, e) {
   if (t)
     try {
-      const r = { ...Wt(t) || {}, ...e, ts: Date.now(), origin: Fs };
+      const r = { ...Ft(t) || {}, ...e, ts: Date.now(), origin: Ws };
       localStorage.setItem(ca + t, JSON.stringify(r)), zl();
     } catch {
     }
@@ -3177,7 +3177,7 @@ function Rl(t) {
   }), e;
 }
 const Ml = ["必须", "务必", "不得为空", "不能为空"], Pl = ["可为空", "可留空", "选填", "可选", "非必填"];
-function Ws(t) {
+function Fs(t) {
   if (!t || typeof t != "object" || t.optional === !1) return !1;
   if (t.optional === !0) return !0;
   const e = String(t.title || "");
@@ -3193,7 +3193,7 @@ function Ll(t, e) {
   }
   return r.forEach((a) => {
     const s = t[a];
-    if (!Ws(s)) return;
+    if (!Fs(s)) return;
     const o = `q${a}`, p = n[o];
     if (p && (p.skipped === !0 || qt(p))) return;
     const i = oe(s);
@@ -3627,8 +3627,10 @@ function jl(t) {
         top: 30,
         right: 0,
         zIndex: 1e4,
-        // US-012: min(固有宽, 视口-44px)——移动端不溢出屏幕（demo v5 口径）。
-        width: "min(220px, calc(100vw - 44px))",
+        // US-014: width 固有宽 + maxWidth 视口-44px 双保险（兼容不支持 CSS
+        // min() 的旧 WebView 内核），移动端不溢出屏幕。
+        width: "220px",
+        maxWidth: "calc(100vw - 44px)",
         padding: 6,
         background: "var(--app-surface-raised, #fff)",
         border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
@@ -3734,7 +3736,7 @@ function Dl(t) {
     }, "＋ 管理模板…")
   );
 }
-function Fl(t) {
+function Wl(t) {
   const { R: e, open: n, templates: r, value: a, edit: s, onEditChange: o, onClose: p, onSelect: i, onSave: h, onDelete: b } = t;
   if (!n) return null;
   const S = Xe(), { Input: m, Modal: v } = S, g = {
@@ -3899,7 +3901,7 @@ function Fl(t) {
     wrapClassName: "qm-tpl-modal"
   }, T) : T;
 }
-function Wl(t) {
+function Fl(t) {
   const {
     R: e,
     busy: n,
@@ -4157,7 +4159,8 @@ function Wl(t) {
         top: 30,
         right: 0,
         zIndex: 1e4,
-        width: "min(460px, calc(100vw - 44px))",
+        width: "460px",
+        maxWidth: "calc(100vw - 44px)",
         padding: 12,
         background: "var(--app-surface-raised, #fff)",
         border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
@@ -4183,7 +4186,7 @@ function Wl(t) {
   return [T, $];
 }
 function Hl(t) {
-  const e = Ne().React, n = Xe(), { Input: r, Button: a } = n, s = r.TextArea, o = t.data || {}, p = pl(o), i = ul(o), h = fl(o), b = ml(h), S = b ? "" : h, m = p.questions || [], v = p.title || "问卷", g = Wt(i), [x, y] = e.useState(
+  const e = Ne().React, n = Xe(), { Input: r, Button: a } = n, s = r.TextArea, o = t.data || {}, p = pl(o), i = ul(o), h = fl(o), b = ml(h), S = b ? "" : h, m = p.questions || [], v = p.title || "问卷", g = Ft(i), [x, y] = e.useState(
     () => !!(g && g.answered) || !!S || b
   ), [I, T] = e.useState(""), [_, E] = e.useState(() => {
     const l = Gt(i);
@@ -4281,23 +4284,23 @@ function Hl(t) {
     };
     return document.addEventListener("mousedown", l), () => document.removeEventListener("mousedown", l);
   }, [fr]);
-  const [gr, Fe] = e.useState(!1);
+  const [gr, We] = e.useState(!1);
   e.useEffect(() => {
     if (!gr) return;
     const l = (d) => {
       const f = gt.current;
-      f && d && d.target && f.contains(d.target) || Fe(!1);
+      f && d && d.target && f.contains(d.target) || We(!1);
     };
     return document.addEventListener("mousedown", l), () => document.removeEventListener("mousedown", l);
   }, [gr]);
-  const [hr, We] = e.useState(!1), sn = e.useRef(null), ya = e.useRef(null);
+  const [hr, Fe] = e.useState(!1), sn = e.useRef(null), ya = e.useRef(null);
   e.useEffect(() => {
     if (!hr) return;
     const l = (d) => {
       const f = ya.current;
       if (f && d && d.target && f.contains(d.target)) return;
       const u = d && d.target;
-      u && u.closest && u.closest("[data-qm-release-lock]") || We(!1);
+      u && u.closest && u.closest("[data-qm-release-lock]") || Fe(!1);
     };
     return document.addEventListener("mousedown", l), () => document.removeEventListener("mousedown", l);
   }, [hr]);
@@ -4330,7 +4333,7 @@ function Hl(t) {
         Lt()
       );
       try {
-        localStorage.setItem(ls, Fs + ":" + Date.now());
+        localStorage.setItem(ls, Ws + ":" + Date.now());
       } catch {
       }
     }
@@ -4537,14 +4540,14 @@ function Hl(t) {
   };
   e.useEffect(() => {
     var d;
-    const l = (d = Wt(i)) == null ? void 0 : d.answers;
+    const l = (d = Ft(i)) == null ? void 0 : d.answers;
     ot(i, {
       // reqId included: submit/skip are dead without it, and it must
       // survive the remount that a focus-regain (e.g. closing the file
       // dialog) triggers.
       reqId: _,
       visStep: q,
-      answers: Fr(M, l, Nt.current),
+      answers: Wr(M, l, Nt.current),
       finalOther: Ge,
       finalOtherAtt: le,
       answered: x,
@@ -4611,7 +4614,7 @@ function Hl(t) {
       }
       if (!Ye.current) {
         const A = ts(i);
-        A >= 0 && (f < 0 ? f = A : A - f >= Wi && (Ye.current = !0));
+        A >= 0 && (f < 0 ? f = A : A - f >= Fi && (Ye.current = !0));
       }
       if (!Ye.current && w >= Di && !Yt.current && (Yt.current = !0, Kn(!0)), Ye.current) {
         l = setTimeout(
@@ -4910,7 +4913,7 @@ function Hl(t) {
     // releaseConfirmPanel 执行原 onClick（rescue / releaseBlocked 零改动）。
     // 打开时同步收起全部 header 弹层（互斥组）。
     onClick: () => {
-      sn.current = l, Oe(!1), mt(!1), ht(!1), Qe(!1), Fe(!1), We(!0);
+      sn.current = l, Oe(!1), mt(!1), ht(!1), Qe(!1), We(!1), Fe(!0);
     },
     style: {
       width: 24,
@@ -4988,7 +4991,7 @@ function Hl(t) {
           color: "var(--app-text-secondary, inherit)"
         },
         onClick: () => {
-          We(!1), sn.current = null;
+          Fe(!1), sn.current = null;
         }
       }, "取消"),
       e.createElement("button", {
@@ -5007,7 +5010,7 @@ function Hl(t) {
         },
         onClick: () => {
           const l = sn.current;
-          We(!1), sn.current = null, l && l();
+          Fe(!1), sn.current = null, l && l();
         }
       }, "确定")
     )
@@ -5023,7 +5026,7 @@ function Hl(t) {
     const f = Ue(m, M).filter((u) => !qt(M[`q${u}`])).length;
     ji(i, v, f);
   }, [Qn, x, Q, Se, zt]);
-  const mn = Math.max(0, Number(fe("slow_question_sec", Fi)) || 0) * 1e3, Co = Math.round(mn / 1e3);
+  const mn = Math.max(0, Number(fe("slow_question_sec", Wi)) || 0) * 1e3, Co = Math.round(mn / 1e3);
   e.useEffect(() => {
     if (x || Q || Se || mn <= 0) return;
     if (R !== zt) {
@@ -5055,7 +5058,7 @@ function Hl(t) {
     m.forEach((w, A) => {
       f.indexOf(A) === -1 && delete d[`q${A}`];
     }), ot(i, {
-      answers: Fr(d, (u = Wt(i)) == null ? void 0 : u.answers, Nt.current)
+      answers: Wr(d, (u = Ft(i)) == null ? void 0 : u.answers, Nt.current)
     }), Z(d);
   };
   e.useEffect(() => {
@@ -5074,12 +5077,12 @@ function Hl(t) {
     return u;
   }, _r = () => {
     var l;
-    return Rl(Fr(
+    return Rl(Wr(
       Ll(m, M),
-      (l = Wt(i)) == null ? void 0 : l.answers,
+      (l = Ft(i)) == null ? void 0 : l.answers,
       Nt.current
     ));
-  }, To = () => !!fe("gate_unsaved", !0), No = (l) => Ws(l), Ea = (l, d) => {
+  }, To = () => !!fe("gate_unsaved", !0), No = (l) => Fs(l), Ea = (l, d) => {
     if (!To()) return [];
     const f = new Set(Ue(m, l)), u = (A) => f.has(A) && !qt(l[`q${A}`]) && !No(m[A]), w = [];
     return typeof d == "number" ? (u(d) && w.push(d + 1), w) : (m.forEach((A, N) => {
@@ -5862,7 +5865,7 @@ function Hl(t) {
       e.createElement("div", { style: { ...Oo, marginTop: 8 } }, u)
     );
   }
-  const $r = rt + 1, Fo = Re ? $r + "/" + $r : q + 1 + "/" + $r, Da = (l, d, f, u, w) => e.createElement("button", {
+  const $r = rt + 1, Wo = Re ? $r + "/" + $r : q + 1 + "/" + $r, Da = (l, d, f, u, w) => e.createElement("button", {
     type: "button",
     title: l,
     "aria-label": l,
@@ -5881,7 +5884,7 @@ function Hl(t) {
       background: d ? "var(--app-surface-subtle, rgba(127,127,127,0.10))" : "transparent",
       color: "var(--app-text-secondary, inherit)"
     }
-  }, u), Wo = e.createElement(
+  }, u), Fo = e.createElement(
     "span",
     {
       style: { display: "inline-flex", alignItems: "center", gap: 3 }
@@ -5972,14 +5975,14 @@ function Hl(t) {
         color: "var(--app-text-tertiary, inherit)"
       }
     }, "›") : null
-  ), Fa = (pr || []).find((l) => l.id === Ke), Uo = Fa ? Fa.name : "默认模板", Go = e.createElement(
+  ), Wa = (pr || []).find((l) => l.id === Ke), Uo = Wa ? Wa.name : "默认模板", Go = e.createElement(
     "div",
     { style: xn, role: "menu", className: "qm-hdr-pop" },
     e.createElement("div", { style: kn }),
     vn("选择模板（当前：" + Uo + "）", {
       disabled: x || D,
       onClick: () => {
-        Oe(!1), mt(!1), ht(!1), Fe(!1), We(!1), Qe(!0);
+        Oe(!1), mt(!1), ht(!1), We(!1), Fe(!1), Qe(!0);
       }
     }),
     // US-004: 跳过类菜单项接通——复用原底部按钮的 skipCurrent/submit/skipAll
@@ -6006,19 +6009,19 @@ function Hl(t) {
       disabled: x || D,
       title: "跳过后本次问卷立即结束，未答题目不再收集，不可恢复",
       onClick: () => {
-        Oe(!1), Fe(!0), We(!1);
+        Oe(!1), We(!0), Fe(!1);
       }
     })
   ), Jo = e.createElement(
     "div",
     {
       // US-012: 面板挂 qm-actions 行容器（demo v5 参照系）；ref 供外部点击
-      // 关闭判定（点面板内部不关闭）。宽度 min(固有宽, 视口-44px) 防移动端溢出。
+      // 关闭判定（点面板内部不关闭）。width 固有宽 + maxWidth 视口-44px 防溢出。
       ref: or,
       role: "dialog",
       "aria-label": "查看上下文",
       className: "qm-hdr-pop",
-      style: { ...xn, width: "min(300px, calc(100vw - 44px))", padding: "10px 12px", fontSize: 12 }
+      style: { ...xn, width: "300px", maxWidth: "calc(100vw - 44px)", padding: "10px 12px", fontSize: 12 }
     },
     e.createElement("div", { style: kn }),
     e.createElement("div", {
@@ -6057,12 +6060,12 @@ function Hl(t) {
     "div",
     {
       // US-012: 面板挂 qm-actions 行容器（demo v5 参照系）；ref 供外部点击
-      // 关闭判定。宽度 min(内容 240+padding 8, 视口-44px)，移动端不溢出。
+      // 关闭判定。width 248px（内容 240+padding 8）+ maxWidth 视口-44px，不溢出。
       ref: ir,
       role: "dialog",
       "aria-label": "选择模板",
       className: "qm-hdr-pop",
-      style: { ...xn, padding: 4, width: "min(248px, calc(100vw - 44px))" }
+      style: { ...xn, padding: 4, width: "248px", maxWidth: "calc(100vw - 44px)" }
     },
     e.createElement("div", { style: kn }),
     Dl({
@@ -6113,7 +6116,7 @@ function Hl(t) {
           background: "transparent",
           color: "var(--app-text-secondary, inherit)"
         },
-        onClick: () => Fe(!1)
+        onClick: () => We(!1)
       }, "取消"),
       e.createElement("button", {
         type: "button",
@@ -6130,7 +6133,7 @@ function Hl(t) {
           fontWeight: 500
         },
         onClick: () => {
-          Fe(!1), zo();
+          We(!1), zo();
         }
       }, "确定")
     )
@@ -6148,17 +6151,17 @@ function Hl(t) {
       }
     },
     Da("更多操作", nn, () => {
-      Oe((l) => !l), mt(!1), ht(!1), Qe(!1), Fe(!1), We(!1);
-    }, Wo, { text: !0 }),
+      Oe((l) => !l), mt(!1), ht(!1), Qe(!1), We(!1), Fe(!1);
+    }, Fo, { text: !0 }),
     Da("查看上下文", rn, () => {
-      mt((l) => !l), Oe(!1), ht(!1), Qe(!1), Fe(!1), We(!1);
+      mt((l) => !l), Oe(!1), ht(!1), Qe(!1), We(!1), Fe(!1);
     }, Ho),
     nn ? Go : null,
     // US-012: 上下文气泡与模板选择面板（宽面板）不再挂本触发器小容器，
     // 改挂 qm-actions 行容器直下（见 qm-actions children 末尾）——移动端
     // 防错位/溢出（demo v5 参照系）。更多菜单/跳过确认气泡仍挂本容器。
     gr ? Ko : null
-  ), Wa = {
+  ), Fa = {
     ...bn,
     minWidth: 0,
     height: 32,
@@ -6219,7 +6222,7 @@ function Hl(t) {
           disabled: x || D,
           open: lr,
           onOpenChange: (l) => {
-            ht(l), l && (Oe(!1), mt(!1), Qe(!1), Fe(!1), We(!1));
+            ht(l), l && (Oe(!1), mt(!1), Qe(!1), We(!1), Fe(!1));
           },
           popRef: cr,
           panelRef: dr,
@@ -6228,7 +6231,7 @@ function Hl(t) {
             dn({ mode: l }), l === "ai" && (je.current = {}), l === "ai" || l === "recommend" ? (ln.current = {}, tt.current = {}, xt.current = !1, yt((d) => d + 1)) : kt();
           }
         }),
-        Wl({
+        Fl({
           R: e,
           busy: ga,
           result: tn,
@@ -6287,7 +6290,7 @@ function Hl(t) {
           disabled: D,
           onClick: wo,
           style: {
-            ...Wa,
+            ...Fa,
             height: 24,
             padding: "0 10px",
             fontSize: 12,
@@ -6311,7 +6314,7 @@ function Hl(t) {
         // #1 the progress counter now lives in the SAME flex row, so it can no
         // longer crowd the controls; #2 the permanent completion chip is gone
         // (replaced by the one-shot toast in runAnalysis).
-        e.createElement("span", { style: Nr, key: "qm-step" }, Fo)
+        e.createElement("span", { style: Nr, key: "qm-step" }, Wo)
       )
     ),
     e.createElement("div", { style: Ta }, yn),
@@ -6322,7 +6325,7 @@ function Hl(t) {
     // 所以「只读」这个中间态不存在了 —— 留着它反而会让用户以为不能操作。
     // Template library manager (REQ-003/005): a global overlay panel.  Rendered
     // from the card so its open/draft state lives in the parent (hook-free).
-    Fl({
+    Wl({
       R: e,
       open: lo,
       templates: pr,
@@ -6416,7 +6419,7 @@ function Hl(t) {
       e.createElement("button", {
         type: "button",
         disabled: q === 0 || D,
-        style: { ...Wa, marginRight: "auto", opacity: q === 0 ? 0.5 : 1 },
+        style: { ...Fa, marginRight: "auto", opacity: q === 0 ? 0.5 : 1 },
         onClick: () => $((l) => l - 1)
       }, "上一步"),
       // US-004: 底部操作行只保留导航/提交语义按钮。跳过类动作（跳过本题 /
@@ -6485,7 +6488,7 @@ const c = {
     copied: ""
   }
 };
-let Ft = null;
+let Wt = null;
 function se(t, e, n) {
   if (t in c.draft) return c.draft[t];
   if (n === "global") {
@@ -6803,7 +6806,7 @@ async function Vl(t) {
   c.saveMsg = "模板已删除", Gs(), O();
 }
 function Yl() {
-  c.visible = !0, c.chatId = "", c.sessionId = Qt(), c.cfg = null, c.cfgError = "", tc(), c.agentId = Wn || (() => {
+  c.visible = !0, c.chatId = "", c.sessionId = Qt(), c.cfg = null, c.cfgError = "", tc(), c.agentId = Fn || (() => {
     try {
       return Ne().getSelectedAgentId ? Ne().getSelectedAgentId() : "";
     } catch {
@@ -6940,7 +6943,7 @@ function O() {
       }
       return;
     }
-    Ft || (Ft = document.createElement("div"), Ft.id = "qm-settings-root", document.body.appendChild(Ft)), e.render(t.createElement(lc, {
+    Wt || (Wt = document.createElement("div"), Wt.id = "qm-settings-root", document.body.appendChild(Wt)), e.render(t.createElement(lc, {
       R: t,
       open: c.visible,
       onClose: () => {
@@ -6973,7 +6976,7 @@ function O() {
       // ★ 漏传这一行 = 挂起清理页签永远空白（2026-11-15 实测缺陷）：
       //   组件读的是 props.stale，只更新 settingsState 不会触发可见变化。
       stale: c.stale
-    }), Ft);
+    }), Wt);
   }
 }
 function rc(t) {

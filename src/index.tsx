@@ -161,7 +161,7 @@ function injectStyles(): void {
       ".qm-actions{flex:1 1 100%!important;flex-wrap:wrap!important;",
       "justify-content:flex-end!important;gap:6px!important}",
       // The analysis bubble was a fixed 460px, which cannot fit a phone.
-      // US-013: 口径统一为 100vw-44px（对齐 .qm-hdr-pop 与宽面板内联 min()）。
+      // US-013: 口径统一为 100vw-44px（对齐 .qm-hdr-pop 与宽面板 width+maxWidth 双保险）。
       ".qm-bubble{width:auto!important;min-width:0!important;",
       "max-width:calc(100vw - 44px)!important}",
       // Footer keeps its four actions on one or two rows without squashing.
@@ -174,7 +174,7 @@ function injectStyles(): void {
       // 模式下拉）统一挂 .qm-hdr-pop 类；窄屏下宽度封顶为视口减两侧边距，
       // 面板贴 right:0 与卡片右缘对齐，max-width 兜住不溢出屏幕。
       // US-012: 口径同步为 100vw-44px（对齐 demo v5 移动端 width 口径，与宽
-      // 面板内联 min(固有宽, calc(100vw - 44px)) 一致）；宽面板实际宽度由内联
+      // 面板内联 width+maxWidth 双保险一致）；宽面板实际宽度由内联
       // style 控制，本规则对其余 .qm-hdr-pop（更多菜单/跳过确认）仅作超窄屏兜底。
       ".qm-hdr-pop{max-width:calc(100vw - 44px);z-index:10000}",
       "}",
@@ -3484,8 +3484,10 @@ function ModeSwitch(props: {
         role: "menu", className: "qm-hdr-pop",
         style: {
           position: "absolute", top: 30, right: 0, zIndex: 10000,
-          // US-012: min(固有宽, 视口-44px)——移动端不溢出屏幕（demo v5 口径）。
-          width: "min(220px, calc(100vw - 44px))",
+          // US-014: width 固有宽 + maxWidth 视口-44px 双保险（兼容不支持 CSS
+          // min() 的旧 WebView 内核），移动端不溢出屏幕。
+          width: "220px",
+          maxWidth: "calc(100vw - 44px)",
           padding: 6,
           background: "var(--app-surface-raised, #fff)",
           border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
@@ -3777,7 +3779,7 @@ function AnalysisBubble(props: {
     }, label);
   };
 
-  // US-013: 宽度改由外层面板容器统一控制（min(460px, calc(100vw - 44px))），
+  // US-013: 宽度改由外层面板容器统一控制（width 460px + maxWidth 视口-44px），
   // body 撑满容器；窄屏由 .qm-bubble media 规则兜底，不再固定 460px 溢出。
   const body = R.createElement("div", {
     className: "qm-bubble",
@@ -3906,7 +3908,7 @@ function AnalysisBubble(props: {
   // 面板不再走 antd Popover（portal 到 body、相对触发器定位），改挂 qm-actions
   // 行容器直下（absolute top:30 right:0 对齐整行右缘≈卡片右缘），移动端
   // qm-actions 换行后不再随触发器横向漂移导致左缘溢出屏幕。宽度统一为
-  // min(460px, calc(100vw - 44px))（demo v5 / US-012 口径）。触发/取消/重跑/
+  // width 460px + maxWidth 视口-44px 双保险（demo v5 / US-012 口径）。触发/取消/重跑/
   // 套用等分析逻辑零改动；外部点击关闭由父级 anPopRef/anPanelRef effect 判定。
   const analysisPanel = open
     ? R.createElement("div", {
@@ -3914,7 +3916,8 @@ function AnalysisBubble(props: {
         role: "dialog", "aria-label": "题目分析", className: "qm-hdr-pop",
         style: {
           position: "absolute", top: 30, right: 0, zIndex: 10000,
-          width: "min(460px, calc(100vw - 44px))",
+          width: "460px",
+          maxWidth: "calc(100vw - 44px)",
           padding: 12,
           background: "var(--app-surface-raised, #fff)",
           border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
@@ -7213,10 +7216,10 @@ function AskUserCard(props: { data?: any }) {
   // 会话数据；后端零改动（真实接入待走法 b 的宿主读取途径确证后另批）。
   const hdrCtxBubble = R.createElement("div", {
     // US-012: 面板挂 qm-actions 行容器（demo v5 参照系）；ref 供外部点击
-    // 关闭判定（点面板内部不关闭）。宽度 min(固有宽, 视口-44px) 防移动端溢出。
+    // 关闭判定（点面板内部不关闭）。width 固有宽 + maxWidth 视口-44px 防溢出。
     ref: hdrCtxPanelRef,
     role: "dialog", "aria-label": "查看上下文", className: "qm-hdr-pop",
-    style: { ...hdrPopPanel, width: "min(300px, calc(100vw - 44px))", padding: "10px 12px", fontSize: 12 },
+    style: { ...hdrPopPanel, width: "300px", maxWidth: "calc(100vw - 44px)", padding: "10px 12px", fontSize: 12 },
   },
     R.createElement("div", { style: hdrPopArrow }),
     R.createElement("div", {
@@ -7247,10 +7250,10 @@ function AskUserCard(props: { data?: any }) {
   // 挂在 headerPopups 容器内共享外部点击关闭；与 更多/上下文/模式 互斥。
   const hdrTplPanel = R.createElement("div", {
     // US-012: 面板挂 qm-actions 行容器（demo v5 参照系）；ref 供外部点击
-    // 关闭判定。宽度 min(内容 240+padding 8, 视口-44px)，移动端不溢出。
+    // 关闭判定。width 248px（内容 240+padding 8）+ maxWidth 视口-44px，不溢出。
     ref: hdrTplPanelRef,
     role: "dialog", "aria-label": "选择模板", className: "qm-hdr-pop",
-    style: { ...hdrPopPanel, padding: 4, width: "min(248px, calc(100vw - 44px))" },
+    style: { ...hdrPopPanel, padding: 4, width: "248px", maxWidth: "calc(100vw - 44px)" },
   },
     R.createElement("div", { style: hdrPopArrow }),
     TemplatePickList({
