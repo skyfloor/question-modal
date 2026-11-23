@@ -119,6 +119,8 @@ function injectStyles(): void {
       ".qm-md pre code{background:transparent;padding:0}",
       // US-001: header 弹出层菜单项 hover 高亮（内联样式无法表达 :hover）。
       ".qm-hdr-menu-item:hover{background:var(--app-surface-subtle,rgba(127,127,127,0.08))}",
+      // US-002: 模式下拉选项 hover 高亮（同上，:hover 需全局样式）。
+      ".qm-mode-opt:hover{background:var(--app-surface-subtle,rgba(127,127,127,0.08))}",
       ".qm-md blockquote{margin:6px 0;padding:2px 0 2px 10px;",
       "border-left:2px solid var(--app-border-strong,rgba(127,127,127,0.45));",
       "color:var(--app-text-secondary,inherit)}",
@@ -3270,46 +3272,126 @@ function ModelCapsule(props: {
     }, "▾")));
 }
 
-/** The AI/manual switch rendered as a two-segment control. */
+/** The AI/manual switch rendered as a dropdown capsule (demo v5): one pill
+ *  showing the current mode + ▼; clicking opens a small panel listing the
+ *  three modes, each with a one-line description, current mode highlighted.
+ *  Selecting a mode still calls the SAME onChange the old segmented control
+ *  used, so the card's mode logic (applyPrefs / driver reset) is unchanged.
+ *
+ *  Deliberately HOOK-FREE (invoked as a plain function from the card body —
+ *  same reason as ModelCapsule), so the open state lives in the parent and
+ *  the outside-click anchor ref is passed in via `popRef`. */
 function ModeSwitch(props: {
   R: any; mode: AnMode; onChange: (m: AnMode) => void;
   disabled?: boolean;
+  open: boolean; onOpenChange: (v: boolean) => void;
+  popRef?: any;
 }): any {
-  const { R, mode, onChange, disabled } = props;
-  // Short labels keep all three segments on one line next to the capsules.
-  // 「只用推荐」 neither analyses nor waits: it ticks the option the model
-  // already marked as recommended while authoring the question.
+  const { R, mode, onChange, disabled, open, onOpenChange, popRef } = props;
   const LABELS: Record<AnMode, string> = {
     ai: "自动分析", recommend: "只用推荐", manual: "人工",
   };
-  const TIPS: Record<AnMode, string> = {
+  // 说明文案取自 boss 已确认的 demo v5（下拉选项第二行）。
+  const DESC: Record<AnMode, string> = {
     ai: "每题自动调用模型分析，并自动填入推荐、翻页、提交",
-    recommend: "不发任何模型请求：直接采用出题时已标注的推荐，自动填入、翻页、提交",
+    recommend: "不发模型请求：直接采用出题时已标注的推荐",
     manual: "由你手动作答",
   };
-  const seg = (val: AnMode) =>
-    R.createElement("button", {
-      key: val, type: "button", disabled,
+  // 胶囊：与 ModelCapsule 同款形态（h22 / 圆角999 / f12 / 图标+当前模式+▼）。
+  const pillStyle: any = {
+    display: "inline-flex", alignItems: "center", gap: 4,
+    height: 22, padding: "1px 8px", boxSizing: "border-box",
+    borderRadius: 999, fontSize: 12, lineHeight: "1",
+    border: "1px solid var(--app-border-subtle, rgba(0,0,0,0.15))",
+    background: "var(--app-bg-container, rgba(127,127,127,0.04))",
+    color: "var(--app-text, inherit)",
+    cursor: disabled ? "default" : "pointer",
+    maxWidth: 170, overflow: "hidden", whiteSpace: "nowrap",
+  };
+  // 运行选择 icon（demo v5：三横线列表）。
+  const modeIcon = R.createElement("svg", {
+    width: 11, height: 11, viewBox: "0 0 24 24", fill: "none",
+    stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round",
+    "aria-hidden": "true", style: { flexShrink: 0 },
+  },
+    R.createElement("path", { d: "M4 6h16" }),
+    R.createElement("path", { d: "M4 12h16" }),
+    R.createElement("path", { d: "M4 18h10" }));
+  // 下拉选项（demo v5 .mode-opt：主行 + 说明行，当前模式高亮）。
+  const modeOpt = (val: AnMode) => {
+    const on = mode === val;
+    return R.createElement("button", {
+      key: val, type: "button", disabled, role: "menuitem",
+      className: "qm-mode-opt",
+      title: DESC[val],
+      onClick: () => { onChange(val); onOpenChange(false); },
       style: {
-        height: 22, padding: "0 8px", fontSize: 11, borderRadius: 10,
-        cursor: disabled ? "default" : "pointer", border: "none",
-        whiteSpace: "nowrap",
-        background: mode === val
-          ? "var(--app-accent, #ff7f16)" : "transparent",
-        color: mode === val
-          ? "var(--app-text-inverse, #fff)"
+        display: "block", width: "100%", textAlign: "left",
+        cursor: disabled ? "default" : "pointer",
+        padding: "7px 9px", borderRadius: 6, border: "none",
+        background: "transparent",
+        color: on
+          ? "var(--app-accent-text, var(--app-accent, #ff7f16))"
           : "var(--app-text-secondary, inherit)",
+        fontWeight: on ? 600 : 400,
       },
-      title: TIPS[val],
-      onClick: () => onChange(val),
-    }, LABELS[val]);
-  return R.createElement("div", {
-    style: {
-      display: "inline-flex", alignItems: "center", gap: 2, padding: 2,
-      borderRadius: 12, background: "var(--app-surface-subtle, rgba(127,127,127,0.08))",
-      border: "1px solid var(--app-border-subtle, rgba(127,127,127,0.2))",
     },
-  }, seg("ai"), seg("recommend"), seg("manual"));
+      R.createElement("div", { style: { fontSize: 12 } }, LABELS[val]),
+      R.createElement("div", {
+        style: {
+          fontSize: 11, marginTop: 1, fontWeight: 400,
+          color: "var(--app-text-tertiary, inherit)",
+        },
+      }, DESC[val]));
+  };
+  return R.createElement("div", {
+    ref: popRef,
+    style: {
+      position: "relative", display: "inline-flex",
+      alignItems: "center", flex: "none",
+    },
+  },
+    R.createElement("button", {
+      type: "button", disabled,
+      style: pillStyle,
+      title: "运行选择：" + LABELS[mode],
+      onClick: () => onOpenChange(!open),
+    },
+      modeIcon,
+      R.createElement("span", {
+        style: { overflow: "hidden", textOverflow: "ellipsis" },
+      }, LABELS[mode]),
+      R.createElement("span", {
+        style: { fontSize: 10, color: "var(--app-text-tertiary, inherit)" },
+      }, "▾")),
+    open
+      ? R.createElement("div", {
+          role: "menu",
+          style: {
+            position: "absolute", top: 30, right: 0, zIndex: 60, width: 220,
+            padding: 6,
+            background: "var(--app-surface-raised, #fff)",
+            border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+            borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+          },
+        },
+          R.createElement("div", {
+            style: {
+              position: "absolute", top: -5, right: 9, width: 8, height: 8,
+              transform: "rotate(45deg)",
+              background: "var(--app-surface-raised, #fff)",
+              borderLeft: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+              borderTop: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+            },
+          }),
+          R.createElement("div", {
+            style: {
+              fontSize: 11, fontWeight: 600, padding: "2px 9px 6px",
+              color: "var(--app-text-tertiary, inherit)",
+            },
+          }, "运行选择"),
+          modeOpt("ai"), modeOpt("recommend"), modeOpt("manual"))
+      : null);
 }
 
 /** The prompt-template picker: a pill that opens a Popover listing every
@@ -4038,6 +4120,23 @@ function AskUserCard(props: { data?: any }) {
     return () => document.removeEventListener("mousedown", onDocDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [moreOpen, ctxOpen]);
+  // ── US-002: 运行选择（模式）下拉胶囊 ──
+  // ModeSwitch 与 ModelCapsule 同为 hook-free（以普通函数调用），弹出开合
+  // 状态由卡片持有；modePopRef 供「点击外部关闭」判定（手法同 US-001，
+  // 独立监听、不触碰已验证的 headerPopups 逻辑）。
+  const [modeOpen, setModeOpen] = R.useState(false);
+  const modePopRef = R.useRef<any>(null);
+  R.useEffect(() => {
+    if (!modeOpen) return undefined;
+    const onDocDown = (ev: any) => {
+      const el = modePopRef.current;
+      if (el && ev && ev.target && el.contains(ev.target)) return;
+      setModeOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modeOpen]);
   // Popover open/state for the capsule picker lives here (its component is
   // hook-free by design — see ModelCapsule).
   const [capOpen, setCapOpen] = R.useState(false);
@@ -6754,10 +6853,12 @@ function AskUserCard(props: { data?: any }) {
     hdrIconBtn("更多操作", moreOpen, () => {
       setMoreOpen((v: boolean) => !v);
       setCtxOpen(false);
+      setModeOpen(false);   // US-002: header 弹出层互斥
     }, moreIconNode),
     hdrIconBtn("查看上下文", ctxOpen, () => {
       setCtxOpen((v: boolean) => !v);
       setMoreOpen(false);
+      setModeOpen(false);   // US-002: header 弹出层互斥
     }, ctxIconNode),
     moreOpen ? hdrMoreMenu : null,
     ctxOpen ? hdrCtxBubble : null);
@@ -6806,6 +6907,13 @@ function AskUserCard(props: { data?: any }) {
         }),
         ModeSwitch({
           R, mode: anMode, disabled: answered || busy,
+          open: modeOpen,
+          onOpenChange: (v: boolean) => {
+            setModeOpen(v);
+            // US-002: header 弹出层互斥——打开模式下拉时收起「更多/上下文」。
+            if (v) { setMoreOpen(false); setCtxOpen(false); }
+          },
+          popRef: modePopRef,
           onChange: (m: AnMode) => {
             applyPrefs({ mode: m });
             if (m === "ai") {
