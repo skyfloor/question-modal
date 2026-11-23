@@ -121,6 +121,9 @@ function injectStyles(): void {
       ".qm-hdr-menu-item:hover{background:var(--app-surface-subtle,rgba(127,127,127,0.08))}",
       // US-002: 模式下拉选项 hover 高亮（同上，:hover 需全局样式）。
       ".qm-mode-opt:hover{background:var(--app-surface-subtle,rgba(127,127,127,0.08))}",
+      // US-005: 释放阻塞 🔒 icon hover（对齐 demo 的 iconbtn.warn:hover：
+      // 边框转 warning 实色；内联样式无法表达 :hover）。
+      ".qm-release-lock:hover{border-color:var(--app-warning,#d46b08)!important;",
       ".qm-md blockquote{margin:6px 0;padding:2px 0 2px 10px;",
       "border-left:2px solid var(--app-border-strong,rgba(127,127,127,0.45));",
       "color:var(--app-text-secondary,inherit)}",
@@ -768,7 +771,7 @@ function cardSessionId(callId: string): string {
 const WAIT_HINT_DEFAULT_SEC = 180;
 
 
-// 阻塞阈值（秒）：越过它才在等待行追加「多为限流/报错 + 点右侧释放阻塞」的指引。
+// 阻塞阈值（秒）：越过它才在等待行追加「多为限流/报错 + 点右上角 🔒 释放阻塞」的指引。
 // 2026-10-22 用户裁定把 180 收紧到 20——真限流时等 3 分钟才提示等于没提示。
 const WAIT_SOFT_SEC = 20;
 // 后台轮询间隔（毫秒）。180s 窗口内最多 ~30 次判定，每次只读两个 textContent 长度。
@@ -824,7 +827,7 @@ function externalTextLen(callId: string): number {
 function waitPhaseText(phase: string): string {
   if (phase === "stalled") {
     return "⏳ 已提交，模型处理中 · 已越过阻塞阈值，多为模型限流/报错；"
-      + "若发新消息报「A task is already running」，点右侧「释放阻塞」";
+      + "若发新消息报「A task is already running」，点右上角 🔒 释放阻塞";
   }
   return "⏳ 已提交，模型处理中";
 }
@@ -2468,8 +2471,8 @@ async function releaseBackend(
         // n === 0 is a *definitive* answer from the record owner: "no survey
         // of mine blocks this session".  Report it as ok/no-release so the
         // automatic paths converge (nothing left to wait for) — they must NOT
-        // escalate to a run-cancelling host stop.  The user-initiated rescue
-        // path reads the same signal and may escalate; see `rescue`.
+        // escalate to a run-cancelling host stop.  The user-initiated release
+        // path reads the same signal and may escalate; see `releaseBlocked`.
         return { ok: true, released: n > 0, reason: n > 0 ? "cancelled" : "none" };
       }
       return { ok: false, released: false, reason: "http " + r.status };
@@ -3918,8 +3921,8 @@ function AskUserCard(props: { data?: any }) {
   );
   // True once we go too long without a usable request_id → show self-rescue.
   const [stuck, setStuck] = R.useState(false);
-  // When the current resolve attempt started, so the rescue can report how
-  // long the panel has been unable to reach the backend.
+  // When the current resolve attempt started, so the release entry can report
+  // how long the panel has been unable to reach the backend.
   const firstTryAt = R.useRef(0);
   // Set when the backend tells us this survey is definitively over — either
   // the plugin was reloaded while it was open (orphan) or the record is gone
@@ -4777,7 +4780,7 @@ function AskUserCard(props: { data?: any }) {
   ): Promise<boolean> => {
     const rel = await releaseBackend(callId, cardSessionId(callId));
     if (!rel.ok) {
-      // Could not lift the block — keep the card (and the rescue button) so
+      // Could not lift the block — keep the card (and the release lock) so
       // the user can retry, instead of pretending the survey is over.
       setStuck(true);
       setUploading(false);
@@ -5288,86 +5291,12 @@ function AskUserCard(props: { data?: any }) {
     };
   }, [answered, callId]);
 
-  // Self-rescue: the survey is blocking the whole chat, and this card cannot
-  // reach the backend for its request_id.  Release the block so the host
-  // stops answering 409「A task is already running for this chat」and the
-  // user can keep talking.  Skips THIS tool call only — other pending
-  // surveys in the same session are untouched.
-  const rescue = async () => {
-    setBusy(true);
-    try {
-      // Explicit user action → two stages.  First the plugin's own endpoints
-      // (/skip by request_id, then the session-wide /cancel-session).  If they
-      // cannot actually release anything, escalate to the host's run stop,
-      // because only that can unpark an agent whose Future lives in an older
-      // service.  That escalation is deliberately kept OUT of
-      // `releaseBackend` so the automatic convergence paths can never cancel a
-      // healthy run.
-      //
-      // Note the cross-instance shape: localStorage still holds the old
-      // request_id, so /skip runs and answers 404 (the new service never had
-      // that record) → reason "gone"/"none" with released=false.  Those are
-      // exactly the cases that must escalate.
-      const sid = cardSessionId(callId);
-      let rel = await releaseBackend(callId, sid);
-      // Escalate whenever the plugin could not *prove* it unparked anything.
-      //
-      // "orphan" is the treacherous one: the record was found on disk but has
-      // no live Future in the answering service — the classic shape after a
-      // hot reload, where the parked Future belongs to the *older* module
-      // generation.  It reads as released:true, yet the agent is still parked,
-      // so it must escalate too.
-      //
-      // A network failure is deliberately NOT escalated: the survey may be
-      // perfectly alive behind a transient outage, and cancelling the run
-      // would be strictly worse than telling the user to retry.
-      const unproven = !rel.released || rel.reason === "orphan";
-      if (unproven && rel.reason !== "network" && sid) {
-        const hs = await hostStopFallback(sid);
-        if (hs.ok && hs.released) rel = hs;
-        else if (hs.ok && !rel.ok) rel = { ok: true, released: false, reason: "gone" };
-      }
-      if (!rel.ok) {
-        throw new Error(
-          rel.reason === "network"
-            ? "网络不可达，未能释放；请稍后重试"
-            : "未能取得问卷句柄（" + rel.reason + "）");
-      }
-      if (rel.released) {
-        // The agent is unparked; close the card out.  A user-initiated
-        // release is a *skip*, not a failure — only a dead record earns the
-        //「已失效」styling.  The host-stop path is different: it cancels the
-        // run outright, so the agent will NOT resume — say so plainly instead
-        // of promising「会话可继续」.
-        const viaHost = rel.reason === "host-stop";
-        converge(rel.reason === "orphan" ? "orphan" : "",
-          rel.reason === "orphan"
-            ? "本次问卷已失效：问卷服务在作答期间重启，原来的等待已中断。\n"
-              + "无需再操作，请直接在对话中继续。"
-            : viaHost
-              ? "本次问卷已释放：已直接终止本次运行，会话可继续对话。\n"
-                + "（插件端记录已不可达，例如插件刚重载过；本次回答未回传给模型。）"
-              : "用户跳过了本次问卷。",
-          true);
-        toast("info",
-          viaHost ? "已释放本次问卷（已终止本次运行）" : "已释放本次问卷，会话可继续");
-      } else {
-        // Nothing was pending any more — the block is already gone.
-        converge("gone",
-          "本次问卷已失效：后端已不再保留这条记录（可能已过期或服务曾重启）。\n"
-          + "无需再操作，请直接在对话中继续。",
-          true);
-        toast("info", "本次问卷已失效，已关闭");
-      }
-    } catch (e: any) {
-      toast("error", "释放失败: " + (e && e.message ? e.message : e));
-    } finally { setBusy(false); }
-  };
-
   // Escape hatch for a card that already shows its answer/skip summary but
-  // whose chat is *still* locked (409).  Same two-stage backend release as
-  // `rescue`, deliberately WITHOUT calling `converge`: an answered card must
-  // keep showing the user's submission, so the outcome goes to a side note.
+  // whose chat is *still* locked (409).  Two-stage backend release (plugin
+  // endpoints, then host stop), deliberately WITHOUT calling `converge`: an
+  // answered card must keep showing the user's submission, so the outcome
+  // goes to a side note.  US-005 起它也是所有渲染路径的唯一释放入口
+  // （header 🔒 icon，见 releaseLockBtn），原 rescue 已随之移除。
   const releaseBlocked = async () => {
     setBusy(true);
     try {
@@ -5401,6 +5330,36 @@ function AskUserCard(props: { data?: any }) {
       toast("error", "释放失败: " + (e && e.message ? e.message : e));
     } finally { setBusy(false); }
   };
+
+  // ── US-005: 释放阻塞 🔒 icon 微按钮（demo v5 形态）──
+  // 形态迁移：各渲染路径底部/卡内的「释放阻塞/释放本次问卷」按钮统一收口到
+  // header 右上角的一个 🔒 icon（与 US-001 的 icon 微按钮同规格：24px、
+  // 边框、圆角、warn 警示色）。出现条件沿用各路径现有判定（showRelease /
+  // stuck / slowActive），点击统一走原 releaseBlocked 逻辑——本 helper 只
+  // 承载触发入口，不新增/不改变任何释放判定。
+  const releaseLockIconNode = R.createElement("svg", {
+    width: 13, height: 13, viewBox: "0 0 24 24", fill: "none",
+    stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round",
+    strokeLinejoin: "round", "aria-hidden": "true",
+  },
+    R.createElement("rect", { x: 3, y: 11, width: 18, height: 11, rx: 2 }),
+    R.createElement("path", { d: "M7 11V7a5 5 0 0 1 9.9-1" }));
+  const releaseLockBtn = (onClick: () => void, key: string) =>
+    R.createElement("button", {
+      type: "button", key, className: "qm-release-lock",
+      "data-qm-release-lock": "true",
+      title: "释放阻塞（若发新消息报 A task is already running，点此释放）",
+      "aria-label": "释放阻塞",
+      disabled: busy, onClick,
+      style: {
+        width: 24, height: 24, padding: 0, flex: "none", lineHeight: 1,
+        display: "inline-flex", alignItems: "center", justifyContent: "center",
+        borderRadius: 6, cursor: busy ? "default" : "pointer",
+        border: "1px solid var(--app-warning-border, rgba(250,173,20,0.45))",
+        background: "transparent",
+        color: "var(--app-warning-text, #d46b08)",
+      },
+    }, releaseLockIconNode);
 
   // Conditional visibility: only questions whose `showIf` currently holds
   // are shown.  Navigation, the progress counter and submission all work on
@@ -6433,22 +6392,17 @@ function AskUserCard(props: { data?: any }) {
         R.createElement("div", { style: titleRow },
           titleIconNode(R),
           R.createElement("span", { style: titleStyle, className: "qm-title" }, title)),
-        R.createElement("span", { style: pill }, "准备中")),
+        R.createElement("div", {
+          style: { display: "flex", alignItems: "center", gap: 6, flex: "none" },
+        },
+          // US-005: 释放入口收口到 header 🔒 icon（原底部「释放本次问卷」
+          // 按钮移除，不留多套并存）。准备中的卡同样会把会话锁死，越过
+          // stuck 阈值后必须仍有唯一逃生口；点击走原 releaseBlocked 逻辑。
+          stuck ? releaseLockBtn(releaseBlocked, "qm-release-lock-prep") : null,
+          R.createElement("span", { style: pill }, "准备中"))),
       R.createElement("div", {
         style: { ...content, color: "var(--app-text-tertiary, inherit)", fontSize: 12 },
-      }, "正在准备题目…"),
-      // The chat is already parked while this card prepares, so the escape
-      // hatch must exist here too — otherwise a card whose arguments never
-      // arrive would block the session with no way out.
-      stuck
-        ? R.createElement("div", { style: actions },
-            R.createElement("button", {
-              type: "button", disabled: busy,
-              style: { ...btnSecondary, marginLeft: "auto" },
-              title: "释放本次问卷的阻塞，让会话恢复可用",
-              onClick: rescue,
-            }, "释放本次问卷"))
-        : null);
+      }, "正在准备题目…"));
   }
 
   // ── answered: read-only result view ──
@@ -6556,28 +6510,28 @@ function AskUserCard(props: { data?: any }) {
         // shape: the card can be settled while the agent's Future was never
         // actually resolved (orphaned record / cross-generation reload / race),
         // so the chat keeps answering 409 and the user has nothing left to
-        // click.  This button therefore survives the answered state; it only
+        // click.  This entry therefore survives the answered state; it only
         // runs on an explicit click (never automatically), so a healthy run is
         // never cancelled behind the user's back.
         // 用户裁定 q1=**分情况**：本实例真的在等这段才常驻；纯历史卡不显示。
-        showRelease ? R.createElement("button", {
-          type: "button", disabled: busy,
-          title: "若会话仍被本次问卷阻塞（发新消息报 A task is already running），点此释放",
-          style: {
-            ...btnSecondary, minWidth: 0, height: 26, padding: "0 10px", fontSize: 12,
-          },
-          onClick: releaseBlocked,
-        }, "释放阻塞") : null);
+        // US-005: 释放入口收口到行尾 🔒 icon（原「释放阻塞」按钮移除）。
+        showRelease ? releaseLockBtn(releaseBlocked, "qm-release-lock-fold") : null);
     }
     return R.createElement("div", { style: card, className: "qm-card", "data-qm-card": "true", "data-qm-card-id": callId },
       R.createElement("div", { style: { ...header, marginBottom: 8, paddingBottom: 8 } },
         R.createElement("div", { style: titleRow },
           titleIconNode(R),
           R.createElement("span", { style: titleStyle }, title)),
-        R.createElement("span", { style: { ...pill, color: deadReason
-            ? "var(--app-warning-text, #d46b08)"
-            : "var(--app-success-text, #389e0d)" } },
-          deadReason ? "已失效" : (skippedAll ? "已跳过" : "已完成"))),
+        R.createElement("div", {
+          style: { display: "flex", alignItems: "center", gap: 6, flex: "none" },
+        },
+          // US-005: 释放入口收口到 header 🔒 icon（原底部「释放阻塞」按钮
+          // 移除，不留多套并存）；出现条件沿用 showRelease 判定。
+          showRelease ? releaseLockBtn(releaseBlocked, "qm-release-lock-ans") : null,
+          R.createElement("span", { style: { ...pill, color: deadReason
+              ? "var(--app-warning-text, #d46b08)"
+              : "var(--app-success-text, #389e0d)" } },
+            deadReason ? "已失效" : (skippedAll ? "已跳过" : "已完成")))),
       // 展开后的只读卡：单独一节醒目「跳过原因」，便于复盘自动模式整卷跳过。
       // 与折叠行共用同一个 skipReason（真相源唯一），不在此另做解析。
       skippedAll && (skipReason || deadReason)
@@ -6633,15 +6587,7 @@ function AskUserCard(props: { data?: any }) {
               style: { flex: 1, fontSize: 12, lineHeight: 1.5,
                        color: "var(--app-text-secondary, inherit)" },
             }, releasedNote)
-          : waitHintNode(),
-        // 同上，用户裁定 q1=分情况（历史卡不显示；万一真有悬挂的 Future，
-        // 宿主自己的「停止」按钮仍然可用，它走 app 级 tool_coordinator）。
-        showRelease ? R.createElement("button", {
-          type: "button", disabled: busy,
-          title: "若会话仍被本次问卷阻塞（发新消息报 A task is already running），点此释放",
-          style: { ...btnSecondary, marginLeft: "auto", minWidth: 0, height: 26, padding: "0 10px", fontSize: 12 },
-          onClick: releaseBlocked,
-        }, "释放阻塞") : null));
+          : waitHintNode()));
   }
 
   // 题级超时是否成立（七次裁定：这是横幅唯一的常规触发条件）。
@@ -6872,15 +6818,35 @@ function AskUserCard(props: { data?: any }) {
       title: "跳过后本次问卷立即结束，未答题目不再收集，不可恢复",
       onClick: () => { setMoreOpen(false); setSkipConfirmOpen(true); },
     }));
-  // 「查看上下文」气泡：占位文案（后续 story 接入真实上下文，不接后端）。
+  // 「查看上下文」气泡（US-005）：demo v5 形态。本版为**纯前端占位示例**——
+  // 发起原因与最近上下文都是静态示例文案，不调用任何后端接口、不读真实
+  // 会话数据；后端零改动（真实接入待走法 b 的宿主读取途径确证后另批）。
   const hdrCtxBubble = R.createElement("div", {
-    style: { ...hdrPopPanel, width: 260, padding: "10px 12px", fontSize: 12 },
+    role: "dialog", "aria-label": "查看上下文",
+    style: { ...hdrPopPanel, width: 300, padding: "10px 12px", fontSize: 12 },
   },
     R.createElement("div", { style: hdrPopArrow }),
-    R.createElement("div", { style: { fontWeight: 600, marginBottom: 4 } }, "上下文"),
     R.createElement("div", {
-      style: { color: "var(--app-text-secondary, inherit)", lineHeight: 1.6 },
-    }, "（占位）这里将展示本次问卷的发起原因与最近对话上下文。"),
+      style: { fontWeight: 600, marginBottom: 6,
+               color: "var(--app-accent-text, var(--app-accent, #ff7f16))" },
+    }, "问卷发起原因"),
+    R.createElement("div", {
+      style: {
+        background: "var(--app-accent-soft, rgba(255,127,22,0.16))",
+        borderRadius: 6, padding: "8px 10px", marginBottom: 8, lineHeight: 1.55,
+      },
+    }, "发布「费用报销-部门审批」流程前，需要确认差旅费报销上限是否调整为 "
+       + "5000 元/次。（示例数据，本版不接后端）"),
+    R.createElement("div", {
+      style: { color: "var(--app-text-secondary, inherit)", lineHeight: 1.55 },
+    },
+      R.createElement("b", {
+        style: { color: "var(--app-text, inherit)", fontWeight: 600 },
+      }, "最近上下文："),
+      R.createElement("br"),
+      "用户：把报销流程里的差旅标准改一下，然后走发布。",
+      R.createElement("br"),
+      "助手：好的，发布前需要与您确认 2 个关键参数。"),
     R.createElement("div", {
       style: { marginTop: 8, fontSize: 11, color: "var(--app-text-tertiary, inherit)" },
     }, "来自本次问卷创建时的会话快照 · 仅本会话可见"));
@@ -7085,6 +7051,12 @@ function AskUserCard(props: { data?: any }) {
         // US-001: 「更多」(⋮) 与「查看上下文」(ⓘ) 两个 icon 微按钮 + 弹出层，
         // 纯增量插在现有控件之后、进度 pill 之前（demo v5 形态）。
         headerPopups,
+        // US-005: 释放阻塞 🔒 icon——非常驻，越过阻塞阈值后才出现（demo v5
+        // 形态）。出现条件沿用阻塞横幅判定（题级 slowActive / stuck 故障兜底），
+        // 点击走原 releaseBlocked 逻辑；原横幅内的释放按钮随之移除。
+        (slowActive || (stuck && !reqId))
+          ? releaseLockBtn(releaseBlocked, "qm-release-lock")
+          : null,
         // #1 the progress counter now lives in the SAME flex row, so it can no
         // longer crowd the controls; #2 the permanent completion chip is gone
         // (replaced by the one-shot toast in runAnalysis).
@@ -7153,18 +7125,9 @@ function AskUserCard(props: { data?: any }) {
               ? ("⚠️ 本题已超过 " + slowSecShown + "s，可直接跳过或继续作答，")
               : "⚠️ 无法取得本次问卷的会话句柄，")
             + "阻塞期间发新消息会报「A task is already running」；"
-            + (reqId
-                ? "若你不想继续作答，可点击右侧按钮释放。"
-                : "且未能取得本次问卷的会话句柄，点击右侧按钮释放。")),
-          R.createElement("button", {
-            type: "button", disabled: busy,
-            style: {
-              ...btnGhost, height: 28, padding: "0 12px",
-              borderColor: "var(--app-warning-border, rgba(250,173,20,0.6))",
-            },
-            onClick: rescue,
-            title: "释放本次问卷的阻塞，让会话恢复可用",
-          }, "释放本次问卷"))
+            // US-005: 释放动作收口到 header 右上角 🔒 icon（releaseLockBtn），
+            // 横幅只保留文字引导，不再内嵌释放按钮。
+            + "若你不想继续作答，点右上角 🔒 释放阻塞。"))
       : null,
 
     // Persistent gate-rejection banner (red).  Doubles as proof-of-bundle:
