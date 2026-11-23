@@ -7008,12 +7008,15 @@ function AskUserCard(props: { data?: any }) {
   // US-003 起「选择模板」菜单项已接通原模板选择界面（TemplatePickList）；
   // 其余菜单项仍为占位（后续 story 接通 skipCurrent/submit/skipAll）；
   // 气泡展示占位文案（本版不接后端）。
-  const hdrIconBtn = (label: string, active: boolean, onClick: () => void, icon: any) =>
+  const hdrIconBtn = (label: string, active: boolean, onClick: () => void, icon: any, opts?: { text?: boolean }) =>
     R.createElement("button", {
       type: "button", title: label, "aria-label": label,
       onClick,
       style: {
-        width: 24, height: 24, padding: 0, flex: "none", lineHeight: 1,
+        ...(opts?.text
+          ? { width: "auto", padding: "0 7px" }
+          : { width: 24, padding: 0 }),
+        height: 24, flex: "none", lineHeight: 1,
         display: "inline-flex", alignItems: "center", justifyContent: "center",
         borderRadius: 6, cursor: "pointer",
         border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
@@ -7023,14 +7026,14 @@ function AskUserCard(props: { data?: any }) {
         color: "var(--app-text-secondary, inherit)",
       },
     }, icon);
-  // 更多：三点竖排。
-  const moreIconNode = R.createElement("svg", {
-    width: 14, height: 14, viewBox: "0 0 24 24", fill: "currentColor",
-    "aria-hidden": "true",
+  // 更多：文字「更多」+ 下拉小箭头 ▾（US-011：由三点图标改为文字，随主题色）。
+  const moreLabelNode = R.createElement("span", {
+    style: { display: "inline-flex", alignItems: "center", gap: 3 },
   },
-    R.createElement("circle", { cx: 12, cy: 5, r: 1.7 }),
-    R.createElement("circle", { cx: 12, cy: 12, r: 1.7 }),
-    R.createElement("circle", { cx: 12, cy: 19, r: 1.7 }));
+    R.createElement("span", { style: { fontSize: 12, lineHeight: 1 } }, "更多"),
+    R.createElement("span", {
+      style: { fontSize: 10, color: "var(--app-text-tertiary, inherit)" },
+    }, "▾"));
   // 查看上下文：圆圈 i。
   const ctxIconNode = R.createElement("svg", {
     width: 14, height: 14, viewBox: "0 0 24 24", fill: "none",
@@ -7224,7 +7227,7 @@ function AskUserCard(props: { data?: any }) {
       setTplOpen(false);    // US-003: header 弹出层互斥
       setSkipConfirmOpen(false);   // US-004: header 弹出层互斥
       setReleaseConfirmOpen(false);   // US-010: 释放确认气泡并入互斥组
-    }, moreIconNode),
+    }, moreLabelNode, { text: true }),
     hdrIconBtn("查看上下文", ctxOpen, () => {
       setCtxOpen((v: boolean) => !v);
       setMoreOpen(false);
