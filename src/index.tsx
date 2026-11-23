@@ -85,6 +85,17 @@ function injectStyles(): void {
     el.textContent = [
       // Match the composer input: 1px solid --app-border-strong, radius 12,
       // --app-surface-raised fill (see `.qwenpaw-sender-content` / `.ant-input`).
+      // ── US-018: 全局盒模型归一 ──
+      // 宿主没有 `*,*::before,*::after{box-sizing:border-box}` 重置（实测其
+      // index css 只有 9 处零散 border-box），所以本插件所有元素默认是
+      // content-box —— 内联 `width:min(460px,90vw)` 只算内容宽，加左右
+      // padding 12×2 后实际占 24px 更多，实测 390 视口下算出 346 却占 372，
+      // `maxHeight` 同理（内容 726 + padding = 752，溢出 780 视口）。
+      // 这就是「宽度设了 90% 还是超、高度设了上限还是溢出」的真因。
+      // 在本插件作用域内统一 border-box，后续所有面板的 width/maxHeight
+      // 语义才是「含内边距的实际占位」。
+      ".qm-card,.qm-card *,.qm-card *::before,.qm-card *::after,",
+      ".qm-analysis-panel,.qm-analysis-panel *{box-sizing:border-box}",
       ".qm-card{",
       "border:1px solid var(--app-border-strong,rgba(127,127,127,0.45))!important;",
       "border-radius:12px!important;",
@@ -3779,10 +3790,9 @@ function AnalysisBubble(props: {
     }, label);
   };
 
-  // US-013: 宽度改由外层面板容器统一控制（width 460px + maxWidth 视口-44px）。
-  // US-016: body 弹性伸缩（flex:1 1 auto + minHeight:0），高度由弹窗卡的
-  // maxHeight 上限约束——内容少时卡自适应变矮，内容多时到上限、body 内滚动
-  // （滚动条仍由 .qm-bubble CSS 隐藏，可滚不可见，口径同前）。
+  // US-018: 宽度由外层气泡容器统一控制（min(460px, 90vw)）；body 只负责
+  // 高度弹性——flex:1 1 auto + minHeight:0 让内容多时在外层 maxHeight 内滚动、
+  // 内容少时气泡随内容变矮（滚动条仍由 .qm-bubble CSS 隐藏，可滚不可见）。
   const body = R.createElement("div", {
     className: "qm-bubble",
     style: { width: "100%", flex: "1 1 auto", minHeight: 0, overflowY: "auto", fontSize: 13 },
@@ -3908,63 +3918,48 @@ function AnalysisBubble(props: {
              fontSize: 12 },
   }, children);
 
-  // US-015: boss 裁定「查看分析」改为屏幕居中弹窗（Modal）形态，不再用贴
-  // 触发器的气泡。结构 = 遮罩（fixed 铺满视口 rgba(0,0,0,0.45) z10000）+
-  // 居中弹窗卡（fixed 50%/50% translate(-50%,-50%) z10001，圆角/阴影加强、
-  // 无小三角）。优先 R.createPortal 挂 document.body（宿主 React 18 支持；
-  // US-013 删掉的是 antd Popover，不是 createPortal）——fixed 定位不受
-  // qm-actions 祖先 transform/overflow影响；createPortal 不可用时退回直接
-  // 挂 qm-actions（仍为 fixed 居中，但若祖先链存在 transform/filter 等属性，
-  // fixed 会被限制为该祖先的包含块——已知风险，注释留档）。
-  // 关闭交互：点遮罩/卡外 = onOpenChange(false)、点卡内部不关闭，仍由父级
-  // anPopRef（触发器）/anPanelRef（弹窗卡）的 mousedown effect 判定——遮罩
-  // 在两 ref 之外，点它即收起，无需在遮罩上另挂 onClick（避免卡内点击冒泡
-  // 误关）。触发器按钮、run/cancel/apply/rerun 分析逻辑与卡内内容零改动。
+  // ── US-018: 回退到气泡方式（boss 裁定：弹窗在真宿主仍异常，回退气泡）──
+  // 参照 US-012/013 已验证的参照系：面板挂 qm-actions 行容器直下（absolute
+  // right:0 对齐整行右缘≈卡片右缘），但本次按 boss 要求收紧两个尺寸口径：
+  //   宽度 = min(460px, 90vw)   —— 最大不发超视口 90%，窄屏两端各留 5% 余量
+  //   高度 = 视口上限内滚动      —— maxHeight 视口减上下安全边距，超出滚 body
+  // 关闭交互：点外部由父级 anPopRef/anPanelRef 的 mousedown effect 判定；卡内
+  // mousedown/click/keydown 全部截断，避免拖选文本/输入法选字被当成「点外部」
+  // （US-017 的教训保留）。Esc 关闭同样保留。分析逻辑函数与卡内内容零改动。
   const analysisCard = R.createElement("div", {
     key: "qm-analysis-panel", ref: panelRef,
-    role: "dialog", "aria-label": "题目分析", className: "qm-analysis-panel",
+    role: "dialog", "aria-label": "题目分析", className: "qm-hdr-pop qm-analysis-panel",
     style: {
-      position: "fixed", top: "50%", left: "50%",
-      transform: "translate(-50%, -50%)", zIndex: 10001,
-      width: "460px",
-      maxWidth: "calc(100vw - 44px)",
-      // US-016: 高度自适应 + 视口上限。上下各留 48px（共 96px）安全边距：
-      // 内容少时卡随内容变矮，内容多时封顶在视口内，超出部分由 body 滚动。
-      maxHeight: "calc(100vh - 96px)",
+      position: "absolute", top: 30, right: 0, zIndex: 10000,
+      // 宽度：最大 90% 视口；桌面端仍以 460 为内容舒适宽。
+      width: "min(460px, 90vw)",
+      // 高度：自适应且不得溢出视口。气泡 top:30 是相对 qm-actions 定位的，
+      // 而手机上 qm-actions 换行后自身已偏离视口顶（实测气泡起点 71px），
+      // 所以余量不能按「视口顶 + 30」这种假设来算——直接给足安全边界：
+      // 100vh 减 100px（覆盖 30px 偏移 + 手机上最多约 60px 的换行偏移 + 余量）。
+      maxHeight: "calc(100vh - 100px)",
       display: "flex", flexDirection: "column",
       padding: 12,
       background: "var(--app-surface-raised, #fff)",
       border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
-      borderRadius: 12, boxShadow: "0 16px 48px rgba(0,0,0,0.24)",
-      // US-017: 卡内任何点按都在此截断——不冒泡到遮罩（否则点卡内也会关），
-      // 也不冒泡到 document（否则输入法选字、拖选文本会被当成「点外部」）。
-      // 顺带拦截 keydown，避免空格选字等按键被浏览器解释成对卡片的点击。
+      borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
     },
     onMouseDown: (ev: any) => { if (ev && ev.stopPropagation) ev.stopPropagation(); },
     onClick: (ev: any) => { if (ev && ev.stopPropagation) ev.stopPropagation(); },
     onKeyDown: (ev: any) => { if (ev && ev.stopPropagation) ev.stopPropagation(); },
-  }, [body, analysisFooter]);
-  const analysisOverlay = R.createElement("div", {
-    key: "qm-analysis-overlay",
-    style: {
-      position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
-      background: "rgba(0,0,0,0.45)", zIndex: 10000,
-    },
-    // US-017: 遮罩自己就是「空白处」——点它关闭；卡内点击由卡自身的
-    // onMouseDown/onClick stopPropagation 截断，不会冒泡到这里。这样关闭
-    // 判定不再依赖「文档级点外部 + ref 命中」，即便 ref 在 portal 重渲染
-    // 后失效也不会误关刚打开的弹窗。
-    onMouseDown: (ev: any) => { if (ev && ev.stopPropagation) ev.stopPropagation(); },
-    onClick: () => { if (onOpenChange) onOpenChange(false); },
-  }, analysisCard);
-  const canPortal = typeof R.createPortal === "function"
-    && typeof document !== "undefined" && !!document.body;
-  const analysisPanel = open
-    ? (canPortal
-      ? R.createElement("div", { key: "qm-analysis-portal" },
-          R.createPortal(analysisOverlay, document.body))
-      : analysisOverlay)
-    : null;
+  },
+    // 气泡小三角：指向触发器方向（右上）。
+    R.createElement("div", {
+      style: {
+        position: "absolute", top: -5, right: 9, width: 8, height: 8,
+        transform: "rotate(45deg)",
+        background: "var(--app-surface-raised, #fff)",
+        borderLeft: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+        borderTop: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+      },
+    }),
+    body, analysisFooter);
+  const analysisPanel = open ? analysisCard : null;
   return [btn, analysisPanel];
 }
 
