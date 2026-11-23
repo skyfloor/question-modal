@@ -3779,11 +3779,13 @@ function AnalysisBubble(props: {
     }, label);
   };
 
-  // US-013: 宽度改由外层面板容器统一控制（width 460px + maxWidth 视口-44px），
-  // body 撑满容器；窄屏由 .qm-bubble media 规则兜底，不再固定 460px 溢出。
+  // US-013: 宽度改由外层面板容器统一控制（width 460px + maxWidth 视口-44px）。
+  // US-016: body 弹性伸缩（flex:1 1 auto + minHeight:0），高度由弹窗卡的
+  // maxHeight 上限约束——内容少时卡自适应变矮，内容多时到上限、body 内滚动
+  // （滚动条仍由 .qm-bubble CSS 隐藏，可滚不可见，口径同前）。
   const body = R.createElement("div", {
     className: "qm-bubble",
-    style: { width: "100%", maxHeight: 460, overflow: "auto", fontSize: 13 },
+    style: { width: "100%", flex: "1 1 auto", minHeight: 0, overflowY: "auto", fontSize: 13 },
   },
     busy
       ? R.createElement("div", {
@@ -3895,14 +3897,16 @@ function AnalysisBubble(props: {
               : "本题尚未分析。点击下方按钮，用所选模型分析本题并给出推荐。"),
             // Manual mode: analysis starts on an explicit press — opening the
             // bubble is a read-only action (REQ-001).
-            actionBtn("开始分析", () => { try { onRun(); } catch (_) { /* ignore */ } }, true))),
-    // The「携带上下文」and 并行/串行 options live in the bubble footer, per the
-    // user's request that context use be "放到按钮中".
-    R.createElement("div", {
-      style: { marginTop: 10, paddingTop: 8, display: "flex", flexWrap: "wrap", gap: 12,
-               borderTop: "1px solid var(--app-border-subtle, rgba(127,127,127,0.15))",
-               fontSize: 12 },
-    }, children));
+            actionBtn("开始分析", () => { try { onRun(); } catch (_) { /* ignore */ } }, true))));
+  // The「携带上下文」and 并行/串行 options live in the bubble footer, per the
+  // user's request that context use be "放到按钮中".
+  // US-016: footer 从 body 内移出、成为弹窗卡直接子节点（flex:none 不参与
+  // 伸缩），长分析在 body 内滚动时选项区固定于卡底、始终可见可操作。
+  const analysisFooter = R.createElement("div", {
+    style: { flex: "none", marginTop: 10, paddingTop: 8, display: "flex", flexWrap: "wrap", gap: 12,
+             borderTop: "1px solid var(--app-border-subtle, rgba(127,127,127,0.15))",
+             fontSize: 12 },
+  }, children);
 
   // US-015: boss 裁定「查看分析」改为屏幕居中弹窗（Modal）形态，不再用贴
   // 触发器的气泡。结构 = 遮罩（fixed 铺满视口 rgba(0,0,0,0.45) z10000）+
@@ -3924,12 +3928,16 @@ function AnalysisBubble(props: {
       transform: "translate(-50%, -50%)", zIndex: 10001,
       width: "460px",
       maxWidth: "calc(100vw - 44px)",
+      // US-016: 高度自适应 + 视口上限。上下各留 48px（共 96px）安全边距：
+      // 内容少时卡随内容变矮，内容多时封顶在视口内，超出部分由 body 滚动。
+      maxHeight: "calc(100vh - 96px)",
+      display: "flex", flexDirection: "column",
       padding: 12,
       background: "var(--app-surface-raised, #fff)",
       border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
       borderRadius: 12, boxShadow: "0 16px 48px rgba(0,0,0,0.24)",
     },
-  }, body);
+  }, [body, analysisFooter]);
   const analysisOverlay = R.createElement("div", {
     key: "qm-analysis-overlay",
     style: {
