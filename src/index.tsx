@@ -630,6 +630,84 @@ function injectStyles(): void {
       "color:var(--app-text-secondary,#4e5969);transition:all .15s}",
       ".qm-set-apitest:hover{border-color:var(--app-accent,#3b82f6);",
       "color:var(--app-accent,#3b82f6)}",
+      // ── 自定义 API · 必传可见性与参数行（US-020，2026-11-23）──
+      // boss 核心诉求原文：「用户不知道哪些是属于必传项，是否符合大部分的
+      // API 请求以及参数要求」。以下样式全部服务于「必传一眼可见」。
+      //
+      // 必传星号：红色，与正文有足够对比度（不用 accent 色，避免和「新增」
+      // 这类主动作混淆——**危险/必填用红、可选用灰**是本项目的既有口径）。
+      ".qm-apireq{color:#d92d20;font-weight:700;margin-left:2px}",
+      // 区块图例：一行小字说明「标 * 为必传项」，放在表单顶部
+      ".qm-apilegend{font-size:11px;color:var(--app-text-tertiary,#94a3b8);",
+      "margin:2px 0 6px}",
+      // 顶部汇总条：缺项时橙色告警，齐备时绿色确认。
+      // 两种态用同一元素切换 class，避免布局跳动。
+      ".qm-apistatus{display:flex;align-items:center;gap:6px;font-size:12px;",
+      "padding:6px 10px;border-radius:6px;margin:8px 0}",
+      ".qm-apistatus.miss{background:rgba(212,107,8,.08);color:#d46b08;",
+      "border:1px solid rgba(212,107,8,.35)}",
+      ".qm-apistatus.ok{background:rgba(56,158,13,.08);color:#389e0d;",
+      "border:1px solid rgba(56,158,13,.35)}",
+      // 系统字段区：锁定不可删，用浅底区分于用户自定义区
+      ".qm-apisysblock{background:var(--app-surface-subtle,rgba(127,127,127,.06));",
+      "border:1px solid var(--app-border-subtle,rgba(127,127,127,.18));",
+      "border-radius:6px;padding:8px 10px;margin:6px 0}",
+      ".qm-apisysrow{display:flex;align-items:center;gap:8px;font-size:12px;",
+      "padding:3px 0}",
+      ".qm-apisysname{flex:0 0 78px;font-weight:600;",
+      "color:var(--app-text-primary,#1e293b)}",
+      ".qm-apisysval{flex:1 1 auto;color:var(--app-text-secondary,#4e5969);",
+      "font-family:SF Mono,Monaco,Consolas,monospace;font-size:11px}",
+      ".qm-apisystag{flex:0 0 auto;font-size:10px;padding:1px 5px;border-radius:3px;",
+      "background:rgba(217,45,32,.1);color:#d92d20}",
+      // 参数行表格：参数名 / 参数值 / 必填 / 操作 四列
+      ".qm-apiparamhead,.qm-apiparamrow{display:flex;align-items:center;gap:6px;",
+      "font-size:12px}",
+      ".qm-apiparamhead{padding:0 0 4px;color:var(--app-text-tertiary,#94a3b8);",
+      "font-size:11px}",
+      ".qm-apiparamrow{padding:3px 0;position:relative}",
+      ".qm-apiparamrow.miss{padding-left:7px}",
+      // 必传未填的整行标红竖条：比只标红色文字更醒目
+      ".qm-apiparamrow.miss::before{content:'';position:absolute;left:0;top:2px;",
+      "bottom:2px;width:3px;border-radius:2px;background:#d92d20}",
+      ".qm-apipk,.qm-apipv{min-width:0;height:26px;padding:0 7px;font-size:12px;",
+      "border-radius:5px;border:1px solid var(--app-border-strong,#cbd5e1);",
+      "background:var(--app-surface-raised,#fff);color:inherit;font-family:inherit}",
+      ".qm-apipk{flex:0 0 34%}",
+      ".qm-apipv{flex:1 1 auto}",
+      ".qm-apipk.bad,.qm-apipv.bad{border-color:#d92d20}",
+      ".qm-apireqbox{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;",
+      "font-size:11px;color:var(--app-text-secondary,#4e5969);cursor:pointer}",
+      ".qm-apidel{flex:0 0 auto;width:24px;height:24px;border:none;background:none;",
+      "color:var(--app-text-tertiary,#94a3b8);cursor:pointer;font-size:14px;",
+      "border-radius:4px}",
+      ".qm-apidel:hover{color:#d92d20;background:rgba(217,45,32,.08)}",
+      ".qm-apiadd{align-self:flex-start;height:26px;padding:0 10px;font-size:12px;",
+      "border-radius:5px;border:1px dashed var(--app-border-strong,#cbd5e1);",
+      "background:transparent;color:var(--app-accent,#3b82f6);cursor:pointer}",
+      ".qm-apiadd:hover{border-color:var(--app-accent,#3b82f6);",
+      "background:rgba(59,130,246,.06)}",
+      // 请求预览：等宽字体、浅底、可滚动，让用户直接对照对方 API 文档
+      ".qm-apipreview{margin:6px 0 0;padding:8px 10px;border-radius:6px;",
+      "background:var(--app-surface-subtle,rgba(127,127,127,.06));",
+      "border:1px solid var(--app-border-subtle,rgba(127,127,127,.18));",
+      "font-family:SF Mono,Monaco,Consolas,monospace;font-size:11px;",
+      "line-height:1.55;white-space:pre-wrap;word-break:break-all;",
+      "max-height:180px;overflow:auto;color:var(--app-text-secondary,#4e5969)}",
+      ".qm-apipreviewlabel{font-size:11px;color:var(--app-text-tertiary,#94a3b8);",
+      "margin-top:8px}",
+      // 高级模式开关行
+      ".qm-apiadvrow{display:flex;align-items:center;gap:8px;margin:8px 0 4px;",
+      "font-size:12px}",
+      ".qm-apibody{width:100%;min-height:96px;padding:8px 10px;font-size:12px;",
+      "border-radius:6px;border:1px solid var(--app-border-strong,#cbd5e1);",
+      "background:var(--app-surface-raised,#fff);color:inherit;",
+      "font-family:SF Mono,Monaco,Consolas,monospace;resize:vertical}",
+      ".qm-apibody.bad{border-color:#d92d20}",
+      // 测试结果行
+      ".qm-apitestres{font-size:11px;line-height:1.6;word-break:break-all}",
+      ".qm-apitestres.ok{color:#389e0d}",
+      ".qm-apitestres.err{color:#d92d20}",
     ].join("");
     document.head.appendChild(el);
   } catch (_) { /* ignore */ }
@@ -7918,6 +7996,11 @@ async function loadGlobalCfg(): Promise<void> {
     const d = await resp.json();
     const p = (d && d.prefs) || {};
     settingsState.globalCfg = p && typeof p === "object" ? p : {};
+    // US-020: 把自定义 API 的配置同步进本地草稿（apiDemo）。
+    // 为什么不直接用 cfgValue 渲染而要多这份草稿：参数行是**数组**，
+    // 增删行/改键名需要逐字符重建（受控输入），每改一个字符就回写后端会
+    // 造成大量请求。草稿在本地累积，由页面「保存」统一提交（见卡片说明）。
+    try { apiDemoFromCfg(settingsState.globalCfg); } catch (_) { /* ignore */ }
     try { settingsRenderPanel(); } catch (_) { /* closed */ }
   } catch (_) { /* keep whatever we had */ }
 }
@@ -9419,23 +9502,135 @@ const schedDemoSeed = (): SchedDemoItem[] => [
 ];
 let schedDemoItems: SchedDemoItem[] = schedDemoSeed();
 
-// ── 自定义 API 通知 · 纯 UI 演示状态（US-008）──────────────────────
-// 同 US-007 的 schedDemoItems：本版只做界面展示。启用开关/URL/请求方法/
-// Token 位置/Token 输入/发送测试按钮都只改这份**模块级演示数据**并重绘，
-// 不写 prefs、不调用后端、不影响 notify_channel_pc/bg 的任何现有逻辑。
+// ── 自定义 API 渠道 · 参数行（US-020，2026-11-23）──────────────────
+//
+// 从「纯 UI 演示」升级为真实配置：值来自后端 prefs，改动写回后端。
+// boss 需求原文：「允许通过新增行的方式自定义参数，自定义参数除了系统提供
+// 的 title 和 content 之外，其他类型的参数由用户自定义添加……当前的方式中，
+// 用户不知道哪些是属于必传项，是否符合大部分的 API 请求以及参数要求」。
+type ApiParamRow = { key: string; value: string; required: boolean };
+
 type ApiDemoState = {
-  enabled: boolean;   // 启用开关（demo v5 为开启态）
+  enabled: boolean;   // 启用开关
   url: string;        // 请求地址（URL）
-  method: string;     // 请求方法：post-json / get-query
-  tokenPos: string;   // Token 位置：bearer / query / none
-  token: string;      // Token（password 输入，回显打码形态）
+  method: string;     // post_json / get_query
+  tokenPos: string;   // bearer / query / none
+  token: string;      // Token（密码框，空串 = 未设置，后端回显打码串）
+  tokenSet: boolean;  // 后端是否已存有 token（打码回显时置 true）
+  mode: string;       // basic / advanced
+  params: ApiParamRow[];   // 基础模式参数行
+  bodyTpl: string;    // 高级模式 body 模板
 };
+
+// 默认空状态。**不预填演示 URL/Token**：预填会让用户误以为已配好，
+// 也可能把示例值误发到 example.com。
 let apiDemo: ApiDemoState = {
-  enabled: true,
-  url: "https://example.com/hook/notify",
-  method: "post-json",
-  tokenPos: "bearer",
-  token: "sk-demo-0000000000000000",
+  enabled: false,
+  url: "",
+  method: "post_json",
+  tokenPos: "none",
+  token: "",
+  tokenSet: false,
+  mode: "basic",
+  params: [],
+  bodyTpl: "",
+};
+// 最近一次测试结果（仅本次面板生命周期内保留；历史在 /notify/test-log）
+let apiTestResult: { ok: boolean; text: string } | null = null;
+
+/** 把当前参数行数组推进设置草稿（由页面「保存」统一提交）。
+ *
+ *  为什么单独一个函数：参数行的五个改动点（改名/改值/改必填/增行/删行）
+ *  都必须落到同一处，漏一个就会出现「改了但保存后丢失」。集中成一处后
+ *  新增改动点只要记得调它即可，比在五处各写一遍更容易守。
+ */
+function apiSyncParamsDraft(): void {
+  try {
+    cfgEdit("custom_api_params", apiDemo.params.map((r) => ({
+      key: String(r.key || ""),
+      value: String(r.value || ""),
+      required: !!r.required,
+    })));
+  } catch (_) { /* settings 面板未就绪 */ }
+}
+
+/** 从后端 prefs 同步自定义 API 的配置到本地草稿。 */
+function apiDemoFromCfg(cfg: any): void {
+  if (!cfg || typeof cfg !== "object") return;
+  apiDemo.enabled = !!cfg.custom_api_enabled;
+  apiDemo.url = String(cfg.custom_api_url || "");
+  apiDemo.method = String(cfg.custom_api_method || "post_json");
+  apiDemo.tokenPos = String(cfg.custom_api_token_pos || "none");
+  apiDemo.mode = String(cfg.custom_api_mode || "basic");
+  apiDemo.bodyTpl = String(cfg.custom_api_body || "");
+  // 后端把真实 token 换成 8 星掩码 + custom_api_token_set；草稿里保存的
+  // 是「用户新输入的明文」或空串（空串 = 不修改，沿用后端已存值）。
+  apiDemo.token = "";
+  apiDemo.tokenSet = !!cfg.custom_api_token_set;
+  const rows = Array.isArray(cfg.custom_api_params) ? cfg.custom_api_params : [];
+  apiDemo.params = rows
+    .filter((r: any) => r && typeof r === "object")
+    .map((r: any) => ({
+      key: String(r.key || ""),
+      value: String(r.value || ""),
+      required: !!r.required,
+    }));
+}
+
+/** 自定义 API 的必传缺失清单（与后端 _custom_api_required_missing 同口径）。 */
+function apiMissingItems(): string[] {
+  const missing: string[] = [];
+  if (!String(apiDemo.url || "").trim()) missing.push("请求地址");
+  if (apiDemo.mode === "advanced") {
+    if (!String(apiDemo.bodyTpl || "").trim()) missing.push("body 模板");
+  } else {
+    apiDemo.params.forEach((r) => {
+      if (r.required && !String(r.value || "").trim()) {
+        missing.push(String(r.key || "").trim() || "未命名参数");
+      }
+    });
+  }
+  return missing;
+}
+
+/** 参数名重复的行号集合（重复行整行报错，与后端「重复键整行拒绝」一致）。 */
+function apiDupKeys(): Set<number> {
+  const seen: Record<string, number> = {};
+  const dup = new Set<number>();
+  apiDemo.params.forEach((r, i) => {
+    const k = String(r.key || "").trim();
+    if (!k) return;
+    if (seen[k] !== undefined) {
+      dup.add(i);
+      dup.add(seen[k]);
+    } else {
+      seen[k] = i;
+    }
+  });
+  return dup;
+}
+
+/** 参数名是否合法（与后端正则 ^[A-Za-z_][A-Za-z0-9_.\-]*$ 同源）。 */
+function apiKeyValid(k: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_.\-]*$/.test(k);
+}
+
+/** 占位符插值（前端预览用；真实发送时后端会再算一次）。 */
+function apiFill(text: string, values: Record<string, string>): string {
+  let out = String(text || "");
+  ["title", "content", "count", "stamp", "token"].forEach((n) => {
+    out = out.split("{{" + n + "}}").join(values[n] || "");
+  });
+  return out;
+}
+
+/** 预览用的示例值：让用户看到「发出去长什么样」，而不是占位符本身。 */
+const API_PREVIEW_VALUES: Record<string, string> = {
+  title: "（问卷标题）",
+  content: "「（问卷标题）」有 3 道题等你作答",
+  count: "3",
+  stamp: "来自智能体-2026-01-01 00:00:00",
+  token: apiDemo.tokenSet || apiDemo.token ? "（已设置的 Token）" : "（未设置 Token）",
 };
 
 function settingsTabBody(
@@ -9618,103 +9813,336 @@ function settingsTabBody(
     bodyKids.push(notifyChannelRow(R, scope, "pc", "PC 端打开时提醒频道"));
     bodyKids.push(notifyChannelRow(R, scope, "bg", "后台运行时提醒频道"));
 
-    // ── 自定义 API 通知配置卡（US-008，纯 UI 占位）──
-    // demo v5 形态：白底卡 + 顶行（标题 +「新增渠道」徽标 + 启用开关）
-    // + URL / 请求方法 / Token 位置 / Token 密码框 / 发送测试按钮。
-    // 卡形态复用 US-007 时段卡的通用类（qm-set-schedcard/schedhead/
-    // schedgrid/schedfield，同出 demo v5 一种卡形态），窄屏单列规则
-    // （640px media 的 .qm-set-schedgrid）随之天然生效，无需另开断点。
-    // 纯占位：开关/输入/测试只改模块级 apiDemo 演示状态并重绘，不调用
-    // 后端、不写 prefs；上方 PC/后台两行的现有逻辑不受影响。
-    const API_METHOD_OPTS: Array<{ value: string; label: string }> = [
-      { value: "post-json", label: "POST（JSON）" },
-      { value: "get-query", label: "GET（query 传参）" },
-    ];
-    const API_TOKENPOS_OPTS: Array<{ value: string; label: string }> = [
-      { value: "bearer", label: "Authorization: Bearer 头" },
-      { value: "query", label: "query 参数 token=…" },
-      { value: "none", label: "不携带 token" },
-    ];
-    const apiField = (key: string, label: string, ctrl: any): any =>
+    // ── 自定义 API 通知配置卡（US-020，2026-11-23 真实接入）──
+    //
+    // 从「纯 UI 占位」升级为真实配置卡。boss 需求：允许新增行自定义参数，
+    // 系统只提供 title/content；要让用户看得见哪些是必传项、以及拼出来的
+    // 请求是否符合对方 API 要求。
+    //
+    // 配置读写全部走既有机制：值来自 cfgValue("custom_api_*", …, "global")，
+    // 改动走 cfgEdit 进草稿、由页面统一「保存」提交 —— 不另造一条保存路径，
+    // 否则会出现「这张卡立刻生效、其他设置要点保存」的口径分裂。
+    const apiMissing = apiMissingItems();
+    const apiDup = apiDupKeys();
+
+    // 卡内小工具：字段（标签 + 控件），复用 .qm-set-schedfield 版式
+    const apiField = (key: string, label: string, ctrl: any, required?: boolean): any =>
       R.createElement("div", { className: "qm-set-schedfield", key }, [
-        R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, label),
+        R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" },
+          label,
+          required ? R.createElement("span", { key: "r", className: "qm-apireq" }, "*") : null),
         ctrl,
       ]);
+
+    // ── 系统字段区块：title / content 锁定不可删 ──
+    const sysRow = (name: string, desc: string, tag: string) =>
+      R.createElement("div", { className: "qm-apisysrow", key: "sys-" + name }, [
+        R.createElement("span", { key: "n", className: "qm-apisysname" }, name),
+        R.createElement("span", { key: "d", className: "qm-apisysval" }, desc),
+        R.createElement("span", { key: "t", className: "qm-apisystag" }, tag),
+      ]);
+    const sysBlock = R.createElement("div", { className: "qm-apisysblock", key: "sysblock" }, [
+      R.createElement("div", { key: "h", className: "qm-set-schedfieldlabel" },
+        "系统字段（自动携带，不可删除）"),
+      sysRow("title", "{{title}}", "系统必传"),
+      sysRow("content", "{{content}}", "系统必传"),
+      R.createElement("div", { key: "tip", className: "qm-set-apinote",
+        style: { marginTop: 4 } },
+        "另有 {{count}} 题数、{{stamp}} 时间戳、{{token}} 可在参数值中引用。"),
+    ]);
+
+    // ── 参数行 ──
+    const paramRows = apiDemo.params.map((row, i) => {
+      const kBad = !!String(row.key || "").trim() && (!apiKeyValid(row.key) || apiDup.has(i));
+      const vBad = row.required && !String(row.value || "").trim();
+      return R.createElement("div", {
+        key: "prow-" + i,
+        className: "qm-apiparamrow" + (vBad ? " miss" : ""),
+        "data-qm-api-paramrow": String(i),
+      }, [
+        R.createElement("input", {
+          key: "k", type: "text", className: "qm-apipk" + (kBad ? " bad" : ""),
+          value: row.key, placeholder: "参数名",
+          "data-qm-api-paramkey": String(i),
+          title: apiDup.has(i) ? "参数名重复" :
+            (kBad ? "参数名只能包含字母、数字、下划线、点、连字符" : "对方 API 要求的参数名"),
+          onChange: (e: any) => {
+            apiDemo.params[i].key = e && e.target ? String(e.target.value) : "";
+            apiSyncParamsDraft();
+            settingsRenderPanel();
+          },
+        }),
+        R.createElement("input", {
+          key: "v", type: "text", className: "qm-apipv" + (vBad ? " bad" : ""),
+          value: row.value, placeholder: "参数值，可写 {{title}}",
+          "data-qm-api-paramvalue": String(i),
+          title: vBad ? "必传参数不能为空" : "支持 {{title}} {{content}} {{count}} {{stamp}} {{token}}",
+          onChange: (e: any) => {
+            apiDemo.params[i].value = e && e.target ? String(e.target.value) : "";
+            apiSyncParamsDraft();
+            settingsRenderPanel();
+          },
+        }),
+        R.createElement("label", { key: "r", className: "qm-apireqbox",
+          title: "勾选后此项为必传，为空时无法发送" }, [
+          R.createElement("input", {
+            key: "c", type: "checkbox", checked: !!row.required,
+            "data-qm-api-paramreq": String(i),
+            onChange: (e: any) => {
+              apiDemo.params[i].required = !!(e && e.target && e.target.checked);
+              apiSyncParamsDraft();
+              settingsRenderPanel();
+            },
+          }),
+          "必填",
+        ]),
+        R.createElement("button", {
+          key: "d", type: "button", className: "qm-apidel", title: "删除此行",
+          "data-qm-api-paramdel": String(i),
+          onClick: () => {
+            apiDemo.params.splice(i, 1);
+            apiSyncParamsDraft();
+            settingsRenderPanel();
+          },
+        }, "✕"),
+      ]);
+    });
+
+    const paramTable = R.createElement("div", { key: "ptable" }, [
+      R.createElement("div", { key: "head", className: "qm-apiparamhead" }, [
+        R.createElement("span", { key: "k", style: { flex: "0 0 34%" } }, "参数名"),
+        R.createElement("span", { key: "v", style: { flex: "1 1 auto" } }, "参数值"),
+        R.createElement("span", { key: "r", style: { flex: "0 0 44px" } }, "必填"),
+        R.createElement("span", { key: "d", style: { flex: "0 0 24px" } }, ""),
+      ]),
+      ...paramRows,
+      R.createElement("button", {
+        key: "add", type: "button", className: "qm-apiadd",
+        "data-qm-api-paramadd": "1",
+        title: "新增一行自定义参数",
+        onClick: () => {
+          if (apiDemo.params.length >= 20) {
+            toast("warning", "最多 20 个自定义参数");
+            return;
+          }
+          apiDemo.params.push({ key: "", value: "", required: false });
+          apiSyncParamsDraft();
+          settingsRenderPanel();
+        },
+      }, "+ 新增参数行"),
+    ]);
+
+    // ── 请求预览：让用户「看见」最终发出去的 URL 与 body ──
+    const previewUrl = String(apiDemo.url || "").trim() || "（未填请求地址）";
+    let previewBody = "";
+    if (apiDemo.mode === "advanced") {
+      previewBody = apiFill(String(apiDemo.bodyTpl || ""), API_PREVIEW_VALUES)
+        || "（高级模式未填写 body 模板）";
+    } else {
+      const obj: Record<string, string> = {
+        title: API_PREVIEW_VALUES.title,
+        content: API_PREVIEW_VALUES.content,
+      };
+      apiDemo.params.forEach((r) => {
+        const k = String(r.key || "").trim();
+        if (k) obj[k] = apiFill(String(r.value || ""), API_PREVIEW_VALUES);
+      });
+      previewBody = JSON.stringify(obj, null, 2);
+    }
+    const previewNode = R.createElement("div", { key: "preview" }, [
+      R.createElement("div", { key: "l1", className: "qm-apipreviewlabel" }, "请求预览"),
+      R.createElement("pre", { key: "u", className: "qm-apipreview",
+        "data-qm-api-preview": "url" },
+        (String(apiDemo.method) === "get_query" ? "GET " : "POST ") + previewUrl),
+      String(apiDemo.method) === "get_query" ? null :
+        R.createElement("pre", { key: "b", className: "qm-apipreview",
+          "data-qm-api-preview": "body" }, previewBody),
+    ]);
+
+    // ── 顶部汇总条：必传缺口一眼可见 ──
+    const statusNode = R.createElement("div", {
+      key: "status",
+      className: "qm-apistatus " + (apiMissing.length ? "miss" : "ok"),
+      "data-qm-api-status": apiMissing.length ? "missing" : "ok",
+    }, [
+      R.createElement("span", { key: "i" }, apiMissing.length ? "⚠" : "✓"),
+      R.createElement("span", { key: "t" },
+        apiMissing.length
+          ? "还缺 " + apiMissing.length + " 项必传参数：" + apiMissing.join("、")
+          : "必传项已填齐，可以测试发送"),
+    ]);
+
+    // ── 发送测试：必传未齐时置灰并说明缺什么 ──
+    const canTest = apiMissing.length === 0 && !!String(apiDemo.url || "").trim();
+    const testNode = R.createElement("div", { key: "foot", className: "qm-set-apifoot",
+      style: { flexDirection: "column", alignItems: "stretch", gap: 6 } }, [
+      R.createElement("div", { key: "btnrow",
+        style: { display: "flex", gap: 8, justifyContent: "flex-end" } }, [
+        R.createElement("button", {
+          key: "test", type: "button",
+          className: "qm-set-apitest",
+          "data-qm-api-test": "1",
+          disabled: !canTest,
+          style: canTest ? undefined : { opacity: 0.45, cursor: "not-allowed" },
+          title: canTest ? "按当前配置真实发送一次"
+            : ("还缺：" + apiMissing.join("、")),
+          onClick: () => {
+            if (!canTest) return;
+            apiTestResult = { ok: true, text: "正在发送…" };
+            settingsRenderPanel();
+            void (async () => {
+              try {
+                // 先把本卡的草稿提交，再调测试接口 —— 否则测的是旧配置。
+                await cfgSave();
+                const resp = await fetch(apiUrl("/question-modal/notify/test"), {
+                  method: "POST",
+                  headers: authHeaders(),
+                  body: JSON.stringify({ channel: "custom_api" }),
+                });
+                const r: any = await resp.json();
+                const ok = !!(r && (r.ok || r.delivered));
+                let txt = "";
+                if (ok) {
+                  txt = "发送成功" + (r && r.http ? "（HTTP " + r.http + "）" : "") +
+                    (r && r.elapsed_ms !== undefined ? " · " + r.elapsed_ms + "ms" : "");
+                } else {
+                  txt = "发送失败：" + ((r && (r.reason || r.error)) || "未知原因");
+                }
+                apiTestResult = { ok, text: txt };
+              } catch (err: any) {
+                apiTestResult = { ok: false, text: "发送失败：" + (err && err.message || err) };
+              }
+              settingsRenderPanel();
+            })();
+          },
+        }, "发送测试"),
+      ]),
+      apiTestResult
+        ? R.createElement("div", {
+            key: "res",
+            className: "qm-apitestres " + (apiTestResult.ok ? "ok" : "err"),
+            "data-qm-api-testresult": apiTestResult.ok ? "ok" : "err",
+          }, apiTestResult.text)
+        : null,
+    ]);
+
     bodyKids.push(R.createElement("div", {
       className: "qm-set-schedcard qm-set-apicard", key: "apicard",
       "data-qm-api-card": "1",
     }, [
-      // 顶行：标题 +「新增渠道」徽标 + 启用开关（demo 为开启态）
+      // 顶行：标题 + 徽标 + 启用开关
       R.createElement("div", { className: "qm-set-schedhead", key: "h" }, [
         R.createElement("span", { key: "t", className: "qm-set-apititle" },
           "自定义 API 通知",
-          R.createElement("span", { key: "badge", className: "qm-set-apibadge" }, "新增渠道")),
+          R.createElement("span", { key: "badge", className: "qm-set-apibadge" }, "自定义渠道")),
         R.createElement("button", {
           type: "button", key: "sw", role: "switch",
           className: "qm-set-apiswitch" + (apiDemo.enabled ? " on" : ""),
           "data-qm-api-switch": "1",
           "aria-checked": apiDemo.enabled ? "true" : "false",
-          title: apiDemo.enabled
-            ? "已启用（占位演示，本版不会保存）"
-            : "已停用（占位演示，本版不会保存）",
-          onClick: () => { apiDemo.enabled = !apiDemo.enabled; settingsRenderPanel(); },
+          title: apiDemo.enabled ? "已启用" : "已停用",
+          onClick: () => {
+            apiDemo.enabled = !apiDemo.enabled;
+            cfgEdit("custom_api_enabled", apiDemo.enabled);
+            settingsRenderPanel();
+          },
         }, R.createElement("span", { className: "qm-set-apiswitchdot", key: "dot" })),
       ]),
-      // 占位口径说明（防误以为会保存——同 US-007 时段页说明的做法）
-      R.createElement("div", { key: "note", className: "qm-set-apinote" },
-        "自定义 API 渠道为界面预览（本版不接后端，修改不会保存）。"),
-      // URL（占满整行）
-      apiField("furl", "请求地址（URL）", R.createElement("input", {
+      // 图例：必传星号说明（boss 核心诉求的可视化入口）
+      R.createElement("div", { key: "legend", className: "qm-apilegend",
+        "data-qm-api-legend": "1" },
+        "标 ",
+        R.createElement("span", { key: "s", className: "qm-apireq" }, "*"),
+        " 为必传项，未填写时无法发送测试。"),
+      statusNode,
+      // URL
+      apiField("furl", "请求地址", R.createElement("input", {
         key: "url", type: "text", className: "qm-set-input",
         value: apiDemo.url, placeholder: "https://…",
         "data-qm-api-url": "1",
         onChange: (e: any) => {
           apiDemo.url = e && e.target ? String(e.target.value) : "";
+          cfgEdit("custom_api_url", apiDemo.url);
           settingsRenderPanel();
         },
-      })),
-      // 请求方法 + Token 位置（两列网格）
+      }), true),
+      // 请求方法 + Token 位置
       R.createElement("div", { className: "qm-set-schedgrid", key: "g" }, [
         apiField("fmethod", "请求方法", R.createElement("select", {
           key: "method", className: "qm-set-native", value: apiDemo.method,
           "data-qm-api-method": "1",
           onChange: (e: any) => {
-            apiDemo.method = e && e.target ? String(e.target.value) : "post-json";
+            apiDemo.method = e && e.target ? String(e.target.value) : "post_json";
+            cfgEdit("custom_api_method", apiDemo.method);
             settingsRenderPanel();
           },
-        }, API_METHOD_OPTS.map((o, i) =>
-          R.createElement("option", { key: "o" + i, value: o.value }, o.label)))),
+        }, [
+          R.createElement("option", { key: "p", value: "post_json" }, "POST（JSON）"),
+          R.createElement("option", { key: "g", value: "get_query" }, "GET（query 传参）"),
+        ])),
         apiField("ftpos", "Token 位置（可选）", R.createElement("select", {
           key: "tp", className: "qm-set-native", value: apiDemo.tokenPos,
           "data-qm-api-tokenpos": "1",
           onChange: (e: any) => {
-            apiDemo.tokenPos = e && e.target ? String(e.target.value) : "bearer";
+            apiDemo.tokenPos = e && e.target ? String(e.target.value) : "none";
+            cfgEdit("custom_api_token_pos", apiDemo.tokenPos);
             settingsRenderPanel();
           },
-        }, API_TOKENPOS_OPTS.map((o, i) =>
-          R.createElement("option", { key: "o" + i, value: o.value }, o.label)))),
+        }, [
+          R.createElement("option", { key: "n", value: "none" }, "不携带 token"),
+          R.createElement("option", { key: "b", value: "bearer" }, "Authorization: Bearer 头"),
+          R.createElement("option", { key: "q", value: "query" }, "query 参数 token=…"),
+        ])),
       ]),
-      // Token 密码框（type=password 回显打码形态）
-      apiField("ftoken", "Token（可选，保存后回显打码）", R.createElement("input", {
-        key: "tk", type: "password", className: "qm-set-input",
-        value: apiDemo.token, placeholder: "选填",
-        "data-qm-api-token": "1",
-        onChange: (e: any) => {
-          apiDemo.token = e && e.target ? String(e.target.value) : "";
-          settingsRenderPanel();
-        },
-      })),
-      // 发送测试（占位：仅本地 toast，不调用后端）
-      R.createElement("div", { key: "foot", className: "qm-set-apifoot" }, [
-        R.createElement("button", {
-          type: "button", key: "test", className: "qm-set-apitest",
-          "data-qm-api-test": "1",
-          title: "占位演示：本版未接发送逻辑",
-          onClick: () => toast("info", "占位：未接发送逻辑"),
-        }, "发送测试"),
+      // Token
+      apiField("ftoken",
+        apiDemo.tokenSet ? "Token（已设置，留空则不修改）" : "Token（可选）",
+        R.createElement("input", {
+          key: "tk", type: "password", className: "qm-set-input",
+          value: apiDemo.token,
+          placeholder: apiDemo.tokenSet ? "已保存，留空则不修改" : "选填",
+          "data-qm-api-token": "1",
+          onChange: (e: any) => {
+            apiDemo.token = e && e.target ? String(e.target.value) : "";
+            if (apiDemo.token) cfgEdit("custom_api_token", apiDemo.token);
+            settingsRenderPanel();
+          },
+        })),
+      // 高级模式开关
+      R.createElement("div", { key: "advrow", className: "qm-apiadvrow" }, [
+        R.createElement("label", { key: "l", style: { display: "inline-flex",
+          alignItems: "center", gap: 4, cursor: "pointer" } }, [
+          R.createElement("input", {
+            key: "c", type: "checkbox", checked: apiDemo.mode === "advanced",
+            "data-qm-api-advmode": "1",
+            onChange: (e: any) => {
+              apiDemo.mode = (e && e.target && e.target.checked) ? "advanced" : "basic";
+              cfgEdit("custom_api_mode", apiDemo.mode);
+              settingsRenderPanel();
+            },
+          }),
+          "高级模式（自己写完整 body 模板）",
+        ]),
       ]),
+      apiDemo.mode === "advanced"
+        ? apiField("fbody", "body 模板", R.createElement("textarea", {
+            key: "bd", className: "qm-apibody" + (apiMissing.indexOf("body 模板") >= 0 ? " bad" : ""),
+            value: apiDemo.bodyTpl,
+            placeholder: '{"msgtype":"text","text":{"content":"{{content}}"}}',
+            "data-qm-api-body": "1",
+            onChange: (e: any) => {
+              apiDemo.bodyTpl = e && e.target ? String(e.target.value) : "";
+              cfgEdit("custom_api_body", apiDemo.bodyTpl);
+              settingsRenderPanel();
+            },
+          }), true)
+        : null,
+      // 系统字段（锁） + 自定义参数行（仅基础模式显示参数表）
+      sysBlock,
+      apiDemo.mode === "advanced" ? null : paramTable,
+      previewNode,
+      testNode,
     ]));
-
     bodyKids.push(setRow(R, "e6", "单题分析超时",
       setSelect(R, "sel4", TO_LABEL[Number(cfgValue("model_timeout_sec", 120, "global"))] || "120 秒（默认）",
         ["30 秒", "60 秒", "120 秒（默认）", "300 秒", "600 秒"],

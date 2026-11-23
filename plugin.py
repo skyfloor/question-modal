@@ -32,6 +32,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -483,13 +484,67 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     # 显式设置时从旧键推导；显式设置过（哪怕设成 off）一律尊重显式值。
     "notify_channel_pc": {
         "default": "off", "type": "enum", "scope": "global", "batch": 5,
-        "values": ["off", "browser", "wechat", "dingtalk", "feishu"],
+        "values": ["off", "browser", "wechat", "dingtalk", "feishu", "custom_api"],
         "label": "PC 端打开时提醒频道",
     },
     "notify_channel_bg": {
         "default": "off", "type": "enum", "scope": "global", "batch": 5,
-        "values": ["off", "wechat", "dingtalk", "feishu"],
+        "values": ["off", "wechat", "dingtalk", "feishu", "custom_api"],
         "label": "后台运行时提醒频道",
+    },
+    # ── 自定义 API 渠道（2026-11-23）────────────────────────────────
+    #
+    # 缺陷背景（boss 原话）：「当前的实现方式不满足……用户不知道哪些是属于
+    # 必传项，是否符合大部分的 API 请求以及参数要求」。原实现是纯 UI 占位卡，
+    # 固定 4 字段，无法补上对方 API 要求的必传参数。
+    #
+    # 定位：**简单消息推送**，只发标题 + 脱敏摘要，不做通用 Webhook 编排。
+    # 明确排除（boss 裁定）：嵌套对象自动构造、数组参数、条件映射、重试队列、
+    # 多套渠道并存。复杂需求走「高级模式」由用户自己写 body 模板。
+    #
+    # 双模式（boss 裁定 C）：
+    #   basic    参数行 [{key,value,required}] → 扁平平铺成 body
+    #   advanced 用户自写整段 body 模板 → 只做占位符插值
+    #
+    # 占位符（boss 裁定 4 个 + token）：{{title}} {{content}} {{count}}
+    # {{stamp}} {{token}}
+    "custom_api_enabled": {
+        "default": False, "type": "bool", "scope": "global", "batch": 5,
+        "label": "启用自定义 API 渠道",
+    },
+    "custom_api_url": {
+        "default": "", "type": "str", "scope": "global", "batch": 5,
+        "maxlen": 2048,
+        "label": "自定义 API 请求地址",
+    },
+    "custom_api_method": {
+        "default": "post_json", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["post_json", "get_query"],
+        "label": "自定义 API 请求方法",
+    },
+    "custom_api_mode": {
+        "default": "basic", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["basic", "advanced"],
+        "label": "自定义 API 参数模式",
+    },
+    "custom_api_params": {
+        "default": [], "type": "json", "scope": "global", "batch": 5,
+        "max_items": 20, "label": "自定义 API 参数行",
+    },
+    "custom_api_body": {
+        "default": "", "type": "str", "scope": "global", "batch": 5,
+        "maxlen": 8192,
+        "label": "自定义 API body 模板（高级模式）",
+    },
+    "custom_api_token": {
+        "default": "", "type": "str", "scope": "global", "batch": 5,
+        "maxlen": 4096, "secret": True,
+        "label": "自定义 API Token",
+    },
+    "custom_api_token_pos": {
+        "default": "none", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["none", "bearer", "query"],
+        "label": "自定义 API Token 位置",
     },
     # 向后兼容：老配置里可能存着 notify_manual_mode=true。保留该键作为
     # **只读的迁移来源**（resolve 时若 notify_channel 仍为 off 且旧键为
@@ -657,7 +712,74 @@ def _coerce_setting(key: str, value: Any) -> tuple[bool, Any]:
         if isinstance(value, str) and value in allowed:
             return True, value
         return False, None
+    if kind == "json":
+        # ── `json` 类型（2026-11-23，为 custom_api_params 引入）──
+        #
+        # 为什么必须新增这一支：`sanitize_settings` 是白名单机制，
+        # 未在 SETTINGS_SCHEMA 声明的键一律**静默丢弃**（见其 docstring）。
+        # 若把参数行做成任意 dict 直接塞进 prefs，用户填的参数会在保存时
+        # 无声消失 —— 界面上「保存成功」，实际没存，正是本插件反复纠治
+        # 的「界面说谎」（参见 2026-11-17 的 release_after_sec 事故）。
+        #
+        # 这里做**结构白名单**深校验：只接受约定的字段，多余字段丢弃，
+        # 不合法的整行拒绝（由调用方回报 rejected），绝不静默改写用户数据。
+        #
+        # 注意：本支只有 custom_api_params 使用（数组型）。它与 int 分支
+        # 的 `choices`、enum 分支的 `values` 完全隔离，不影响既有类型校验。
+        return _coerce_json_list(value, spec)
     return False, None
+
+
+_PARAM_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.\-]*$")
+
+
+def _coerce_json_list(value: Any, spec: dict) -> tuple[bool, Any]:
+    """校验 `custom_api_params` 这类「对象数组」配置项。
+
+    规则（与设计方案逐条对应）：
+      · 顶层必须是 list
+      · 行数 ≤ spec["max_items"]（默认 20）
+      · 每行是 dict，只保留 key / value / required 三个字段
+      · key 非空、≤64 字符、匹配 `^[A-Za-z_][A-Za-z0-9_.\\-]*$`
+      · value ≤512 字符（非字符串一律转 str 后截断——用户填数字/布尔很常见）
+      · required 强制转 bool
+      · **键名重复整行拒绝**（不静默覆盖，避免「我填了两行只发出去一行」）
+      · 整体序列化 ≤ 8KB（防单条配置撑爆 prefs 文件）
+
+    返回 ``(ok, cleaned)``：任一行不合法即整体 ok=False（调用方据此报
+    rejected），不做「部分行保留」——参数行之间可能互相依赖，静默丢一半
+    比整体报错更难排查。
+    """
+    if not isinstance(value, list):
+        return False, None
+    max_items = int(spec.get("max_items") or 20)
+    if len(value) > max_items:
+        return False, None
+    out: list = []
+    seen: set = set()
+    for row in value:
+        if not isinstance(row, dict):
+            return False, None
+        k = str(row.get("key") or "").strip()
+        if not k or len(k) > 64 or not _PARAM_KEY_RE.match(k):
+            return False, None
+        if k in seen:
+            return False, None          # 键名重复：整行拒绝
+        seen.add(k)
+        v = row.get("value")
+        if v is None:
+            v = ""
+        elif not isinstance(v, str):
+            v = str(v)
+        if len(v) > 512:
+            return False, None
+        out.append({"key": k, "value": v, "required": bool(row.get("required"))})
+    try:
+        if len(json.dumps(out, ensure_ascii=False).encode("utf-8")) > 8192:
+            return False, None
+    except (TypeError, ValueError):
+        return False, None
+    return True, out
 
 
 def sanitize_settings(patch: Any) -> tuple[dict, list[dict]]:
@@ -906,7 +1028,36 @@ def resolve_effective(chat_id: str = "") -> dict:
         )
 
     out["__sources__"] = sources
+    # ── Token 打码（2026-11-23，custom_api_token）──────────────────
+    #
+    # SECRET 类配置一律**不把原文送进通用读路径**：resolve_effective 的结果
+    # 会经 /prefs 等接口整体回给前端，若原样下发就等于把凭据明文暴露在
+    # 浏览器与日志里（与 client_secret 的处理口径保持一致）。
+    #
+    # 约定：回给调用方的是 `custom_api_token_set`（布尔，供 UI 判断「已设置」）
+    # 加一个掩码串；真实值只在投递时由 :func:`_custom_api_token_value` 从
+    # 磁盘直读。空值时不下发掩码，避免 UI 显示「已设置」。
+    _tok = str(out.get("custom_api_token") or "")
+    out["custom_api_token_set"] = bool(_tok)
+    out["custom_api_token"] = ("*" * 8) if _tok else ""
     return out
+
+
+def _custom_api_token_value() -> str:
+    """从磁盘直读 custom_api_token 的真实值（不经 resolve_effective 打码）。
+
+    只供投递路径使用。故意不放进 resolve_effective：那条路径的结果会被
+    接口整体下发给前端，一旦混入真实凭据就等于永久泄密。
+    """
+    try:
+        raw = _load_prefs()
+        ok, val = _coerce_setting("custom_api_token", raw.get("custom_api_token"))
+        return val if ok else ""
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "question_modal: could not read custom api token", exc_info=True,
+        )
+        return ""
 
 
 def _config_version() -> int:
@@ -1031,6 +1182,11 @@ _NOTIFY_CHANNEL_LABELS = {
     "wechat": "微信",
     "dingtalk": "钉钉",
     "feishu": "飞书",
+    # 2026-11-23：用户自建 HTTP 端点。**不**在 _NOTIFY_REMOTE_CHANNELS 里——
+    # 那条集合是「走宿主 /api/messages/send 的 IM 渠道」，自定义 API 是插件
+    # 自己发 HTTP，判定与投递路径完全不同，混在一起会让 _host_channel_info
+    # 去宿主配置里找一个永远不存在的频道。
+    "custom_api": "自定义 API",
 }
 
 # 本插件「频道通知」路径覆盖的远程频道（browser 不是宿主频道）
@@ -1089,6 +1245,31 @@ def _notify_channel_state(channel: str, cfg: dict, agent_id: str = "") -> dict:
         return state
     if channel == "browser":
         # 浏览器通知不依赖宿主频道配置，但同样要过测试闸门（q4）。
+        state["ready"] = True
+        if not state["verified"]:
+            state["reason"] = "尚未通过测试发送"
+        return state
+
+    if channel == "custom_api":
+        # ── 自定义 API（2026-11-23）──
+        # 就绪条件 = 已启用 + URL 合法（含 SSRF 校验）+ 必传参数齐全。
+        # 与 _custom_api_required_missing / _custom_api_url_error 同源判定，
+        # 保证「面板说可用」与「后端真能发」不会各说各话。
+        if not bool(cfg.get("custom_api_enabled")):
+            state["reason_code"] = "channel_disabled"
+            state["reason"] = "自定义 API 渠道未启用"
+            return state
+        url_err = _custom_api_url_error(str(cfg.get("custom_api_url") or ""))
+        if url_err:
+            state["reason_code"] = "invalid_url"
+            state["reason"] = url_err
+            return state
+        missing = _custom_api_required_missing(cfg)
+        if missing:
+            state["reason_code"] = "missing_required_params"
+            state["reason"] = "缺少必传参数：" + "、".join(missing)
+            state["missing"] = missing
+            return state
         state["ready"] = True
         if not state["verified"]:
             state["reason"] = "尚未通过测试发送"
@@ -1550,6 +1731,23 @@ async def _do_notify_test(channel: str, text: str, agent_id: str) -> dict:
                 "reason_code": state.get("reason_code") or "",
                 "error": state["reason"] or "频道不可用"}
 
+    # ── 自定义 API：测试走真实 HTTP（2026-11-23）──
+    # 与线上投递共用 _send_via_custom_api，区别只在文案与 title/count 取值：
+    # 测试时没有真实问卷，title 用「测试」、count 用 0，让用户能立刻看到
+    # 对方 API 收到什么形态。
+    if channel == "custom_api":
+        _cfg = dict(cfg)
+        _cfg["__notify_title__"] = "自定义 API 测试"
+        _cfg["__notify_count__"] = "0"
+        msg = text or (
+            f"【QwenPaw 通知测试】{_NOTIFY_CHANNEL_LABELS.get(channel, channel)}"
+            "频道连通性验证，收到即表示配置正确。"
+        )
+        result = await _send_via_custom_api(msg, _cfg, agent_id)
+        if result.get("delivered"):
+            _mark_notify_verified("custom_api", True)
+        return {"ok": bool(result.get("ok")), "channel": channel, **result}
+
     info = _host_channel_info(channel, agent_id)
     msg = text or f"【QwenPaw 通知测试】{_NOTIFY_CHANNEL_LABELS.get(channel, channel)}频道连通性验证，收到即表示配置正确。"
     result = await _send_via_channel(channel, msg, info, agent_id)
@@ -1650,6 +1848,302 @@ def _agent_display_name(agent_id: str = "") -> str:
     return str(agent_id or "").strip()
 
 
+# ══════════════════════════════════════════════════════════════════════
+# 自定义 API 渠道（2026-11-23）
+# ══════════════════════════════════════════════════════════════════════
+#
+# 缺陷背景（boss 原话）：「当前的实现方式不满足……用户不知道哪些是属于必传
+# 项，是否符合大部分的 API 请求以及参数要求」。原实现是纯 UI 占位卡。
+#
+# 定位（boss 明确收窄）：**简单消息推送**，只发标题 + 脱敏摘要。
+# 不做嵌套对象自动构造、数组参数、条件映射、重试队列、多套渠道并存。
+# 复杂需求走「高级模式」由用户自己写整段 body 模板。
+
+# 内置占位符（boss 裁定：4 个系统占位符 + token）。
+# 语法刻意用 `{{name}}` 单层花括号对，不做嵌套表达式——插值就是纯字符串替换，
+# 用户写什么就是什么，不引入模板引擎（避免"看起来能写表达式"的假能力）。
+_CUSTOM_API_PLACEHOLDERS = ("title", "content", "count", "stamp", "token")
+
+# 内网/回环地址判定用的保留网段（SSRF 防护，2026-11-23 boss 裁定要做）。
+# 只按解析后的 IP 判定——域名可以通过 DNS 指向内网，只查字符串必然漏。
+_CUSTOM_API_BLOCKED_V4 = (
+    "0.0.0.0/8",        # "本网络"
+    "10.0.0.0/8",       # 私有
+    "100.64.0.0/10",    # 运营商级 NAT
+    "127.0.0.0/8",      # 回环
+    "169.254.0.0/16",   # 链路本地（含云元数据 169.254.169.254）
+    "172.16.0.0/12",    # 私有
+    "192.168.0.0/16",   # 私有
+)
+
+
+def _custom_api_url_error(url: str) -> str:
+    """校验自定义 API 请求地址。返回空串 = 合法，否则返回人不友好的原因。
+
+    SSRF 防护（boss 2026-11-23 裁定「要：禁止内网/回环地址」）：
+      1. scheme 只允许 http/https
+      2. host 必须存在、不能是空串或纯端口
+      3. **逐个解析 IP**（含所有 A/AAAA 记录）并落到保留网段即拒绝 ——
+         只看 hostname 字符串会被「127.0.0.1.nip.io」这类解析型域名绕过
+      4. 解析失败按「不可用」拒绝（宁可拦错，不可放行到未知目标）
+
+    注意：本函数在**发送前与保存时各调一次**，两处判定必须同源，
+    否则会出现「保存时拦住了但发送时没拦」的缺口。
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    if not url or not url.strip():
+        return "请求地址不能为空"
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return "请求地址格式无法解析"
+    if parsed.scheme not in ("http", "https"):
+        return "请求地址必须以 http:// 或 https:// 开头"
+    host = parsed.hostname or ""
+    if not host:
+        return "请求地址缺少主机名"
+
+    # 先排除字面量回环/私有 IP（无需 DNS）
+    try:
+        direct = ipaddress.ip_address(host)
+        if direct.is_private or direct.is_loopback or direct.is_link_local \
+                or direct.is_multicast or direct.is_unspecified:
+            return "不允许请求内网/回环地址"
+        if direct.version == 4 and host.startswith("0."):
+            return "不允许请求内网/回环地址"
+        return ""
+    except ValueError:
+        pass  # 不是字面 IP，按域名继续解析
+
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return "域名无法解析：" + host
+    except Exception:  # noqa: BLE001
+        return "域名解析失败：" + host
+    blocked = [ipaddress.ip_network(n) for n in _CUSTOM_API_BLOCKED_V4]
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            return "域名解析结果异常：" + host
+        if ip.version == 6:
+            if ip.is_private or ip.is_loopback or ip.is_link_local \
+                    or ip.is_unspecified or ip.is_multicast:
+                return "不允许请求内网/回环地址"
+            continue
+        for net in blocked:
+            if ip in net:
+                return "不允许请求内网/回环地址"
+    return ""
+
+
+def _custom_api_required_missing(cfg: dict) -> list:
+    """列出还缺的必传项（供 UI 置灰「发送测试」与投递前闸门共用）。
+
+    两处调用同一函数，避免「界面说可以发、后端却拒绝」的口径分叉。
+    URL 永远是必传；参数行里 `required=true` 且值为空的行也算缺。
+    """
+    missing: list = []
+    if not str(cfg.get("custom_api_url") or "").strip():
+        missing.append("请求地址")
+    params = cfg.get("custom_api_params")
+    if isinstance(params, list):
+        for row in params:
+            if not isinstance(row, dict):
+                continue
+            if row.get("required") and not str(row.get("value") or "").strip():
+                missing.append(str(row.get("key") or "未命名参数"))
+    return missing
+
+
+def _custom_api_fill(text: str, values: dict) -> str:
+    """把 `{{name}}` 占位符替换成对应值。未识别的占位符原样保留。
+
+    为什么保留未识别的：用户可能就是要发给对方 API 一个字面量 `{{x}}`
+    （例如对方自己也会做模板替换）。静默删掉比留着更糟——留着他能一眼
+    看出「这里没替换成功」。
+    """
+    out = str(text or "")
+    for name in _CUSTOM_API_PLACEHOLDERS:
+        out = out.replace("{{" + name + "}}", str(values.get(name) or ""))
+    return out
+
+
+def _custom_api_build_request(cfg: dict, values: dict) -> tuple[str, dict, bytes | None, str]:
+    """按配置拼出最终请求。返回 ``(url, headers, body_bytes, error)``。
+
+    两种模式（boss 裁定 C：基础 + 高级都要）：
+      basic     参数行扁平平铺成 JSON：{"key": "插值后的值", ...}
+      advanced  用户写的整段 body 模板 → 只做占位符插值 → 原样发送
+
+    两种模式都叠加「系统字段」：title / content 始终写入，即便用户没在
+    参数行里列——它们是这条通知的语义本体，缺了对方 API 也读不懂。
+    用户显式写了同名参数行时以用户的为准（允许覆盖，不静默改写）。
+    """
+    from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
+
+    error = _custom_api_url_error(str(cfg.get("custom_api_url") or ""))
+    if error:
+        return "", {}, None, error
+
+    method = str(cfg.get("custom_api_method") or "post_json")
+    mode = str(cfg.get("custom_api_mode") or "basic")
+    url = str(cfg.get("custom_api_url") or "").strip()
+    headers: dict = {"User-Agent": "question-modal/notify"}
+
+    # ── body ──
+    payload: dict = {}
+    # 系统字段先落，保证一定存在
+    payload["title"] = values.get("title") or ""
+    payload["content"] = values.get("content") or ""
+
+    if mode == "advanced":
+        raw = _custom_api_fill(str(cfg.get("custom_api_body") or ""), values)
+        if not raw.strip():
+            return "", {}, None, "高级模式未填写 body 模板"
+        body_bytes = raw.encode("utf-8")
+        headers["Content-Type"] = "application/json; charset=utf-8"
+    else:
+        params = cfg.get("custom_api_params")
+        if isinstance(params, list):
+            for row in params:
+                if not isinstance(row, dict):
+                    continue
+                key = str(row.get("key") or "").strip()
+                if not key:
+                    continue          # 空参数名：不校验、不发送（用户可能正删到一半）
+                payload[key] = _custom_api_fill(row.get("value") or "", values)
+        body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json; charset=utf-8"
+
+    # ── token ──
+    token = str(values.get("token") or "")
+    token_pos = str(cfg.get("custom_api_token_pos") or "none")
+    if token:
+        if token_pos == "bearer":
+            headers["Authorization"] = "Bearer " + token
+        elif token_pos == "query":
+            parsed = urlparse(url)
+            q = parse_qsl(parsed.query, keep_blank_values=True)
+            q.append(("token", token))
+            url = urlunparse(parsed._replace(query=urlencode(q)))
+
+    # ── GET：参数全部进 query，不带 body ──
+    if method == "get_query":
+        merged: list = []
+        if mode == "basic":
+            merged = [(k, str(v)) for k, v in payload.items()]
+        else:
+            # 高级模式配 GET 没有 body 可发，参数行仍按基础口径带上
+            params = cfg.get("custom_api_params") or []
+            for row in params:
+                if isinstance(row, dict) and str(row.get("key") or "").strip():
+                    merged.append((
+                        str(row["key"]), _custom_api_fill(row.get("value") or "", values),
+                    ))
+        if merged:
+            parsed = urlparse(url)
+            q = parse_qsl(parsed.query, keep_blank_values=True)
+            q.extend(merged)
+            url = urlunparse(parsed._replace(query=urlencode(q)))
+        return url, headers, None, ""
+
+    return url, headers, body_bytes, ""
+
+
+async def _send_via_custom_api(
+    text: str, cfg: dict, agent_id: str = "", *,
+    values_override: dict | None = None,
+) -> dict:
+    """向用户自定义的 API 地址投递一条简单消息。
+
+    策略（boss 2026-11-23 裁定）：**超时 10s、失败不重试、仅记日志**。
+    通知类消息过期即失去意义，堆积重试只会让用户收到一堆迟到提醒。
+    """
+    import urllib.error
+    import urllib.request
+
+    url_err = _custom_api_url_error(str(cfg.get("custom_api_url") or ""))
+    if url_err:
+        return {"ok": False, "delivered": False, "channel": "custom_api",
+                "reason": url_err, "reason_code": "invalid_url"}
+
+    missing = _custom_api_required_missing(cfg)
+    if missing:
+        return {"ok": False, "delivered": False, "channel": "custom_api",
+                "reason": "缺少必传参数：" + "、".join(missing),
+                "reason_code": "missing_required_params", "missing": missing}
+
+    if not bool(cfg.get("custom_api_enabled")):
+        return {"ok": False, "delivered": False, "channel": "custom_api",
+                "reason": "自定义 API 渠道未启用", "reason_code": "disabled"}
+
+    # 占位符取值：text 是已拼好的提醒正文（标题 + 摘要 + 时间戳）
+    values = {
+        "title": str((cfg.get("__notify_title__") or "")),
+        "content": text,
+        "count": str(cfg.get("__notify_count__") or ""),
+        "stamp": _notify_stamp(agent_id),
+        "token": _custom_api_token_value(),
+    }
+    if values_override:
+        values.update(values_override)
+    # title 缺省时从 text 首行推断，避免 body.title 为空
+    if not values["title"]:
+        values["title"] = str(text).split("\n", 1)[0]
+
+    url, headers, body_bytes, build_err = _custom_api_build_request(cfg, values)
+    if build_err:
+        return {"ok": False, "delivered": False, "channel": "custom_api",
+                "reason": build_err, "reason_code": "build_failed"}
+
+    method = "GET" if str(cfg.get("custom_api_method")) == "get_query" else "POST"
+    started = time.time()
+
+    def _do() -> tuple[int, str]:
+        req = urllib.request.Request(url, data=body_bytes, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                return int(resp.status), resp.read(2000).decode("utf-8", "replace")
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = exc.read(2000).decode("utf-8", "replace")
+            except Exception:  # noqa: BLE001
+                detail = ""
+            return int(exc.code), detail
+        except urllib.error.URLError as exc:
+            return 0, "连接失败：" + str(getattr(exc, "reason", exc))
+        except Exception as exc:  # noqa: BLE001
+            return 0, type(exc).__name__ + "：" + str(exc)
+
+    try:
+        status, detail = await asyncio.to_thread(_do)
+    except Exception as exc:  # noqa: BLE001
+        status, detail = 0, type(exc).__name__ + "：" + str(exc)
+    elapsed_ms = int((time.time() - started) * 1000)
+
+    if 200 <= status < 300:
+        return {"ok": True, "delivered": True, "channel": "custom_api",
+                "http": status, "elapsed_ms": elapsed_ms, "body": detail[:300],
+                "url": url}
+    if status == 0:
+        reason = "请求超时（10 秒）" if "timeout" in detail.lower() else detail
+    else:
+        reason = "对方返回 HTTP %d：%s" % (status, detail[:200])
+    logger.warning(
+        "question_modal: custom api notify failed status=%s url=%s detail=%s",
+        status, url, str(detail)[:200],
+    )
+    return {"ok": False, "delivered": False, "channel": "custom_api",
+            "http": status, "elapsed_ms": elapsed_ms,
+            "reason": reason, "reason_code": "http_failed", "url": url}
+
+
 def _notify_stamp(agent_id: str = "") -> str:
     """通知尾部的时间戳行：「来自后端开发智能体-2026-11-14 12:40:33」。
 
@@ -1723,6 +2217,19 @@ async def notify_survey_pending(
         # （只有 pc 场景可能选到 browser：bg 枚举本就不含 browser。）
         return {"ok": True, "delivered": False, "channel": "browser",
                 "scene": scene, "delegated": True, "text": body}
+
+    if channel == "custom_api":
+        # ── 自定义 API（2026-11-23）──
+        # 不走宿主 /api/messages/send，插件自己发 HTTP。
+        # title/count 通过 __notify_* 临时键带进 builder：那里要拼 body 的
+        # title 字段与 {{count}} 占位符，但 cfg 本身不含这两个运行时值。
+        _cfg = dict(cfg)
+        _cfg["__notify_title__"] = str(title)
+        _cfg["__notify_count__"] = str(count)
+        out = await _send_via_custom_api(body, _cfg, agent_id)
+        if isinstance(out, dict):
+            out.setdefault("scene", scene)
+        return out
 
     info = _host_channel_info(channel, agent_id)
     out = await _send_via_channel(channel, body, info, agent_id)
