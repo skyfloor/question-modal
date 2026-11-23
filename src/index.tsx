@@ -3904,36 +3904,46 @@ function AnalysisBubble(props: {
                fontSize: 12 },
     }, children));
 
-  // US-013: 参照 ModeSwitch（US-012）把「触发器 + 面板」拆为兄弟数组——
-  // 面板不再走 antd Popover（portal 到 body、相对触发器定位），改挂 qm-actions
-  // 行容器直下（absolute top:30 right:0 对齐整行右缘≈卡片右缘），移动端
-  // qm-actions 换行后不再随触发器横向漂移导致左缘溢出屏幕。宽度统一为
-  // width 460px + maxWidth 视口-44px 双保险（demo v5 / US-012 口径）。触发/取消/重跑/
-  // 套用等分析逻辑零改动；外部点击关闭由父级 anPopRef/anPanelRef effect 判定。
+  // US-015: boss 裁定「查看分析」改为屏幕居中弹窗（Modal）形态，不再用贴
+  // 触发器的气泡。结构 = 遮罩（fixed 铺满视口 rgba(0,0,0,0.45) z10000）+
+  // 居中弹窗卡（fixed 50%/50% translate(-50%,-50%) z10001，圆角/阴影加强、
+  // 无小三角）。优先 R.createPortal 挂 document.body（宿主 React 18 支持；
+  // US-013 删掉的是 antd Popover，不是 createPortal）——fixed 定位不受
+  // qm-actions 祖先 transform/overflow影响；createPortal 不可用时退回直接
+  // 挂 qm-actions（仍为 fixed 居中，但若祖先链存在 transform/filter 等属性，
+  // fixed 会被限制为该祖先的包含块——已知风险，注释留档）。
+  // 关闭交互：点遮罩/卡外 = onOpenChange(false)、点卡内部不关闭，仍由父级
+  // anPopRef（触发器）/anPanelRef（弹窗卡）的 mousedown effect 判定——遮罩
+  // 在两 ref 之外，点它即收起，无需在遮罩上另挂 onClick（避免卡内点击冒泡
+  // 误关）。触发器按钮、run/cancel/apply/rerun 分析逻辑与卡内内容零改动。
+  const analysisCard = R.createElement("div", {
+    key: "qm-analysis-panel", ref: panelRef,
+    role: "dialog", "aria-label": "题目分析", className: "qm-analysis-panel",
+    style: {
+      position: "fixed", top: "50%", left: "50%",
+      transform: "translate(-50%, -50%)", zIndex: 10001,
+      width: "460px",
+      maxWidth: "calc(100vw - 44px)",
+      padding: 12,
+      background: "var(--app-surface-raised, #fff)",
+      border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+      borderRadius: 12, boxShadow: "0 16px 48px rgba(0,0,0,0.24)",
+    },
+  }, body);
+  const analysisOverlay = R.createElement("div", {
+    key: "qm-analysis-overlay",
+    style: {
+      position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
+      background: "rgba(0,0,0,0.45)", zIndex: 10000,
+    },
+  }, analysisCard);
+  const canPortal = typeof R.createPortal === "function"
+    && typeof document !== "undefined" && !!document.body;
   const analysisPanel = open
-    ? R.createElement("div", {
-        key: "qm-analysis-panel", ref: panelRef,
-        role: "dialog", "aria-label": "题目分析", className: "qm-hdr-pop",
-        style: {
-          position: "absolute", top: 30, right: 0, zIndex: 10000,
-          width: "460px",
-          maxWidth: "calc(100vw - 44px)",
-          padding: 12,
-          background: "var(--app-surface-raised, #fff)",
-          border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
-          borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
-        },
-      },
-        R.createElement("div", {
-          style: {
-            position: "absolute", top: -5, right: 9, width: 8, height: 8,
-            transform: "rotate(45deg)",
-            background: "var(--app-surface-raised, #fff)",
-            borderLeft: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
-            borderTop: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
-          },
-        }),
-        body)
+    ? (canPortal
+      ? R.createElement("div", { key: "qm-analysis-portal" },
+          R.createPortal(analysisOverlay, document.body))
+      : analysisOverlay)
     : null;
   return [btn, analysisPanel];
 }
