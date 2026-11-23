@@ -3920,23 +3920,25 @@ function AnalysisBubble(props: {
 
   // ── US-018: 回退到气泡方式（boss 裁定：弹窗在真宿主仍异常，回退气泡）──
   // 参照 US-012/013 已验证的参照系：面板挂 qm-actions 行容器直下（absolute
-  // right:0 对齐整行右缘≈卡片右缘），但本次按 boss 要求收紧两个尺寸口径：
-  //   宽度 = min(460px, 90vw)   —— 最大不发超视口 90%，窄屏两端各留 5% 余量
-  //   高度 = 视口上限内滚动      —— maxHeight 视口减上下安全边距，超出滚 body
-  // 关闭交互：点外部由父级 anPopRef/anPanelRef 的 mousedown effect 判定；卡内
-  // mousedown/click/keydown 全部截断，避免拖选文本/输入法选字被当成「点外部」
-  // （US-017 的教训保留）。Esc 关闭同样保留。分析逻辑函数与卡内内容零改动。
+  // right:0 对齐整行右缘），卡内事件截断保留（US-017 教训）。
+  //
+  // 🔴 US-019 宽度口径（boss 精确纠正）：**以问卷卡片宽度为基准取 90%，不能用
+  // 视口百分比**。原因：气泡是 absolute、right:0 贴的是「按钮所在行」的右缘，
+  // 而 qm-actions 行在窄屏换行后并不等于屏幕右缘；用 90vw 会在卡片窄于视口 /
+  // 按钮行有偏移时仍然溢出。正解 = width:90% + maxWidth:100%——百分比宽度的
+  // 解析基准是**包含块（qm-actions 行容器）的宽度**，而该行受 qm-card 的
+  // padding 约束，天然就是「卡片可用宽度」，因此 90% 恒落在卡内、永不溢出。
+  // 桌面端仍以 460px 为内容舒适上限（min 取小者）。
   const analysisCard = R.createElement("div", {
     key: "qm-analysis-panel", ref: panelRef,
     role: "dialog", "aria-label": "题目分析", className: "qm-hdr-pop qm-analysis-panel",
     style: {
       position: "absolute", top: 30, right: 0, zIndex: 10000,
-      // 宽度：最大 90% 视口；桌面端仍以 460 为内容舒适宽。
-      width: "min(460px, 90vw)",
+      width: "min(460px, 90%)",
+      maxWidth: "100%",
       // 高度：自适应且不得溢出视口。气泡 top:30 是相对 qm-actions 定位的，
-      // 而手机上 qm-actions 换行后自身已偏离视口顶（实测气泡起点 71px），
-      // 所以余量不能按「视口顶 + 30」这种假设来算——直接给足安全边界：
-      // 100vh 减 100px（覆盖 30px 偏移 + 手机上最多约 60px 的换行偏移 + 余量）。
+      // 手机上 qm-actions 换行后自身已偏离视口顶（实测气泡起点 71px），
+      // 所以余量不能按「视口顶 + 30」这种假设来算——直接给足安全边界。
       maxHeight: "calc(100vh - 100px)",
       display: "flex", flexDirection: "column",
       padding: 12,

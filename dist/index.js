@@ -4168,12 +4168,11 @@ function Hl(t) {
         top: 30,
         right: 0,
         zIndex: 1e4,
-        // 宽度：最大 90% 视口；桌面端仍以 460 为内容舒适宽。
-        width: "min(460px, 90vw)",
+        width: "min(460px, 90%)",
+        maxWidth: "100%",
         // 高度：自适应且不得溢出视口。气泡 top:30 是相对 qm-actions 定位的，
-        // 而手机上 qm-actions 换行后自身已偏离视口顶（实测气泡起点 71px），
-        // 所以余量不能按「视口顶 + 30」这种假设来算——直接给足安全边界：
-        // 100vh 减 100px（覆盖 30px 偏移 + 手机上最多约 60px 的换行偏移 + 余量）。
+        // 手机上 qm-actions 换行后自身已偏离视口顶（实测气泡起点 71px），
+        // 所以余量不能按「视口顶 + 30」这种假设来算——直接给足安全边界。
         maxHeight: "calc(100vh - 100px)",
         display: "flex",
         flexDirection: "column",
