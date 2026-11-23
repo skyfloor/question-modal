@@ -161,8 +161,9 @@ function injectStyles(): void {
       ".qm-actions{flex:1 1 100%!important;flex-wrap:wrap!important;",
       "justify-content:flex-end!important;gap:6px!important}",
       // The analysis bubble was a fixed 460px, which cannot fit a phone.
+      // US-013: 口径统一为 100vw-44px（对齐 .qm-hdr-pop 与宽面板内联 min()）。
       ".qm-bubble{width:auto!important;min-width:0!important;",
-      "max-width:calc(100vw - 32px)!important}",
+      "max-width:calc(100vw - 44px)!important}",
       // Footer keeps its four actions on one or two rows without squashing.
       ".qm-footer{flex-wrap:wrap!important;row-gap:8px!important}",
       // US-006: 窄屏下底部两键均分可用宽度（上一步 / 下一步·提交各占一半）。
@@ -3717,14 +3718,17 @@ function AnalysisBubble(props: {
   onCancel?: () => void; onRerun?: () => void;
   disabled?: boolean; children?: any;
   open: boolean; onOpenChange: (v: boolean) => void;
+  /** US-013: 面板挂 qm-actions 行容器后，外部点击关闭需同时判定
+   *  触发器（popRef）与面板（panelRef）——手法同 ModeSwitch（US-012）。 */
+  popRef?: any; panelRef?: any;
 }): any {
   const { R, busy, result, error, mode, onRun, onApply, onCancel, onRerun,
-          disabled, children, open, onOpenChange } = props;
+          disabled, children, open, onOpenChange, popRef, panelRef } = props;
   const antd = antdLib();
   const Popover = antd.Popover;
 
   const btn = R.createElement("button", {
-    type: "button", disabled,
+    type: "button", disabled, key: "qm-analysis-trigger", ref: popRef,
     style: {
       display: "inline-flex", alignItems: "center", gap: 4,
       height: 24, padding: "0 10px", borderRadius: 12, fontSize: 12,
@@ -3773,9 +3777,11 @@ function AnalysisBubble(props: {
     }, label);
   };
 
+  // US-013: 宽度改由外层面板容器统一控制（min(460px, calc(100vw - 44px))），
+  // body 撑满容器；窄屏由 .qm-bubble media 规则兜底，不再固定 460px 溢出。
   const body = R.createElement("div", {
     className: "qm-bubble",
-    style: { width: 460, maxHeight: 460, overflow: "auto", fontSize: 13 },
+    style: { width: "100%", maxHeight: 460, overflow: "auto", fontSize: 13 },
   },
     busy
       ? R.createElement("div", {
@@ -3896,10 +3902,37 @@ function AnalysisBubble(props: {
                fontSize: 12 },
     }, children));
 
-  return R.createElement(Popover, {
-    content: body, trigger: "click", open, onOpenChange,
-    placement: "bottomRight",
-  }, btn);
+  // US-013: 参照 ModeSwitch（US-012）把「触发器 + 面板」拆为兄弟数组——
+  // 面板不再走 antd Popover（portal 到 body、相对触发器定位），改挂 qm-actions
+  // 行容器直下（absolute top:30 right:0 对齐整行右缘≈卡片右缘），移动端
+  // qm-actions 换行后不再随触发器横向漂移导致左缘溢出屏幕。宽度统一为
+  // min(460px, calc(100vw - 44px))（demo v5 / US-012 口径）。触发/取消/重跑/
+  // 套用等分析逻辑零改动；外部点击关闭由父级 anPopRef/anPanelRef effect 判定。
+  const analysisPanel = open
+    ? R.createElement("div", {
+        key: "qm-analysis-panel", ref: panelRef,
+        role: "dialog", "aria-label": "题目分析", className: "qm-hdr-pop",
+        style: {
+          position: "absolute", top: 30, right: 0, zIndex: 10000,
+          width: "min(460px, calc(100vw - 44px))",
+          padding: 12,
+          background: "var(--app-surface-raised, #fff)",
+          border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+          borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+        },
+      },
+        R.createElement("div", {
+          style: {
+            position: "absolute", top: -5, right: 9, width: 8, height: 8,
+            transform: "rotate(45deg)",
+            background: "var(--app-surface-raised, #fff)",
+            borderLeft: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+            borderTop: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+          },
+        }),
+        body)
+    : null;
+  return [btn, analysisPanel];
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -4199,6 +4232,24 @@ function AskUserCard(props: { data?: any }) {
   const [anResult, setAnResult] = R.useState<any>(null);
   const [anError, setAnError] = R.useState("");
   const [anOpen, setAnOpen] = R.useState(false);
+  // ── US-013: 「查看分析」气泡外部点击关闭 ──
+  // 面板挂 qm-actions 行容器直下（不再走 antd Popover 自带关闭），手法同
+  // US-002/012：独立 mousedown 监听，点触发器（anPopRef）或面板（anPanelRef）
+  // 内部不关闭，点外部收起。互斥组不涉及本气泡（与原 Popover 行为一致）。
+  const anPopRef = R.useRef<any>(null);
+  const anPanelRef = R.useRef<any>(null);
+  R.useEffect(() => {
+    if (!anOpen) return undefined;
+    const onDocDown = (ev: any) => {
+      const t = ev && ev.target;
+      if (anPopRef.current && t && anPopRef.current.contains(t)) return;
+      if (anPanelRef.current && t && anPanelRef.current.contains(t)) return;
+      setAnOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anOpen]);
   // ── US-001: 卡片 header 弹出层基础设施 ──
   // 「更多」(⋮) 菜单与「查看上下文」(ⓘ) 气泡的受控开关。本 story 只搭
   // 基础设施：菜单项为占位（点击仅收起，不接任何现有逻辑），气泡为占位
@@ -7360,6 +7411,7 @@ function AskUserCard(props: { data?: any }) {
           R, busy: anBusy, result: anResult, error: anError, mode: anMode,
           disabled: answered || busy,
           open: anOpen, onOpenChange: setAnOpen,
+          popRef: anPopRef, panelRef: anPanelRef,   // US-013: 触发器/面板双 ref（外部点击关闭）
           onRun: () => { void runAnalysis("manual"); },
           onRerun: rerunAnalysis,
           onApply: applyAnalysis,
