@@ -267,6 +267,9 @@ function injectStyles(): void {
       // 文字不折行 + 按钮组允许换行排列。
       ".qm-set-stalebtns{flex-wrap:wrap}",
       ".qm-set-stalebtns .qm-set-btn{white-space:nowrap}",
+      // US-007：时段卡字段网格窄屏单列；名称不再限宽
+      ".qm-set-schedgrid{grid-template-columns:1fr}",
+      ".qm-set-schedname{max-width:none}",
       ".qm-set-foot{margin:8px 16px 0;padding:14px 0 16px}",
       "}",
       // ── 作用域切换条 ──
@@ -546,6 +549,43 @@ function injectStyles(): void {
       "background:rgba(59,130,246,.06)}",
       ".qm-set-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;",
       "color:var(--app-text-secondary,#4e5969)}",
+      // ── 时段调度页签（US-007，纯 UI 占位）──
+      // 说明块：浅底圆角，与 .qm-set-scopeglobalnote 同族但更完整
+      ".qm-set-schednote{font-size:12px;line-height:1.7;color:var(--app-text-secondary,#64748b);",
+      "background:var(--app-fill-subtle,#f8fafc);border:1px solid var(--app-border-subtle,#f1f5f9);",
+      "border-radius:10px;padding:10px 14px;margin:4px 0 12px}",
+      ".qm-set-schednotetitle{font-weight:600;color:var(--app-text-primary,#1e293b)}",
+      ".qm-set-schednotedemo{margin-top:4px;font-size:11px;color:var(--app-text-tertiary,#94a3b8)}",
+      // 时段卡列表：纵向排列（与 .qm-set-stalecards 同构）
+      ".qm-set-schedlist{display:flex;flex-direction:column;gap:10px}",
+      // 时段卡 = demo v5 形态：白底、圆角 10、--app-border 边框
+      ".qm-set-schedcard{border:1px solid var(--app-border,#e5e7eb);border-radius:10px;",
+      "background:var(--app-bg-elevated,#fff);padding:12px 14px;",
+      "display:flex;flex-direction:column;gap:10px}",
+      ".qm-set-schedhead{display:flex;align-items:center;gap:8px}",
+      ".qm-set-schedname{flex:1 1 auto;min-width:0;max-width:260px}",
+      ".qm-set-scheddel{flex:0 0 auto;font-size:12px;line-height:1;padding:5px 10px;",
+      "border-radius:6px;border:1px solid var(--app-border-subtle,#f1f5f9);",
+      "background:transparent;cursor:pointer;color:var(--app-text-secondary,#64748b);",
+      "transition:all .15s}",
+      ".qm-set-scheddel:hover{color:#d93025;border-color:#f3c2bd;",
+      "background:rgba(217,48,37,.06)}",
+      // 卡内字段网格：两列；窄屏（640px media 块）改单列
+      ".qm-set-schedgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}",
+      ".qm-set-schedfield{display:flex;flex-direction:column;gap:4px;min-width:0}",
+      ".qm-set-schedfieldlabel{font-size:11px;color:var(--app-text-tertiary,#94a3b8)}",
+      ".qm-set-schedfield .qm-set-native,.qm-set-schedfield .qm-set-input{",
+      "width:100%;max-width:none;box-sizing:border-box}",
+      // 起止时间行：原生 time 输入，样式对齐 .qm-set-native 口径
+      ".qm-set-schedtime{display:flex;align-items:center;gap:6px}",
+      ".qm-set-schedtimesep{color:var(--app-text-tertiary,#94a3b8);font-size:12px;flex:0 0 auto}",
+      ".qm-set-schedtime input[type=time]{font:inherit;font-size:13px;line-height:1.4;",
+      "padding:7px 10px;border-radius:8px;border:1px solid transparent;",
+      "background:var(--app-fill-subtle,#f8fafc);color:var(--app-text-primary,#1e293b);",
+      "outline:none;min-width:0;box-sizing:border-box;transition:all .2s}",
+      ".qm-set-schedtime input[type=time]:focus{background:var(--app-bg-elevated,#fff);",
+      "border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}",
+      ".qm-set-schedadd{align-self:flex-start;margin-top:2px}",
     ].join("");
     document.head.appendChild(el);
   } catch (_) { /* ignore */ }
@@ -8490,6 +8530,9 @@ function SettingsButton(props: { R: any; onOpen: () => void }): any {
 const SETTINGS_TABS: Array<{ key: string; label: string; hint: string }> = [
   { key: "session", label: "会话模式", hint: "" },
   { key: "default", label: "默认模式", hint: "" },
+  // US-007：时段调度页签（位于「默认模式」之后）。本版仅 UI 展示，
+  // 不接存储与生效逻辑（生效走读时计算，见需求可行性评估 需求一/四）。
+  { key: "schedule", label: "时段调度", hint: "" },
   { key: "global", label: "全局配置", hint: "" },
   // 参考稿提示词页没有顶部说明行，第一行就是「模板库共享范围」。
   { key: "prompt", label: "提示词", hint: "" },
@@ -9022,6 +9065,26 @@ function sessionsPane(R: any, data: { items: any[]; count: number; ok: boolean }
   ];
 }
 
+// ── 时段调度 · 纯 UI 演示状态（US-007）────────────────────────────
+// 本版只做界面展示：增/删/改只作用于这份**模块级演示数据**，不写 prefs、
+// 不调用后端、不影响任何现有配置项。设置面板整体是「模块级状态 +
+// settingsRenderPanel 整树重绘」的无 hooks 写法（见 stale 页签同款做法），
+// 故这里的演示状态也放模块级，等价于「本页签组件内部的本地 state」。
+type SchedDemoItem = {
+  name: string;   // 时段名称
+  start: string;  // 起始时间 HH:mm（支持跨零点，如 22:00 → 06:00）
+  end: string;    // 结束时间 HH:mm
+  mode: string;   // 答题方式：ai / recommend / manual
+  chPc: string;   // PC 端通知渠道（"" = 跟随全局）
+  chBg: string;   // 后台通知渠道（"" = 跟随全局）
+};
+// 初始两组示例数据（demo v5 形态）；每次进入本页签都从这份当前值渲染。
+const schedDemoSeed = (): SchedDemoItem[] => [
+  { name: "工作时段", start: "09:00", end: "18:00", mode: "ai", chPc: "", chBg: "" },
+  { name: "夜间值守", start: "22:00", end: "06:00", mode: "manual", chPc: "", chBg: "" },
+];
+let schedDemoItems: SchedDemoItem[] = schedDemoSeed();
+
 function settingsTabBody(
   R: any, tab: string, activeScope?: string, sessData?: any,
   opts?: { modelOptions?: string[]; templateOptions?: string[]; providerGroups?: ProviderGroup[] },
@@ -9358,6 +9421,129 @@ function settingsTabBody(
       ]));
     }
 
+  } else if (tab === "schedule") {
+    // ═══════════════ 时段调度（US-007，纯 UI 占位）═══════════════
+    // 本版只做界面展示：说明文案 + 两组示例时段卡 + 「添加时段」入口。
+    // 修改/添加/删除仅作用于 schedDemoItems 本地演示状态，不写 prefs、
+    // 不调用后端、不影响任何现有配置项；「按配置顺序匹配 / 跨零点 /
+    // 未命中回落会话或默认模式」的生效逻辑属后续版本（读时计算）。
+    const SCHED_MODE_OPTS: Array<{ value: string; label: string }> = [
+      { value: "ai", label: "自动执行" },
+      { value: "recommend", label: "只用推荐" },
+      { value: "manual", label: "人工作答" },
+    ];
+    // 渠道选项与「通知方式」页同一来源（settingsState.notifyChannels），
+    // 首项固定「跟随全局」（value=""，仅作展示，本版不落盘）。
+    // bg 场景过滤 browser：页面不在时浏览器通知必然无效（与通知页同口径）。
+    const schedChanOptions = (scene: "pc" | "bg"): Array<{ value: string; label: string }> => {
+      const list = ((settingsState as any).notifyChannels || [])
+        .filter((c: any) => scene !== "bg" || String(c.channel) !== "browser")
+        .map((c: any) => ({
+          value: String(c.channel || ""),
+          label: String(c.label || c.channel || ""),
+        }));
+      return [{ value: "", label: "跟随全局" }].concat(list);
+    };
+    const schedSetField = (idx: number, field: string, v: string) => {
+      const it = schedDemoItems[idx];
+      if (!it) return;
+      (it as any)[field] = v;
+      settingsRenderPanel();
+    };
+    const renderSchedCard = (it: SchedDemoItem, idx: number): any => {
+      const timeInput = (field: "start" | "end", val: string, dataAttr: string): any => {
+        const p: any = {
+          type: "time", key: field, value: val,
+          style: { flex: "1 1 auto", minWidth: 0 },
+          onChange: (e: any) => schedSetField(idx, field,
+            e && e.target ? String(e.target.value) : ""),
+        };
+        p["data-qm-sched-" + dataAttr] = String(idx);
+        return R.createElement("input", p);
+      };
+      const schedSel = (field: string, val: string, dataAttr: string,
+                        opts: Array<{ value: string; label: string }>): any => {
+        const p: any = {
+          key: field, className: "qm-set-native", value: val,
+          onChange: (e: any) => schedSetField(idx, field,
+            e && e.target ? String(e.target.value) : ""),
+        };
+        p["data-qm-sched-" + dataAttr] = String(idx);
+        return R.createElement("select", p, opts.map((o, i) =>
+          R.createElement("option", { key: "o" + i, value: o.value }, o.label)));
+      };
+      return R.createElement("div", {
+        className: "qm-set-schedcard", key: "sc" + idx,
+        "data-qm-sched-card": String(idx),
+      }, [
+        // 顶行：名称 + 删除按钮
+        R.createElement("div", { className: "qm-set-schedhead", key: "h" }, [
+          R.createElement("input", {
+            key: "name", className: "qm-set-input qm-set-schedname",
+            value: it.name, placeholder: "时段名称（如：工作时段）",
+            "data-qm-sched-name": String(idx),
+            onChange: (e: any) => schedSetField(idx, "name",
+              e && e.target ? String(e.target.value) : ""),
+          }),
+          R.createElement("button", {
+            type: "button", key: "del", className: "qm-set-scheddel",
+            "data-qm-sched-del": String(idx),
+            title: "删除该时段（仅演示，不影响真实配置）",
+            onClick: () => { schedDemoItems.splice(idx, 1); settingsRenderPanel(); },
+          }, "删除"),
+        ]),
+        // 中部网格：起止时间 / 答题方式 / PC 端渠道 / 后台渠道
+        R.createElement("div", { className: "qm-set-schedgrid", key: "g" }, [
+          R.createElement("div", { className: "qm-set-schedfield", key: "ftime" }, [
+            R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, "生效时间"),
+            R.createElement("div", { className: "qm-set-schedtime", key: "t" }, [
+              timeInput("start", it.start, "start"),
+              R.createElement("span", { key: "sep", className: "qm-set-schedtimesep" }, "至"),
+              timeInput("end", it.end, "end"),
+            ]),
+          ]),
+          R.createElement("div", { className: "qm-set-schedfield", key: "fmode" }, [
+            R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, "答题方式"),
+            schedSel("mode", it.mode, "mode", SCHED_MODE_OPTS),
+          ]),
+          R.createElement("div", { className: "qm-set-schedfield", key: "fpc" }, [
+            R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, "PC 端通知渠道"),
+            schedSel("chPc", it.chPc, "pc", schedChanOptions("pc")),
+          ]),
+          R.createElement("div", { className: "qm-set-schedfield", key: "fbg" }, [
+            R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, "后台通知渠道"),
+            schedSel("chBg", it.chBg, "bg", schedChanOptions("bg")),
+          ]),
+        ]),
+      ]);
+    };
+    // 说明文案（AC：按配置顺序匹配、支持跨零点、未命中回落会话/默认模式）
+    bodyKids.push(R.createElement("div", {
+      className: "qm-set-schednote", key: "schednote", "data-qm-sched-note": "1",
+    }, [
+      R.createElement("div", { key: "t", className: "qm-set-schednotetitle" },
+        "按时段为问卷自动切换执行方式与通知渠道："),
+      R.createElement("div", { key: "d", className: "qm-set-schednotedesc" },
+        "多个时段按配置顺序匹配，命中第一个即生效；起止时间支持跨零点"
+        + "（如 22:00 → 次日 06:00）；没有任何时段命中时，回落到当前会话 / 默认模式的配置。"),
+      R.createElement("div", { key: "demo", className: "qm-set-schednotedemo" },
+        "以下为界面预览（示例数据，本版不接后端，修改不会保存）。"),
+    ]));
+    // 示例时段卡列表
+    bodyKids.push(R.createElement("div", {
+      className: "qm-set-schedlist", key: "schedlist", "data-qm-sched-list": "1",
+    }, schedDemoItems.map((it: SchedDemoItem, idx: number) => renderSchedCard(it, idx))));
+    // 「添加时段」：push 一条空白卡（仅演示状态）
+    bodyKids.push(R.createElement("button", {
+      type: "button", key: "schedadd",
+      className: "qm-set-btn qm-set-btnnew qm-set-schedadd",
+      "data-qm-sched-add": "1",
+      title: "添加一组时段（仅演示，不会保存）",
+      onClick: () => {
+        schedDemoItems.push({ name: "", start: "", end: "", mode: "ai", chPc: "", chBg: "" });
+        settingsRenderPanel();
+      },
+    }, "＋ 添加时段"));
 
   } else if (tab === "stale") {
     // ═══════════════ 挂起清理（2026-11-15 新增）═══════════════
@@ -9962,7 +10148,11 @@ function SettingsPanel(props: {
   const activeTabForFoot = String(props.tab || "");
   const isModeTabFoot = activeTabForFoot === "session" || activeTabForFoot === "default";
   let targetLabel: string;
-  if (!isModeTabFoot) {
+  if (activeTabForFoot === "schedule") {
+    // US-007：时段调度页为本版 UI 预览，时段数据不落盘；
+    // 底部保存按钮仍可用（只固化其它页签的全局草稿），但与本页无关。
+    targetLabel = "时段调度为界面预览（本版不保存，现有配置不受影响）";
+  } else if (!isModeTabFoot) {
     targetLabel = activeTabForFoot === "prompt"
       ? "保存提示词模板（对所有模式生效，不改运行模式）"
       : "保存全局配置（对所有模式生效，不改运行模式）";
