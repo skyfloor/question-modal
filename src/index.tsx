@@ -3936,7 +3936,13 @@ function AnalysisBubble(props: {
       background: "var(--app-surface-raised, #fff)",
       border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
       borderRadius: 12, boxShadow: "0 16px 48px rgba(0,0,0,0.24)",
+      // US-017: 卡内任何点按都在此截断——不冒泡到遮罩（否则点卡内也会关），
+      // 也不冒泡到 document（否则输入法选字、拖选文本会被当成「点外部」）。
+      // 顺带拦截 keydown，避免空格选字等按键被浏览器解释成对卡片的点击。
     },
+    onMouseDown: (ev: any) => { if (ev && ev.stopPropagation) ev.stopPropagation(); },
+    onClick: (ev: any) => { if (ev && ev.stopPropagation) ev.stopPropagation(); },
+    onKeyDown: (ev: any) => { if (ev && ev.stopPropagation) ev.stopPropagation(); },
   }, [body, analysisFooter]);
   const analysisOverlay = R.createElement("div", {
     key: "qm-analysis-overlay",
@@ -3944,6 +3950,12 @@ function AnalysisBubble(props: {
       position: "fixed", top: 0, right: 0, bottom: 0, left: 0,
       background: "rgba(0,0,0,0.45)", zIndex: 10000,
     },
+    // US-017: 遮罩自己就是「空白处」——点它关闭；卡内点击由卡自身的
+    // onMouseDown/onClick stopPropagation 截断，不会冒泡到这里。这样关闭
+    // 判定不再依赖「文档级点外部 + ref 命中」，即便 ref 在 portal 重渲染
+    // 后失效也不会误关刚打开的弹窗。
+    onMouseDown: (ev: any) => { if (ev && ev.stopPropagation) ev.stopPropagation(); },
+    onClick: () => { if (onOpenChange) onOpenChange(false); },
   }, analysisCard);
   const canPortal = typeof R.createPortal === "function"
     && typeof document !== "undefined" && !!document.body;
@@ -4259,16 +4271,39 @@ function AskUserCard(props: { data?: any }) {
   // 内部不关闭，点外部收起。互斥组不涉及本气泡（与原 Popover 行为一致）。
   const anPopRef = R.useRef<any>(null);
   const anPanelRef = R.useRef<any>(null);
+  // ── US-017: 修复「点了查看分析，弹窗瞬间消失」（真宿主必现）──
+  // 旧实现靠 document 上的 mousedown 判定「点外部」。问题在于打开弹窗与
+  // 关闭判定共用同一次用户事件：触发器的 mousedown 先于它自己的 click，
+  // 而 effect 在渲染提交后才注册监听；真宿主里紧接着到达的 mousedown
+  // （点按序列中的后续事件 / 同一按键的合成事件）会立刻把刚打开的弹窗关掉
+  // ——用户看到的就是「点了按钮，遮罩闪一下没了」。
+  // 修法：① 记下打开时刻，OPEN_GUARD_MS 内的 mousedown 一律不关（吞掉
+  //        打开那一次点按序列的余波）；② 遮罩自身、以及卡内任何点击都
+  //        不关闭（遮罩单独挂 onClick 关闭，取代「文档级点外部」判定），
+  //        判定不再依赖 ref 在 portal 重渲染后是否仍然有效。
+  const anOpenedAt = R.useRef<number>(0);
+  R.useEffect(() => {
+    if (anOpen) anOpenedAt.current = Date.now();
+  }, [anOpen]);
   R.useEffect(() => {
     if (!anOpen) return undefined;
     const onDocDown = (ev: any) => {
+      // 打开弹窗的那一次点按序列余波：不关闭。
+      if (Date.now() - anOpenedAt.current < 350) return;
       const t = ev && ev.target;
       if (anPopRef.current && t && anPopRef.current.contains(t)) return;
       if (anPanelRef.current && t && anPanelRef.current.contains(t)) return;
       setAnOpen(false);
     };
+    const onKeyDown = (ev: any) => {
+      if (ev && ev.key === "Escape") setAnOpen(false);
+    };
     document.addEventListener("mousedown", onDocDown);
-    return () => document.removeEventListener("mousedown", onDocDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onDocDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [anOpen]);
   // ── US-001: 卡片 header 弹出层基础设施 ──
