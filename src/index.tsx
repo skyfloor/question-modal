@@ -5291,12 +5291,86 @@ function AskUserCard(props: { data?: any }) {
     };
   }, [answered, callId]);
 
+  // Self-rescue: the survey is blocking the whole chat, and this card cannot
+  // reach the backend for its request_id.  Release the block so the host
+  // stops answering 409「A task is already running for this chat」and the
+  // user can keep talking.  Skips THIS tool call only — other pending
+  // surveys in the same session are untouched.
+  const rescue = async () => {
+    setBusy(true);
+    try {
+      // Explicit user action → two stages.  First the plugin's own endpoints
+      // (/skip by request_id, then the session-wide /cancel-session).  If they
+      // cannot actually release anything, escalate to the host's run stop,
+      // because only that can unpark an agent whose Future lives in an older
+      // service.  That escalation is deliberately kept OUT of
+      // `releaseBackend` so the automatic convergence paths can never cancel a
+      // healthy run.
+      //
+      // Note the cross-instance shape: localStorage still holds the old
+      // request_id, so /skip runs and answers 404 (the new service never had
+      // that record) → reason "gone"/"none" with released=false.  Those are
+      // exactly the cases that must escalate.
+      const sid = cardSessionId(callId);
+      let rel = await releaseBackend(callId, sid);
+      // Escalate whenever the plugin could not *prove* it unparked anything.
+      //
+      // "orphan" is the treacherous one: the record was found on disk but has
+      // no live Future in the answering service — the classic shape after a
+      // hot reload, where the parked Future belongs to the *older* module
+      // generation.  It reads as released:true, yet the agent is still parked,
+      // so it must escalate too.
+      //
+      // A network failure is deliberately NOT escalated: the survey may be
+      // perfectly alive behind a transient outage, and cancelling the run
+      // would be strictly worse than telling the user to retry.
+      const unproven = !rel.released || rel.reason === "orphan";
+      if (unproven && rel.reason !== "network" && sid) {
+        const hs = await hostStopFallback(sid);
+        if (hs.ok && hs.released) rel = hs;
+        else if (hs.ok && !rel.ok) rel = { ok: true, released: false, reason: "gone" };
+      }
+      if (!rel.ok) {
+        throw new Error(
+          rel.reason === "network"
+            ? "网络不可达，未能释放；请稍后重试"
+            : "未能取得问卷句柄（" + rel.reason + "）");
+      }
+      if (rel.released) {
+        // The agent is unparked; close the card out.  A user-initiated
+        // release is a *skip*, not a failure — only a dead record earns the
+        //「已失效」styling.  The host-stop path is different: it cancels the
+        // run outright, so the agent will NOT resume — say so plainly instead
+        // of promising「会话可继续」.
+        const viaHost = rel.reason === "host-stop";
+        converge(rel.reason === "orphan" ? "orphan" : "",
+          rel.reason === "orphan"
+            ? "本次问卷已失效：问卷服务在作答期间重启，原来的等待已中断。\n"
+              + "无需再操作，请直接在对话中继续。"
+            : viaHost
+              ? "本次问卷已释放：已直接终止本次运行，会话可继续对话。\n"
+                + "（插件端记录已不可达，例如插件刚重载过；本次回答未回传给模型。）"
+              : "用户跳过了本次问卷。",
+          true);
+        toast("info",
+          viaHost ? "已释放本次问卷（已终止本次运行）" : "已释放本次问卷，会话可继续");
+      } else {
+        // Nothing was pending any more — the block is already gone.
+        converge("gone",
+          "本次问卷已失效：后端已不再保留这条记录（可能已过期或服务曾重启）。\n"
+          + "无需再操作，请直接在对话中继续。",
+          true);
+        toast("info", "本次问卷已失效，已关闭");
+      }
+    } catch (e: any) {
+      toast("error", "释放失败: " + (e && e.message ? e.message : e));
+    } finally { setBusy(false); }
+  };
+
   // Escape hatch for a card that already shows its answer/skip summary but
-  // whose chat is *still* locked (409).  Two-stage backend release (plugin
-  // endpoints, then host stop), deliberately WITHOUT calling `converge`: an
-  // answered card must keep showing the user's submission, so the outcome
-  // goes to a side note.  US-005 起它也是所有渲染路径的唯一释放入口
-  // （header 🔒 icon，见 releaseLockBtn），原 rescue 已随之移除。
+  // whose chat is *still* locked (409).  Same two-stage backend release as
+  // `rescue`, deliberately WITHOUT calling `converge`: an answered card must
+  // keep showing the user's submission, so the outcome goes to a side note.
   const releaseBlocked = async () => {
     setBusy(true);
     try {
@@ -5335,8 +5409,9 @@ function AskUserCard(props: { data?: any }) {
   // 形态迁移：各渲染路径底部/卡内的「释放阻塞/释放本次问卷」按钮统一收口到
   // header 右上角的一个 🔒 icon（与 US-001 的 icon 微按钮同规格：24px、
   // 边框、圆角、warn 警示色）。出现条件沿用各路径现有判定（showRelease /
-  // stuck / slowActive），点击统一走原 releaseBlocked 逻辑——本 helper 只
-  // 承载触发入口，不新增/不改变任何释放判定。
+  // stuck / slowActive）——本 helper 只承载触发入口，不新增/不改变任何释放
+  // 判定；点击行为由调用方传入：答题中主卡片与准备中卡走 rescue（基线收尾
+  // 语义），已答只读卡与折叠等待行走 releaseBlocked（与基线一致）。
   const releaseLockIconNode = R.createElement("svg", {
     width: 13, height: 13, viewBox: "0 0 24 24", fill: "none",
     stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round",
@@ -6397,8 +6472,9 @@ function AskUserCard(props: { data?: any }) {
         },
           // US-005: 释放入口收口到 header 🔒 icon（原底部「释放本次问卷」
           // 按钮移除，不留多套并存）。准备中的卡同样会把会话锁死，越过
-          // stuck 阈值后必须仍有唯一逃生口；点击走原 releaseBlocked 逻辑。
-          stuck ? releaseLockBtn(releaseBlocked, "qm-release-lock-prep") : null,
+          // stuck 阈值后必须仍有唯一逃生口；点击走基线 rescue 逻辑
+          // （converge 收尾 + toast，语义与 334ad7b 逐字一致）。
+          stuck ? releaseLockBtn(rescue, "qm-release-lock-prep") : null,
           R.createElement("span", { style: pill }, "准备中"))),
       R.createElement("div", {
         style: { ...content, color: "var(--app-text-tertiary, inherit)", fontSize: 12 },
@@ -7053,9 +7129,10 @@ function AskUserCard(props: { data?: any }) {
         headerPopups,
         // US-005: 释放阻塞 🔒 icon——非常驻，越过阻塞阈值后才出现（demo v5
         // 形态）。出现条件沿用阻塞横幅判定（题级 slowActive / stuck 故障兜底），
-        // 点击走原 releaseBlocked 逻辑；原横幅内的释放按钮随之移除。
+        // 点击走基线 rescue 逻辑（converge 收尾 + toast，语义与 334ad7b
+        // 逐字一致）；原横幅内的释放按钮随之移除。
         (slowActive || (stuck && !reqId))
-          ? releaseLockBtn(releaseBlocked, "qm-release-lock")
+          ? releaseLockBtn(rescue, "qm-release-lock")
           : null,
         // #1 the progress counter now lives in the SAME flex row, so it can no
         // longer crowd the controls; #2 the permanent completion chip is gone
