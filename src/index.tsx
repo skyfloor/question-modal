@@ -586,6 +586,34 @@ function injectStyles(): void {
       ".qm-set-schedtime input[type=time]:focus{background:var(--app-bg-elevated,#fff);",
       "border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}",
       ".qm-set-schedadd{align-self:flex-start;margin-top:2px}",
+      // ── 自定义 API 通知卡（US-008，纯 UI 占位）──
+      // 卡容器/网格/字段复用 .qm-set-sched*（demo v5 同一卡形态），
+      // 这里只补 API 卡特有元素：标题徽标 / 启用开关 / 测试按钮。
+      ".qm-set-apicard{margin-top:14px}",
+      ".qm-set-apititle{font-size:13px;font-weight:600;color:var(--app-text-primary,#1e293b);",
+      "display:inline-flex;align-items:center}",
+      // 「新增渠道」徽标 = demo v5 内联样式（accent 底白字小圆角）
+      ".qm-set-apibadge{display:inline-block;font-size:10px;font-weight:700;color:#fff;",
+      "background:var(--app-accent,#3b82f6);border-radius:4px;padding:1px 6px;",
+      "margin-left:8px;vertical-align:2px}",
+      // 启用开关 = demo .switch 形态（34×19 胶囊 + 滑动白点），纯演示可点击
+      ".qm-set-apiswitch{flex:0 0 auto;margin-left:auto;position:relative;width:34px;",
+      "height:19px;border-radius:10px;border:none;padding:0;cursor:pointer;",
+      "background:#d9d9d9;transition:background .2s}",
+      ".qm-set-apiswitch.on{background:var(--app-accent,#3b82f6)}",
+      ".qm-set-apiswitchdot{position:absolute;top:2px;left:2px;width:15px;height:15px;",
+      "border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);",
+      "transition:left .2s}",
+      ".qm-set-apiswitch.on .qm-set-apiswitchdot{left:17px}",
+      ".qm-set-apinote{font-size:11px;color:var(--app-text-tertiary,#94a3b8)}",
+      // 发送测试 = demo .btn-test 形态（透明底 + border-strong 边框小按钮）
+      ".qm-set-apifoot{display:flex;gap:8px;justify-content:flex-end;margin-top:2px}",
+      ".qm-set-apitest{min-width:0;height:28px;padding:0 12px;font-size:12px;",
+      "border-radius:6px;background:transparent;cursor:pointer;",
+      "border:1.5px solid var(--app-border-strong,#cbd5e1);",
+      "color:var(--app-text-secondary,#4e5969);transition:all .15s}",
+      ".qm-set-apitest:hover{border-color:var(--app-accent,#3b82f6);",
+      "color:var(--app-accent,#3b82f6)}",
     ].join("");
     document.head.appendChild(el);
   } catch (_) { /* ignore */ }
@@ -9085,6 +9113,25 @@ const schedDemoSeed = (): SchedDemoItem[] => [
 ];
 let schedDemoItems: SchedDemoItem[] = schedDemoSeed();
 
+// ── 自定义 API 通知 · 纯 UI 演示状态（US-008）──────────────────────
+// 同 US-007 的 schedDemoItems：本版只做界面展示。启用开关/URL/请求方法/
+// Token 位置/Token 输入/发送测试按钮都只改这份**模块级演示数据**并重绘，
+// 不写 prefs、不调用后端、不影响 notify_channel_pc/bg 的任何现有逻辑。
+type ApiDemoState = {
+  enabled: boolean;   // 启用开关（demo v5 为开启态）
+  url: string;        // 请求地址（URL）
+  method: string;     // 请求方法：post-json / get-query
+  tokenPos: string;   // Token 位置：bearer / query / none
+  token: string;      // Token（password 输入，回显打码形态）
+};
+let apiDemo: ApiDemoState = {
+  enabled: true,
+  url: "https://example.com/hook/notify",
+  method: "post-json",
+  tokenPos: "bearer",
+  token: "sk-demo-0000000000000000",
+};
+
 function settingsTabBody(
   R: any, tab: string, activeScope?: string, sessData?: any,
   opts?: { modelOptions?: string[]; templateOptions?: string[]; providerGroups?: ProviderGroup[] },
@@ -9264,6 +9311,103 @@ function settingsTabBody(
     // 后端按页面心跳自动选场景；测试闸门与结果展示两行各自独立。
     bodyKids.push(notifyChannelRow(R, scope, "pc", "PC 端打开时提醒频道"));
     bodyKids.push(notifyChannelRow(R, scope, "bg", "后台运行时提醒频道"));
+
+    // ── 自定义 API 通知配置卡（US-008，纯 UI 占位）──
+    // demo v5 形态：白底卡 + 顶行（标题 +「新增渠道」徽标 + 启用开关）
+    // + URL / 请求方法 / Token 位置 / Token 密码框 / 发送测试按钮。
+    // 卡形态复用 US-007 时段卡的通用类（qm-set-schedcard/schedhead/
+    // schedgrid/schedfield，同出 demo v5 一种卡形态），窄屏单列规则
+    // （640px media 的 .qm-set-schedgrid）随之天然生效，无需另开断点。
+    // 纯占位：开关/输入/测试只改模块级 apiDemo 演示状态并重绘，不调用
+    // 后端、不写 prefs；上方 PC/后台两行的现有逻辑不受影响。
+    const API_METHOD_OPTS: Array<{ value: string; label: string }> = [
+      { value: "post-json", label: "POST（JSON）" },
+      { value: "get-query", label: "GET（query 传参）" },
+    ];
+    const API_TOKENPOS_OPTS: Array<{ value: string; label: string }> = [
+      { value: "bearer", label: "Authorization: Bearer 头" },
+      { value: "query", label: "query 参数 token=…" },
+      { value: "none", label: "不携带 token" },
+    ];
+    const apiField = (key: string, label: string, ctrl: any): any =>
+      R.createElement("div", { className: "qm-set-schedfield", key }, [
+        R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, label),
+        ctrl,
+      ]);
+    bodyKids.push(R.createElement("div", {
+      className: "qm-set-schedcard qm-set-apicard", key: "apicard",
+      "data-qm-api-card": "1",
+    }, [
+      // 顶行：标题 +「新增渠道」徽标 + 启用开关（demo 为开启态）
+      R.createElement("div", { className: "qm-set-schedhead", key: "h" }, [
+        R.createElement("span", { key: "t", className: "qm-set-apititle" },
+          "自定义 API 通知",
+          R.createElement("span", { key: "badge", className: "qm-set-apibadge" }, "新增渠道")),
+        R.createElement("button", {
+          type: "button", key: "sw", role: "switch",
+          className: "qm-set-apiswitch" + (apiDemo.enabled ? " on" : ""),
+          "data-qm-api-switch": "1",
+          "aria-checked": apiDemo.enabled ? "true" : "false",
+          title: apiDemo.enabled
+            ? "已启用（占位演示，本版不会保存）"
+            : "已停用（占位演示，本版不会保存）",
+          onClick: () => { apiDemo.enabled = !apiDemo.enabled; settingsRenderPanel(); },
+        }, R.createElement("span", { className: "qm-set-apiswitchdot", key: "dot" })),
+      ]),
+      // 占位口径说明（防误以为会保存——同 US-007 时段页说明的做法）
+      R.createElement("div", { key: "note", className: "qm-set-apinote" },
+        "自定义 API 渠道为界面预览（本版不接后端，修改不会保存）。"),
+      // URL（占满整行）
+      apiField("furl", "请求地址（URL）", R.createElement("input", {
+        key: "url", type: "text", className: "qm-set-input",
+        value: apiDemo.url, placeholder: "https://…",
+        "data-qm-api-url": "1",
+        onChange: (e: any) => {
+          apiDemo.url = e && e.target ? String(e.target.value) : "";
+          settingsRenderPanel();
+        },
+      })),
+      // 请求方法 + Token 位置（两列网格）
+      R.createElement("div", { className: "qm-set-schedgrid", key: "g" }, [
+        apiField("fmethod", "请求方法", R.createElement("select", {
+          key: "method", className: "qm-set-native", value: apiDemo.method,
+          "data-qm-api-method": "1",
+          onChange: (e: any) => {
+            apiDemo.method = e && e.target ? String(e.target.value) : "post-json";
+            settingsRenderPanel();
+          },
+        }, API_METHOD_OPTS.map((o, i) =>
+          R.createElement("option", { key: "o" + i, value: o.value }, o.label)))),
+        apiField("ftpos", "Token 位置（可选）", R.createElement("select", {
+          key: "tp", className: "qm-set-native", value: apiDemo.tokenPos,
+          "data-qm-api-tokenpos": "1",
+          onChange: (e: any) => {
+            apiDemo.tokenPos = e && e.target ? String(e.target.value) : "bearer";
+            settingsRenderPanel();
+          },
+        }, API_TOKENPOS_OPTS.map((o, i) =>
+          R.createElement("option", { key: "o" + i, value: o.value }, o.label)))),
+      ]),
+      // Token 密码框（type=password 回显打码形态）
+      apiField("ftoken", "Token（可选，保存后回显打码）", R.createElement("input", {
+        key: "tk", type: "password", className: "qm-set-input",
+        value: apiDemo.token, placeholder: "选填",
+        "data-qm-api-token": "1",
+        onChange: (e: any) => {
+          apiDemo.token = e && e.target ? String(e.target.value) : "";
+          settingsRenderPanel();
+        },
+      })),
+      // 发送测试（占位：仅本地 toast，不调用后端）
+      R.createElement("div", { key: "foot", className: "qm-set-apifoot" }, [
+        R.createElement("button", {
+          type: "button", key: "test", className: "qm-set-apitest",
+          "data-qm-api-test": "1",
+          title: "占位演示：本版未接发送逻辑",
+          onClick: () => toast("info", "占位：未接发送逻辑"),
+        }, "发送测试"),
+      ]),
+    ]));
 
     bodyKids.push(setRow(R, "e6", "单题分析超时",
       setSelect(R, "sel4", TO_LABEL[Number(cfgValue("model_timeout_sec", 120, "global"))] || "120 秒（默认）",
