@@ -3394,34 +3394,18 @@ function ModeSwitch(props: {
       : null);
 }
 
-/** The prompt-template picker: a pill that opens a Popover listing every
- *  template (built-ins first) plus a「管理模板」entry.  Hook-free by design —
- *  `open`/`mgrOpen`/`edit` live in the parent card (see ModelCapsule). */
-function TemplateCapsule(props: {
+/** The template picker LIST (US-003): every template (built-ins first) plus a
+ *  「管理模板」entry.  Hook-free by design — open/draft state lives in the
+ *  parent card.  US-003 removed the always-on header capsule; this list is now
+ *  rendered inside the「更多」menu's「选择模板」panel, remaining the single
+ *  source of the template-selection UI so 选择/管理模板 functionality is kept. */
+function TemplatePickList(props: {
   R: any; templates: any[]; value: string;
-  open: boolean; onOpenChange: (v: boolean) => void;
-  disabled?: boolean;
   onSelect: (id: string) => void;
   onManage: () => void;
 }): any {
-  const { R, templates, value, open, onOpenChange, disabled, onSelect, onManage } = props;
-  const antd = antdLib();
-  const Popover = antd.Popover;
-
-  const cur = (templates || []).find((t: any) => t.id === value);
-  const label = cur ? cur.name : "默认模板";
-  const pillStyle: any = {
-    display: "inline-flex", alignItems: "center", gap: 4,
-    height: 22, padding: "1px 8px", boxSizing: "border-box",
-    borderRadius: 999, fontSize: 12, lineHeight: "1",
-    border: "1px solid var(--app-border-subtle, rgba(0,0,0,0.15))",
-    background: "var(--app-bg-container, rgba(127,127,127,0.04))",
-    color: "var(--app-text, inherit)",
-    cursor: disabled ? "default" : "pointer",
-    maxWidth: 160, overflow: "hidden", whiteSpace: "nowrap",
-  };
-
-  const content = R.createElement("div", {
+  const { R, templates, value, onSelect, onManage } = props;
+  return R.createElement("div", {
     style: { width: 240, maxHeight: "min(60vh, 320px)", overflowY: "auto",
              scrollbarWidth: "none" },
   },
@@ -3436,7 +3420,8 @@ function TemplateCapsule(props: {
           borderBottom: "1px solid var(--app-border-subtle, rgba(127,127,127,0.12))",
           background: t.id === value ? "var(--app-accent-soft, rgba(22,119,255,0.10))" : "transparent",
         },
-        onClick: () => { onSelect(t.id); onOpenChange(false); },
+        // 关闭弹层由调用方负责（本列表只负责选择/管理两个入口语义）。
+        onClick: () => onSelect(t.id),
       },
         R.createElement("span", {
           style: { fontSize: 12, flex: 1, overflow: "hidden",
@@ -3453,20 +3438,8 @@ function TemplateCapsule(props: {
       style: { padding: "6px 12px", cursor: "pointer", fontSize: 12,
                color: "var(--app-accent, #1677ff)",
                borderTop: "1px solid var(--app-border-subtle, rgba(127,127,127,0.18))" },
-      onClick: () => { onOpenChange(false); onManage(); },
+      onClick: () => onManage(),
     }, "＋ 管理模板…"));
-
-  const btn = R.createElement("button", {
-    type: "button", style: pillStyle, disabled,
-    title: "选择本题分析使用的提示词模板",
-  },
-    R.createElement("span", { style: { overflow: "hidden", textOverflow: "ellipsis" } }, label),
-    R.createElement("span", { style: { fontSize: 10, color: "var(--app-text-tertiary, inherit)" } }, "▾"));
-
-  if (!Popover) return btn;   // degrade: manage entry is unreachable, but the card works
-  return R.createElement(Popover, {
-    content, trigger: "click", open, onOpenChange, placement: "bottomLeft",
-  }, btn);
 }
 
 /** Template library manager: list + create/edit/delete.  Hook-free; all state
@@ -4168,11 +4141,26 @@ function AskUserCard(props: { data?: any }) {
   const [tplId, setTplId] = R.useState<string>("");
   const tplIdRef = R.useRef(tplId);
   tplIdRef.current = tplId;
-  // Popover/edit state for the template picker — hoisted into the parent card
-  // because the picker component is called as a plain function (hook-free).
+  // US-003: template-picker panel open state — hoisted into the parent card.
+  // 原 TemplateCapsule 胶囊已从 header 移除，tplOpen 现在驱动「更多」菜单里
+  // 「选择模板」展开的模板选择弹层（渲染在 headerPopups 容器内）。
   const [tplOpen, setTplOpen] = R.useState(false);
   const [tplMgrOpen, setTplMgrOpen] = R.useState(false);
   const [tplEdit, setTplEdit] = R.useState<any>(null);   // {id,name,system,user} | null
+  // US-003: 模板选择弹层（挂在 headerPopups 容器内）的外部点击关闭。
+  // 独立监听（手法同 US-002 的 modePopRef），不触碰 US-001 已验证的
+  // more/ctx 关闭逻辑；容器内点击（含弹层自身）不关闭。
+  R.useEffect(() => {
+    if (!tplOpen) return undefined;
+    const onDocDown = (ev: any) => {
+      const el = hdrPopRef.current;
+      if (el && ev && ev.target && el.contains(ev.target)) return;
+      setTplOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tplOpen]);
 
   // ── AI autopilot (无人值守自动答题) ──
   // When AI mode is on and NOT paused, each analysed question is auto-filled
@@ -6766,7 +6754,8 @@ function AskUserCard(props: { data?: any }) {
 
   // ── US-001: header 弹出层（「更多」菜单 + 「查看上下文」气泡）──
   // 纯增量控件：不移除、不改变任何现有 header 控件与底部按钮的行为。
-  // 菜单四项均为占位（后续 story 接通 模板选择/skipCurrent/submit/skipAll）；
+  // US-003 起「选择模板」菜单项已接通原模板选择界面（TemplatePickList）；
+  // 其余菜单项仍为占位（后续 story 接通 skipCurrent/submit/skipAll）；
   // 气泡展示占位文案（本版不接后端）。
   const hdrIconBtn = (label: string, active: boolean, onClick: () => void, icon: any) =>
     R.createElement("button", {
@@ -6814,19 +6803,37 @@ function AskUserCard(props: { data?: any }) {
     borderLeft: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
     borderTop: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
   };
-  // 「更多」菜单项：本 story 为占位，点击仅收起菜单，不触碰任何现有逻辑。
-  const hdrMenuItem = (label: string) => R.createElement("button", {
-    type: "button", key: label, className: "qm-hdr-menu-item", role: "menuitem",
-    onClick: () => { setMoreOpen(false); },
-    style: {
-      display: "block", width: "100%", textAlign: "left", cursor: "pointer",
-      padding: "7px 12px", fontSize: 12, border: "none", background: "transparent",
-      color: "var(--app-text, inherit)",
-    },
-  }, label);
+  // 「更多」菜单项：占位项点击仅收起菜单；接通项传自己的 onClick。
+  // disabled 时置灰且按钮原生不响应（对齐原模板胶囊的 disabled 语义）。
+  const hdrMenuItem = (label: string, opts?: { onClick?: () => void; disabled?: boolean }) =>
+    R.createElement("button", {
+      type: "button", key: label, className: "qm-hdr-menu-item", role: "menuitem",
+      onClick: opts && opts.onClick ? opts.onClick : () => { setMoreOpen(false); },
+      disabled: opts ? !!opts.disabled : false,
+      style: {
+        display: "block", width: "100%", textAlign: "left",
+        cursor: opts && opts.disabled ? "default" : "pointer",
+        padding: "7px 12px", fontSize: 12, border: "none", background: "transparent",
+        color: "var(--app-text, inherit)",
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260,
+        opacity: opts && opts.disabled ? 0.5 : 1,
+      },
+    }, label);
+  // US-003: 当前模板名（菜单项文案随选择实时同步；取值逻辑同原胶囊）。
+  const tplCur = (templates || []).find((t: any) => t.id === tplId);
+  const tplLabel = tplCur ? tplCur.name : "默认模板";
   const hdrMoreMenu = R.createElement("div", { style: hdrPopPanel, role: "menu" },
     R.createElement("div", { style: hdrPopArrow }),
-    hdrMenuItem("选择模板"),
+    hdrMenuItem("选择模板（当前：" + tplLabel + "）", {
+      disabled: answered || busy,
+      onClick: () => {
+        // US-003: 接通原模板选择界面——收起菜单与其余弹层，展开模板选择面板。
+        setMoreOpen(false);
+        setCtxOpen(false);
+        setModeOpen(false);
+        setTplOpen(true);
+      },
+    }),
     hdrMenuItem("跳过本题"),
     hdrMenuItem("跳过并提交"),
     hdrMenuItem("跳过问卷 ⚠"));
@@ -6842,6 +6849,18 @@ function AskUserCard(props: { data?: any }) {
     R.createElement("div", {
       style: { marginTop: 8, fontSize: 11, color: "var(--app-text-tertiary, inherit)" },
     }, "来自本次问卷创建时的会话快照 · 仅本会话可见"));
+  // US-003: 「选择模板」弹层——复用原模板选择列表（TemplatePickList），
+  // 挂在 headerPopups 容器内共享外部点击关闭；与 更多/上下文/模式 互斥。
+  const hdrTplPanel = R.createElement("div", {
+    role: "dialog", "aria-label": "选择模板",
+    style: { ...hdrPopPanel, padding: 4, minWidth: 240 },
+  },
+    R.createElement("div", { style: hdrPopArrow }),
+    TemplatePickList({
+      R, templates, value: tplId,
+      onSelect: (id: string) => { selectTemplate(id); setTplOpen(false); },
+      onManage: () => { setTplOpen(false); setTplMgrOpen(true); },
+    }));
   // 两个 icon 微按钮 + 各自弹出层的容器：ref 供「点击外部关闭」判定。
   const headerPopups = R.createElement("div", {
     key: "qm-hdr-pop", ref: hdrPopRef,
@@ -6854,14 +6873,17 @@ function AskUserCard(props: { data?: any }) {
       setMoreOpen((v: boolean) => !v);
       setCtxOpen(false);
       setModeOpen(false);   // US-002: header 弹出层互斥
+      setTplOpen(false);    // US-003: header 弹出层互斥
     }, moreIconNode),
     hdrIconBtn("查看上下文", ctxOpen, () => {
       setCtxOpen((v: boolean) => !v);
       setMoreOpen(false);
       setModeOpen(false);   // US-002: header 弹出层互斥
+      setTplOpen(false);    // US-003: header 弹出层互斥
     }, ctxIconNode),
     moreOpen ? hdrMoreMenu : null,
-    ctxOpen ? hdrCtxBubble : null);
+    ctxOpen ? hdrCtxBubble : null,
+    tplOpen ? hdrTplPanel : null);
 
   // Compact secondary button (footer has three of them side by side).
   const btnGhost: any = {
@@ -6898,20 +6920,17 @@ function AskUserCard(props: { data?: any }) {
             setAnNonce((n: number) => n + 1);
           },
         }),
-        TemplateCapsule({
-          R, templates, value: tplId,
-          open: tplOpen, onOpenChange: setTplOpen,
-          disabled: answered || busy,
-          onSelect: selectTemplate,
-          onManage: () => setTplMgrOpen(true),
-        }),
+        // US-003: 常驻「默认模板」胶囊已从 header 移除；模板选择收进「更多」
+        // 菜单的「选择模板」弹层（TemplatePickList）。选择逻辑（selectTemplate）
+        // 与管理入口（TemplateManager）原样保留，功能不丢失。
         ModeSwitch({
           R, mode: anMode, disabled: answered || busy,
           open: modeOpen,
           onOpenChange: (v: boolean) => {
             setModeOpen(v);
             // US-002: header 弹出层互斥——打开模式下拉时收起「更多/上下文」。
-            if (v) { setMoreOpen(false); setCtxOpen(false); }
+            // US-003: 模板选择弹层并入同一互斥组。
+            if (v) { setMoreOpen(false); setCtxOpen(false); setTplOpen(false); }
           },
           popRef: modePopRef,
           onChange: (m: AnMode) => {
