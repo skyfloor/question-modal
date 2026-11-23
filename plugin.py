@@ -1259,11 +1259,17 @@ def _notify_channel_state(channel: str, cfg: dict, agent_id: str = "") -> dict:
             state["reason_code"] = "channel_disabled"
             state["reason"] = "自定义 API 渠道未启用"
             return state
-        url_err = _custom_api_url_error(str(cfg.get("custom_api_url") or ""))
-        if url_err:
-            state["reason_code"] = "invalid_url"
-            state["reason"] = url_err
-            return state
+        # 地址合法性：带 {{...}} 占位符的模板跳过这里（域名里不可能有花括号），
+        # 由 builder 在插值后再校验；不带占位符的照常校验。
+        # 跳过不等于放行——真发送时 builder 一定会验一次，这里只避免
+        # 「面板只因用了占位符就显示地址非法」这种假告警。
+        _raw_u = str(cfg.get("custom_api_url") or "")
+        if "{{" not in _raw_u:
+            url_err = _custom_api_url_error(_raw_u)
+            if url_err:
+                state["reason_code"] = "invalid_url"
+                state["reason"] = url_err
+                return state
         missing = _custom_api_required_missing(cfg)
         if missing:
             state["reason_code"] = "missing_required_params"
@@ -1985,15 +1991,37 @@ def _custom_api_build_request(cfg: dict, values: dict) -> tuple[str, dict, bytes
     参数行里列——它们是这条通知的语义本体，缺了对方 API 也读不懂。
     用户显式写了同名参数行时以用户的为准（允许覆盖，不静默改写）。
     """
-    from urllib.parse import urlencode, urlparse, urlunparse, parse_qsl
+    from urllib.parse import quote, urlencode, urlparse, urlunparse, parse_qsl
 
-    error = _custom_api_url_error(str(cfg.get("custom_api_url") or ""))
+    # ── URL 占位符插值（2026-11-23 boss 需求 2）──────────────────
+    #
+    # 需求原文：「对于 get 接口，api 地址可以使用类似
+    # https://api.example.com/push/{{title}}/{{content}}，这种自动插值的
+    # 方式，而对于 post，除了地址外，data 参数也可以这种方式插值」。
+    #
+    # 所以**两种方法都先对 URL 做插值**，不只是 GET。典型用途是 Bark/Server酱
+    # 这类「消息内容直接拼在路径里」的服务。
+    #
+    # 🔴 关键：插值进 URL **路径**时必须 percent-encode，不能直接字符串塞入：
+    #   问卷标题/正文常含空格、斜杠、中文、`?`、`#`，直接拼会破坏 URL 结构
+    #   （`#` 之后整段变成 fragment，对方收不到；空格会让请求行非法）。
+    #   但整条 URL 不能整体 encode（会把 `://` 也编码掉），所以只对**替换值**
+    #   编码，模板骨架保持原样。这是本函数最容易写错的一点。
+    #
+    # 先做占位符替换，再做 URL 合法性校验——否则含未填占位符的地址会被
+    # 误判为非法。
+    raw_url = str(cfg.get("custom_api_url") or "").strip()
+    encoded_values = {
+        k: quote(str(v or ""), safe="") for k, v in values.items()
+    }
+    url = _custom_api_fill(raw_url, encoded_values)
+
+    error = _custom_api_url_error(url)
     if error:
         return "", {}, None, error
 
     method = str(cfg.get("custom_api_method") or "post_json")
     mode = str(cfg.get("custom_api_mode") or "basic")
-    url = str(cfg.get("custom_api_url") or "").strip()
     headers: dict = {"User-Agent": "question-modal/notify"}
 
     # ── body ──
@@ -2070,8 +2098,14 @@ async def _send_via_custom_api(
 
     url_err = _custom_api_url_error(str(cfg.get("custom_api_url") or ""))
     if url_err:
-        return {"ok": False, "delivered": False, "channel": "custom_api",
-                "reason": url_err, "reason_code": "invalid_url"}
+        # 含 {{...}} 占位符的地址在这里会被判非法（域名里不可能有花括号）。
+        # 这是**预期行为**而非缺陷：占位符只在真正发送时才有值可填，
+        # 此处的校验只负责「未插值形态下能不能连通」这一层；带占位符的地址
+        # 改由 :func:`_custom_api_build_request` 在插值后再校验一次。
+        # 若整条地址就是带占位符的模板，跳过这里的预检，交给 builder。
+        if "{{" not in str(cfg.get("custom_api_url") or ""):
+            return {"ok": False, "delivered": False, "channel": "custom_api",
+                    "reason": url_err, "reason_code": "invalid_url"}
 
     missing = _custom_api_required_missing(cfg)
     if missing:

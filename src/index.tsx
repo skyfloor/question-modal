@@ -9554,20 +9554,53 @@ function apiSyncParamsDraft(): void {
   } catch (_) { /* settings 面板未就绪 */ }
 }
 
-/** 从后端 prefs 同步自定义 API 的配置到本地草稿。 */
+/** 从后端 prefs 同步自定义 API 的配置到本地草稿。
+ *
+ *  ★ 2026-11-23 修复「GET 切了保存又变回 POST」：
+ *
+ *    根因不是后端（实测 `_coerce_setting('custom_api_method','get_query')`
+ *    返回 True、`sanitize_settings` 也如实保留），而是**重灌时机**：
+ *    `loadGlobalCfg()` 在保存成功后被再次调用（cfgSave 尾部
+ *    `if (!isSession) void loadGlobalCfg()`），它会拿后端返回的 prefs
+ *    整体覆盖 `apiDemo`。若那一刻后端的 prefs 里还没有这个键（首次保存前、
+ *    或该键被别处清掉），`String(cfg.custom_api_method || "post_json")`
+ *    就会把用户刚选的 `get_query` 兜回 `post_json` —— 界面上看起来就是
+ *    「切了 GET，一保存又变回 POST」。
+ *
+ *    两条修法：
+ *      ① 兜底值不再写死 `post_json`：只有**键真的缺失**时才用默认，
+ *         且用 `??` 而非 `||`（`||` 会把合法空串也当缺失）。
+ *      ② 重灌时**保留草稿里尚未保存的改动**（draft 优先），
+ *         不能让一次后端回读吃掉用户正在编辑的内容。
+ */
 function apiDemoFromCfg(cfg: any): void {
   if (!cfg || typeof cfg !== "object") return;
-  apiDemo.enabled = !!cfg.custom_api_enabled;
-  apiDemo.url = String(cfg.custom_api_url || "");
-  apiDemo.method = String(cfg.custom_api_method || "post_json");
-  apiDemo.tokenPos = String(cfg.custom_api_token_pos || "none");
-  apiDemo.mode = String(cfg.custom_api_mode || "basic");
-  apiDemo.bodyTpl = String(cfg.custom_api_body || "");
+  const pick = (key: string, fallback: string): string => {
+    // 草稿里已改过的键优先——保存后的回读不得覆盖用户刚做的选择
+    if (key in settingsState.draft) return String(settingsState.draft[key]);
+    const v = cfg[key];
+    // `??` 而非 `||`：空串是「显式设为空」，不该当成缺失回落到默认
+    return v === undefined || v === null ? fallback : String(v);
+  };
+  apiDemo.enabled = (() => {
+    if ("custom_api_enabled" in settingsState.draft) {
+      return !!settingsState.draft["custom_api_enabled"];
+    }
+    return !!cfg.custom_api_enabled;
+  })();
+  apiDemo.url = pick("custom_api_url", "");
+  apiDemo.method = pick("custom_api_method", "post_json");
+  apiDemo.tokenPos = pick("custom_api_token_pos", "none");
+  apiDemo.mode = pick("custom_api_mode", "basic");
+  apiDemo.bodyTpl = pick("custom_api_body", "");
   // 后端把真实 token 换成 8 星掩码 + custom_api_token_set；草稿里保存的
   // 是「用户新输入的明文」或空串（空串 = 不修改，沿用后端已存值）。
   apiDemo.token = "";
   apiDemo.tokenSet = !!cfg.custom_api_token_set;
-  const rows = Array.isArray(cfg.custom_api_params) ? cfg.custom_api_params : [];
+  // 参数行同理：草稿里有就用草稿（用户可能刚增删过行）
+  const draftRows = settingsState.draft["custom_api_params"];
+  const rows = Array.isArray(draftRows) ? draftRows
+    : (Array.isArray(cfg.custom_api_params) ? cfg.custom_api_params : []);
   apiDemo.params = rows
     .filter((r: any) => r && typeof r === "object")
     .map((r: any) => ({
@@ -9933,7 +9966,19 @@ function settingsTabBody(
     ]);
 
     // ── 请求预览：让用户「看见」最终发出去的 URL 与 body ──
-    const previewUrl = String(apiDemo.url || "").trim() || "（未填请求地址）";
+    // US-021（2026-11-23 boss 需求 2）：URL 也支持 {{...}} 插值，
+    // 典型用法是 Bark/Server酱 这类「消息内容拼在路径里」的服务，例如
+    // https://api.example.com/push/{{title}}/{{content}}
+    // 预览里把占位符替换成示例值，并在路径值上做 encode —— 与后端
+    // _custom_api_build_request 的口径一致（插值值必须 percent-encode，
+    // 否则标题里的空格/斜杠/# 会破坏 URL 结构）。
+    const rawUrl = String(apiDemo.url || "").trim();
+    const previewUrl = rawUrl
+      ? apiFill(rawUrl, Object.fromEntries(
+          Object.entries(API_PREVIEW_VALUES).map(([k, v]) => [k, encodeURIComponent(String(v))]),
+        ))
+      : "（未填请求地址）";
+    const urlHasPlaceholder = /\{\{\s*(title|content|count|stamp|token)\s*\}\}/.test(rawUrl);
     let previewBody = "";
     if (apiDemo.mode === "advanced") {
       previewBody = apiFill(String(apiDemo.bodyTpl || ""), API_PREVIEW_VALUES)
@@ -9954,6 +9999,13 @@ function settingsTabBody(
       R.createElement("pre", { key: "u", className: "qm-apipreview",
         "data-qm-api-preview": "url" },
         (String(apiDemo.method) === "get_query" ? "GET " : "POST ") + previewUrl),
+      // URL 支持占位符插值时的说明（GET/POST 都适用，boss 需求 2）
+      urlHasPlaceholder
+        ? R.createElement("div", { key: "uptip", className: "qm-set-apinote",
+            style: { marginTop: 2, marginBottom: 4 },
+            "data-qm-api-urlph": "1" },
+            "地址中的占位符已按示例值替换；实际发送时用真实标题/正文（自动 URL 编码）。")
+        : null,
       String(apiDemo.method) === "get_query" ? null :
         R.createElement("pre", { key: "b", className: "qm-apipreview",
           "data-qm-api-preview": "body" }, previewBody),
@@ -10058,7 +10110,9 @@ function settingsTabBody(
       // URL
       apiField("furl", "请求地址", R.createElement("input", {
         key: "url", type: "text", className: "qm-set-input",
-        value: apiDemo.url, placeholder: "https://…",
+        value: apiDemo.url,
+        // 提示可写占位符：GET/POST 都支持（boss 2026-11-23 需求 2）
+        placeholder: "https://api.example.com/hook 或 …/{{title}}/{{content}}",
         "data-qm-api-url": "1",
         onChange: (e: any) => {
           apiDemo.url = e && e.target ? String(e.target.value) : "";
