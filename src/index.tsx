@@ -172,7 +172,10 @@ function injectStyles(): void {
       // US-006: header 弹出层（更多菜单 / 上下文气泡 / 模板选择 / 跳过确认 /
       // 模式下拉）统一挂 .qm-hdr-pop 类；窄屏下宽度封顶为视口减两侧边距，
       // 面板贴 right:0 与卡片右缘对齐，max-width 兜住不溢出屏幕。
-      ".qm-hdr-pop{max-width:calc(100vw - 24px);z-index:10000}",
+      // US-012: 口径同步为 100vw-44px（对齐 demo v5 移动端 width 口径，与宽
+      // 面板内联 min(固有宽, calc(100vw - 44px)) 一致）；宽面板实际宽度由内联
+      // style 控制，本规则对其余 .qm-hdr-pop（更多菜单/跳过确认）仅作超窄屏兜底。
+      ".qm-hdr-pop{max-width:calc(100vw - 44px);z-index:10000}",
       "}",
       // ── 设置弹窗 UI（2026-11-12 柔和通透风，参照用户 HTML 稿）──
       // 字体沿用宿主继承（用户要求保持原字体）；颜色/圆角/布局对齐参考稿：
@@ -3371,8 +3374,11 @@ function ModeSwitch(props: {
   disabled?: boolean;
   open: boolean; onOpenChange: (v: boolean) => void;
   popRef?: any;
+  /** US-012: 下拉面板独立锚点——面板移出触发器小容器（挂 qm-actions 行容器）
+   *  后，外部点击关闭需同时判定触发器（popRef）与面板（panelRef）。 */
+  panelRef?: any;
 }): any {
-  const { R, mode, onChange, disabled, open, onOpenChange, popRef } = props;
+  const { R, mode, onChange, disabled, open, onOpenChange, popRef, panelRef } = props;
   const LABELS: Record<AnMode, string> = {
     ai: "自动分析", recommend: "只用推荐", manual: "人工",
   };
@@ -3445,8 +3451,14 @@ function ModeSwitch(props: {
         },
       }, DESC[val]));
   };
-  return R.createElement("div", {
-    ref: popRef,
+  // US-012: 返回结构由「单个 relative 小容器（触发器+面板同挂）」拆为
+  // [触发器容器, 弹出面板] 两个兄弟节点——面板改由父级放到 qm-actions 行
+  // 容器直下（对齐 demo v5 参照系：absolute top:30 right:0 对齐整行右缘），
+  // 移动端 qm-actions 换行后不再随触发器小容器横向漂移导致错位/溢出/被裁。
+  // 触发器形态与对外 props 兼容不变；popRef 仍锚触发器，panelRef 锚面板
+  // （外部点击关闭双判定，见父级 effect）。
+  const modeTrigger = R.createElement("div", {
+    key: "qm-mode-trigger", ref: popRef,
     style: {
       position: "relative", display: "inline-flex",
       alignItems: "center", flex: "none",
@@ -3464,35 +3476,39 @@ function ModeSwitch(props: {
       }, LABELS[mode]),
       R.createElement("span", {
         style: { fontSize: 10, color: "var(--app-text-tertiary, inherit)" },
-      }, "▾")),
-    open
-      ? R.createElement("div", {
-          role: "menu", className: "qm-hdr-pop",
-          style: {
-            position: "absolute", top: 30, right: 0, zIndex: 10000, width: 220,
-            padding: 6,
-            background: "var(--app-surface-raised, #fff)",
-            border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
-            borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
-          },
+      }, "▾")));
+  const modePanel = open
+    ? R.createElement("div", {
+        key: "qm-mode-panel", ref: panelRef,
+        role: "menu", className: "qm-hdr-pop",
+        style: {
+          position: "absolute", top: 30, right: 0, zIndex: 10000,
+          // US-012: min(固有宽, 视口-44px)——移动端不溢出屏幕（demo v5 口径）。
+          width: "min(220px, calc(100vw - 44px))",
+          padding: 6,
+          background: "var(--app-surface-raised, #fff)",
+          border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+          borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
         },
-          R.createElement("div", {
-            style: {
-              position: "absolute", top: -5, right: 9, width: 8, height: 8,
-              transform: "rotate(45deg)",
-              background: "var(--app-surface-raised, #fff)",
-              borderLeft: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
-              borderTop: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
-            },
-          }),
-          R.createElement("div", {
-            style: {
-              fontSize: 11, fontWeight: 600, padding: "2px 9px 6px",
-              color: "var(--app-text-tertiary, inherit)",
-            },
-          }, "运行选择"),
-          modeOpt("ai"), modeOpt("recommend"), modeOpt("manual"))
-      : null);
+      },
+        R.createElement("div", {
+          style: {
+            position: "absolute", top: -5, right: 9, width: 8, height: 8,
+            transform: "rotate(45deg)",
+            background: "var(--app-surface-raised, #fff)",
+            borderLeft: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+            borderTop: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+          },
+        }),
+        R.createElement("div", {
+          style: {
+            fontSize: 11, fontWeight: 600, padding: "2px 9px 6px",
+            color: "var(--app-text-tertiary, inherit)",
+          },
+        }, "运行选择"),
+        modeOpt("ai"), modeOpt("recommend"), modeOpt("manual"))
+    : null;
+  return [modeTrigger, modePanel];
 }
 
 /** The template picker LIST (US-003): every template (built-ins first) plus a
@@ -4191,11 +4207,17 @@ function AskUserCard(props: { data?: any }) {
   const [ctxOpen, setCtxOpen] = R.useState(false);
   // 弹出层根容器：点击外部区域（容器之外）时统一收起两个弹出层。
   const hdrPopRef = R.useRef<any>(null);
+  // US-012: 上下文气泡/模板选择面板上移到 qm-actions 行容器后，不再被
+  // hdrPopRef（headerPopups 触发器容器）包含——各加独立面板 ref 一并判定，
+  // 保证「点击面板内部不触发关闭」。更多菜单/跳过确认仍由 hdrPopRef 覆盖。
+  const hdrCtxPanelRef = R.useRef<any>(null);
+  const hdrTplPanelRef = R.useRef<any>(null);
   R.useEffect(() => {
     if (!moreOpen && !ctxOpen) return undefined;
     const onDocDown = (ev: any) => {
-      const el = hdrPopRef.current;
-      if (el && ev && ev.target && el.contains(ev.target)) return;
+      const t = ev && ev.target;
+      if (hdrPopRef.current && t && hdrPopRef.current.contains(t)) return;
+      if (hdrCtxPanelRef.current && t && hdrCtxPanelRef.current.contains(t)) return;
       setMoreOpen(false);
       setCtxOpen(false);
     };
@@ -4209,11 +4231,15 @@ function AskUserCard(props: { data?: any }) {
   // 独立监听、不触碰已验证的 headerPopups 逻辑）。
   const [modeOpen, setModeOpen] = R.useState(false);
   const modePopRef = R.useRef<any>(null);
+  // US-012: 模式下拉面板移出触发器容器（挂 qm-actions 行容器）后单独锚定；
+  // 点击面板内部不得触发关闭，故 popRef（触发器）与 panelRef（面板）合并判定。
+  const modePanelRef = R.useRef<any>(null);
   R.useEffect(() => {
     if (!modeOpen) return undefined;
     const onDocDown = (ev: any) => {
-      const el = modePopRef.current;
-      if (el && ev && ev.target && el.contains(ev.target)) return;
+      const t = ev && ev.target;
+      if (modePopRef.current && t && modePopRef.current.contains(t)) return;
+      if (modePanelRef.current && t && modePanelRef.current.contains(t)) return;
       setModeOpen(false);
     };
     document.addEventListener("mousedown", onDocDown);
@@ -4263,8 +4289,10 @@ function AskUserCard(props: { data?: any }) {
   R.useEffect(() => {
     if (!tplOpen) return undefined;
     const onDocDown = (ev: any) => {
-      const el = hdrPopRef.current;
-      if (el && ev && ev.target && el.contains(ev.target)) return;
+      // US-012: 模板选择面板挂 qm-actions 行容器，独立 ref 一并判定。
+      const t = ev && ev.target;
+      if (hdrPopRef.current && t && hdrPopRef.current.contains(t)) return;
+      if (hdrTplPanelRef.current && t && hdrTplPanelRef.current.contains(t)) return;
       setTplOpen(false);
     };
     document.addEventListener("mousedown", onDocDown);
@@ -7133,8 +7161,11 @@ function AskUserCard(props: { data?: any }) {
   // 发起原因与最近上下文都是静态示例文案，不调用任何后端接口、不读真实
   // 会话数据；后端零改动（真实接入待走法 b 的宿主读取途径确证后另批）。
   const hdrCtxBubble = R.createElement("div", {
+    // US-012: 面板挂 qm-actions 行容器（demo v5 参照系）；ref 供外部点击
+    // 关闭判定（点面板内部不关闭）。宽度 min(固有宽, 视口-44px) 防移动端溢出。
+    ref: hdrCtxPanelRef,
     role: "dialog", "aria-label": "查看上下文", className: "qm-hdr-pop",
-    style: { ...hdrPopPanel, width: 300, padding: "10px 12px", fontSize: 12 },
+    style: { ...hdrPopPanel, width: "min(300px, calc(100vw - 44px))", padding: "10px 12px", fontSize: 12 },
   },
     R.createElement("div", { style: hdrPopArrow }),
     R.createElement("div", {
@@ -7164,8 +7195,11 @@ function AskUserCard(props: { data?: any }) {
   // US-003: 「选择模板」弹层——复用原模板选择列表（TemplatePickList），
   // 挂在 headerPopups 容器内共享外部点击关闭；与 更多/上下文/模式 互斥。
   const hdrTplPanel = R.createElement("div", {
+    // US-012: 面板挂 qm-actions 行容器（demo v5 参照系）；ref 供外部点击
+    // 关闭判定。宽度 min(内容 240+padding 8, 视口-44px)，移动端不溢出。
+    ref: hdrTplPanelRef,
     role: "dialog", "aria-label": "选择模板", className: "qm-hdr-pop",
-    style: { ...hdrPopPanel, padding: 4, minWidth: 240 },
+    style: { ...hdrPopPanel, padding: 4, width: "min(248px, calc(100vw - 44px))" },
   },
     R.createElement("div", { style: hdrPopArrow }),
     TemplatePickList({
@@ -7237,8 +7271,9 @@ function AskUserCard(props: { data?: any }) {
       setReleaseConfirmOpen(false);   // US-010: 释放确认气泡并入互斥组
     }, ctxIconNode),
     moreOpen ? hdrMoreMenu : null,
-    ctxOpen ? hdrCtxBubble : null,
-    tplOpen ? hdrTplPanel : null,
+    // US-012: 上下文气泡与模板选择面板（宽面板）不再挂本触发器小容器，
+    // 改挂 qm-actions 行容器直下（见 qm-actions children 末尾）——移动端
+    // 防错位/溢出（demo v5 参照系）。更多菜单/跳过确认气泡仍挂本容器。
     skipConfirmOpen ? hdrSkipConfirmPanel : null);
 
   // Compact secondary button (footer has three of them side by side).
@@ -7258,7 +7293,9 @@ function AskUserCard(props: { data?: any }) {
       // picker + AI/manual switch + 「查看分析」bubble.
       R.createElement("div", {
         className: "qm-actions",
-        style: { display: "flex", alignItems: "center", gap: 8, flex: "none" },
+        // US-012: position:relative——宽弹出层（模式下拉/上下文气泡/模板选择）
+        // 以本行容器为定位参照（top:30 right:0 对齐整行右缘，demo v5 参照系）。
+        style: { position: "relative", display: "flex", alignItems: "center", gap: 8, flex: "none" },
       },
         // US-010: 释放阻塞 🔒 icon 移到 qm-actions 首位（ModelCapsule 之前），
         // 与「更多」⋮ 之间隔开整排控件，避免容器误触（boss 反馈 2）。
@@ -7297,6 +7334,7 @@ function AskUserCard(props: { data?: any }) {
             if (v) { setMoreOpen(false); setCtxOpen(false); setTplOpen(false); setSkipConfirmOpen(false); setReleaseConfirmOpen(false); }
           },
           popRef: modePopRef,
+          panelRef: modePanelRef,   // US-012: 面板独立锚点（面板挂 qm-actions 行容器）
           onChange: (m: AnMode) => {
             applyPrefs({ mode: m });
             if (m === "ai") {
@@ -7371,6 +7409,12 @@ function AskUserCard(props: { data?: any }) {
         // US-001: 「更多」(⋮) 与「查看上下文」(ⓘ) 两个 icon 微按钮 + 弹出层，
         // 纯增量插在现有控件之后、进度 pill 之前（demo v5 形态）。
         headerPopups,
+        // US-012: 宽弹出层（上下文气泡/模板选择面板）上移到 qm-actions 行容器
+        // 直下——移动端 qm-actions 换行后触发器小容器横向位置不定，挂行容器
+        // right:0 对齐整行右缘（≈卡片右缘），修复错位/溢出/被裁（demo v5 口径）。
+        // 模式下拉面板由 ModeSwitch 返回数组同步上移；互斥与外部点击关闭逻辑不变。
+        ctxOpen ? hdrCtxBubble : null,
+        tplOpen ? hdrTplPanel : null,
         // #1 the progress counter now lives in the SAME flex row, so it can no
         // longer crowd the controls; #2 the permanent completion chip is gone
         // (replaced by the one-shot toast in runAnalysis).
