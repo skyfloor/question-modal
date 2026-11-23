@@ -172,7 +172,7 @@ function injectStyles(): void {
       // US-006: header 弹出层（更多菜单 / 上下文气泡 / 模板选择 / 跳过确认 /
       // 模式下拉）统一挂 .qm-hdr-pop 类；窄屏下宽度封顶为视口减两侧边距，
       // 面板贴 right:0 与卡片右缘对齐，max-width 兜住不溢出屏幕。
-      ".qm-hdr-pop{max-width:calc(100vw - 24px)}",
+      ".qm-hdr-pop{max-width:calc(100vw - 24px);z-index:10000}",
       "}",
       // ── 设置弹窗 UI（2026-11-12 柔和通透风，参照用户 HTML 稿）──
       // 字体沿用宿主继承（用户要求保持原字体）；颜色/圆角/布局对齐参考稿：
@@ -3414,14 +3414,30 @@ function ModeSwitch(props: {
         display: "block", width: "100%", textAlign: "left",
         cursor: disabled ? "default" : "pointer",
         padding: "7px 9px", borderRadius: 6, border: "none",
-        background: "transparent",
+        // US-010: 选中项淡 accent 底色（boss 反馈 4：选中项要一眼可辨）；
+        // 未选中项保持透明底 + CSS hover 高亮（.qm-mode-opt:hover）。
+        background: on ? "var(--app-accent-bg, rgba(255,127,22,0.08))" : "transparent",
         color: on
           ? "var(--app-accent-text, var(--app-accent, #ff7f16))"
           : "var(--app-text-secondary, inherit)",
         fontWeight: on ? 600 : 400,
       },
     },
-      R.createElement("div", { style: { fontSize: 12 } }, LABELS[val]),
+      R.createElement("div", {
+        style: {
+          fontSize: 12, display: "flex", alignItems: "center",
+          justifyContent: "space-between", gap: 8,
+        },
+      },
+        R.createElement("span", null, LABELS[val]),
+        // US-010: 选中项右侧 accent 色 ✓ 勾，强化「当前选中」辨识度。
+        on ? R.createElement("span", {
+          "aria-hidden": "true",
+          style: {
+            flex: "none", fontSize: 12, fontWeight: 600,
+            color: "var(--app-accent-text, var(--app-accent, #ff7f16))",
+          },
+        }, "✓") : null),
       R.createElement("div", {
         style: {
           fontSize: 11, marginTop: 1, fontWeight: 400,
@@ -3453,7 +3469,7 @@ function ModeSwitch(props: {
       ? R.createElement("div", {
           role: "menu", className: "qm-hdr-pop",
           style: {
-            position: "absolute", top: 30, right: 0, zIndex: 60, width: 220,
+            position: "absolute", top: 30, right: 0, zIndex: 10000, width: 220,
             padding: 6,
             background: "var(--app-surface-raised, #fff)",
             border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
@@ -3518,7 +3534,16 @@ function TemplatePickList(props: {
                        color: "var(--app-text-tertiary, inherit)",
                        border: "1px solid var(--app-border-subtle, rgba(127,127,127,0.3))" },
             }, "内置")
-          : null)),
+          : null,
+        // US-010: 选中模板行尾 ✓ 勾（accent 色），配合既有选中底色
+        // （accent-soft + 左侧 accent 边条），当前选中项一眼可辨。
+        t.id === value ? R.createElement("span", {
+          "aria-hidden": "true",
+          style: {
+            flex: "none", fontSize: 12, fontWeight: 600,
+            color: "var(--app-accent, #1677ff)",
+          },
+        }, "✓") : null)),
     R.createElement("div", {
       style: { padding: "6px 12px", cursor: "pointer", fontSize: 12,
                color: "var(--app-accent, #1677ff)",
@@ -4264,6 +4289,32 @@ function AskUserCard(props: { data?: any }) {
     return () => document.removeEventListener("mousedown", onDocDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [skipConfirmOpen]);
+
+  // ── US-010: 释放阻塞 🔒 二次确认 ──
+  // boss 反馈：🔒 点击直接执行了，缺二次确认。现在 🔒 点击只打开确认气泡，
+  // 确认后才执行 rescue/releaseBlocked（原函数零改动，仅包一层触发入口）。
+  // releaseConfirmFn 存「待执行的释放函数」；四处 🔒（答题中/准备中/折叠行/
+  // 已答只读）共用同一气泡与 state。互斥：打开本气泡时收起全部 header 弹层
+  // （见 releaseLockBtn 的 onClick）；反向互斥在各弹层入口 onClick 里
+  // setReleaseConfirmOpen(false)。
+  const [releaseConfirmOpen, setReleaseConfirmOpen] = R.useState(false);
+  const releaseConfirmFn = R.useRef<(() => void) | null>(null);
+  const releaseConfirmRef = R.useRef<any>(null);
+  R.useEffect(() => {
+    if (!releaseConfirmOpen) return undefined;
+    const onDocDown = (ev: any) => {
+      const el = releaseConfirmRef.current;
+      if (el && ev && ev.target && el.contains(ev.target)) return;
+      // 点 🔒 触发按钮本身不算「外部」：mousedown 先于 click，若不豁免，
+      // 会出现「mousedown 关闭 + click 再打开」的假切换（永远关不上）。
+      const t = ev && ev.target;
+      if (t && t.closest && t.closest("[data-qm-release-lock]")) return;
+      setReleaseConfirmOpen(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [releaseConfirmOpen]);
 
   // ── AI autopilot (无人值守自动答题) ──
   // When AI mode is on and NOT paused, each analysed question is auto-filled
@@ -5507,7 +5558,16 @@ function AskUserCard(props: { data?: any }) {
       "data-qm-release-lock": "true",
       title: "释放阻塞（若发新消息报 A task is already running，点此释放）",
       "aria-label": "释放阻塞",
-      disabled: busy, onClick,
+      disabled: busy,
+      // US-010: 二次确认——点击不再直接执行，先弹确认气泡；确定后由
+      // releaseConfirmPanel 执行原 onClick（rescue / releaseBlocked 零改动）。
+      // 打开时同步收起全部 header 弹层（互斥组）。
+      onClick: () => {
+        releaseConfirmFn.current = onClick;
+        setMoreOpen(false); setCtxOpen(false); setModeOpen(false);
+        setTplOpen(false); setSkipConfirmOpen(false);
+        setReleaseConfirmOpen(true);
+      },
       style: {
         width: 24, height: 24, padding: 0, flex: "none", lineHeight: 1,
         display: "inline-flex", alignItems: "center", justifyContent: "center",
@@ -5517,6 +5577,69 @@ function AskUserCard(props: { data?: any }) {
         color: "var(--app-warning-text, #d46b08)",
       },
     }, releaseLockIconNode);
+
+  // ── US-010: 释放阻塞二次确认气泡 ──
+  // 形态对齐「跳过问卷」二次确认（标题+说明+取消/红色确定 #d92d20）。
+  // 渲染在卡片根（card 已设 position:relative，top/right 贴 header 右缘），
+  // 四处 🔒 共用一个气泡。注意：不引用 hdrPopPanel/hdrPopArrow——它们定义
+  // 在本节点之后（const 无提升，提前引用会 TDZ 报错），样式自带同款面板/三角。
+  const releaseConfirmPanel = R.createElement("div", {
+    role: "dialog", "aria-label": "确认释放阻塞",
+    ref: releaseConfirmRef,
+    style: {
+      position: "absolute", top: 34, right: 12, zIndex: 10000, width: 260,
+      padding: "12px 14px",
+      background: "var(--app-surface-raised, #fff)",
+      border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+      borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
+    },
+  },
+    R.createElement("div", {
+      style: {
+        position: "absolute", top: -5, right: 9, width: 8, height: 8,
+        transform: "rotate(45deg)",
+        background: "var(--app-surface-raised, #fff)",
+        borderLeft: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+        borderTop: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+      },
+    }),
+    R.createElement("div", {
+      style: { fontWeight: 600, fontSize: 13, marginBottom: 6 },
+    }, "确定释放本次阻塞问卷吗？"),
+    R.createElement("div", {
+      style: {
+        fontSize: 12, lineHeight: 1.6,
+        color: "var(--app-text-secondary, inherit)",
+      },
+    }, "释放后问卷将按当前进度收尾，会话恢复正常问答；此操作不可撤销。"),
+    R.createElement("div", {
+      style: { display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 10 },
+    },
+      R.createElement("button", {
+        type: "button", className: "qm-hdr-menu-item",
+        style: {
+          width: "auto", padding: "4px 12px", fontSize: 12, cursor: "pointer",
+          border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
+          borderRadius: 6, background: "transparent",
+          color: "var(--app-text-secondary, inherit)",
+        },
+        onClick: () => { setReleaseConfirmOpen(false); releaseConfirmFn.current = null; },
+      }, "取消"),
+      R.createElement("button", {
+        type: "button", disabled: busy,
+        style: {
+          padding: "4px 12px", fontSize: 12, cursor: busy ? "default" : "pointer",
+          border: "none", borderRadius: 6, opacity: busy ? 0.5 : 1,
+          background: "#d92d20", color: "#fff", fontWeight: 500,
+        },
+        onClick: () => {
+          const fn = releaseConfirmFn.current;
+          setReleaseConfirmOpen(false);
+          releaseConfirmFn.current = null;
+          if (fn) fn();
+        },
+      }, "确定")));
+  const releaseConfirmNode = releaseConfirmOpen ? releaseConfirmPanel : null;
 
   // Conditional visibility: only questions whose `showIf` currently holds
   // are shown.  Navigation, the progress counter and submission all work on
@@ -6340,6 +6463,9 @@ function AskUserCard(props: { data?: any }) {
 
   // ── styles: exact ApprovalCard-module values ──
   const card: any = {
+    // US-010: 锚定 🔒 二次确认气泡（releaseConfirmPanel）的 absolute 定位；
+    // 各卡片 return 的根 div 均用本样式（折叠行经 spread 继承）。
+    position: "relative",
     background: "var(--app-surface-raised, #fff)",
     border: "1px solid var(--app-border, rgba(127,127,127,0.25))",
     borderRadius: 12,
@@ -6560,7 +6686,9 @@ function AskUserCard(props: { data?: any }) {
           R.createElement("span", { style: pill }, "准备中"))),
       R.createElement("div", {
         style: { ...content, color: "var(--app-text-tertiary, inherit)", fontSize: 12 },
-      }, "正在准备题目…"));
+      }, "正在准备题目…"),
+      // US-010: 🔒 二次确认气泡挂卡片根。
+      releaseConfirmNode);
   }
 
   // ── answered: read-only result view ──
@@ -6673,7 +6801,9 @@ function AskUserCard(props: { data?: any }) {
         // never cancelled behind the user's back.
         // 用户裁定 q1=**分情况**：本实例真的在等这段才常驻；纯历史卡不显示。
         // US-005: 释放入口收口到行尾 🔒 icon（原「释放阻塞」按钮移除）。
-        showRelease ? releaseLockBtn(releaseBlocked, "qm-release-lock-fold") : null);
+        showRelease ? releaseLockBtn(releaseBlocked, "qm-release-lock-fold") : null,
+        // US-010: 🔒 二次确认气泡挂卡片根（折叠行经 card spread 已有 relative）。
+        releaseConfirmNode);
     }
     return R.createElement("div", { style: card, className: "qm-card", "data-qm-card": "true", "data-qm-card-id": callId },
       R.createElement("div", { style: { ...header, marginBottom: 8, paddingBottom: 8 } },
@@ -6745,7 +6875,9 @@ function AskUserCard(props: { data?: any }) {
               style: { flex: 1, fontSize: 12, lineHeight: 1.5,
                        color: "var(--app-text-secondary, inherit)" },
             }, releasedNote)
-          : waitHintNode()));
+          : waitHintNode()),
+      // US-010: 🔒 二次确认气泡挂卡片根。
+      releaseConfirmNode);
   }
 
   // 题级超时是否成立（七次裁定：这是横幅唯一的常规触发条件）。
@@ -6911,7 +7043,7 @@ function AskUserCard(props: { data?: any }) {
   // 弹出面板通用样式：贴 header 右侧（top 30 / right 0）、带小三角，
   // 沿用与卡片同源的表面/边框 CSS 变量体系。
   const hdrPopPanel: any = {
-    position: "absolute", top: 30, right: 0, zIndex: 60, minWidth: 168,
+    position: "absolute", top: 30, right: 0, zIndex: 10000, minWidth: 168,
     background: "var(--app-surface-raised, #fff)",
     border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
     borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.16)",
@@ -6931,14 +7063,27 @@ function AskUserCard(props: { data?: any }) {
       disabled: opts ? !!opts.disabled : false,
       title: opts && opts.title ? opts.title : undefined,
       style: {
-        display: "block", width: "100%", textAlign: "left",
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        gap: 8, width: "100%", textAlign: "left",
         cursor: opts && opts.disabled ? "default" : "pointer",
         padding: "7px 12px", fontSize: 12, border: "none", background: "transparent",
         color: "var(--app-text, inherit)",
         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 260,
         opacity: opts && opts.disabled ? 0.5 : 1,
       },
-    }, label);
+    },
+      R.createElement("span", {
+        style: { overflow: "hidden", textOverflow: "ellipsis" },
+      }, label),
+      // US-010: 每项右侧淡色「›」提示「可点击进入/执行」（boss 反馈 4）；
+      // disabled 项不显示箭头，避免暗示可点。
+      (!opts || !opts.disabled) ? R.createElement("span", {
+        "aria-hidden": "true",
+        style: {
+          flex: "none", fontSize: 12, lineHeight: 1,
+          color: "var(--app-text-tertiary, inherit)",
+        },
+      }, "›") : null);
   // US-003: 当前模板名（菜单项文案随选择实时同步；取值逻辑同原胶囊）。
   const tplCur = (templates || []).find((t: any) => t.id === tplId);
   const tplLabel = tplCur ? tplCur.name : "默认模板";
@@ -6952,6 +7097,7 @@ function AskUserCard(props: { data?: any }) {
         setCtxOpen(false);
         setModeOpen(false);
         setSkipConfirmOpen(false);   // US-004: header 弹出层互斥
+        setReleaseConfirmOpen(false);   // US-010: 释放确认气泡并入互斥组
         setTplOpen(true);
       },
     }),
@@ -6974,7 +7120,11 @@ function AskUserCard(props: { data?: any }) {
       // 确认后才调用原 skipAll。title 保留原按钮的不可恢复警示语义。
       disabled: answered || busy,
       title: "跳过后本次问卷立即结束，未答题目不再收集，不可恢复",
-      onClick: () => { setMoreOpen(false); setSkipConfirmOpen(true); },
+      onClick: () => {
+        setMoreOpen(false);
+        setSkipConfirmOpen(true);
+        setReleaseConfirmOpen(false);   // US-010: 释放确认气泡并入互斥组
+      },
     }));
   // 「查看上下文」气泡（US-005）：demo v5 形态。本版为**纯前端占位示例**——
   // 发起原因与最近上下文都是静态示例文案，不调用任何后端接口、不读真实
@@ -7073,6 +7223,7 @@ function AskUserCard(props: { data?: any }) {
       setModeOpen(false);   // US-002: header 弹出层互斥
       setTplOpen(false);    // US-003: header 弹出层互斥
       setSkipConfirmOpen(false);   // US-004: header 弹出层互斥
+      setReleaseConfirmOpen(false);   // US-010: 释放确认气泡并入互斥组
     }, moreIconNode),
     hdrIconBtn("查看上下文", ctxOpen, () => {
       setCtxOpen((v: boolean) => !v);
@@ -7080,6 +7231,7 @@ function AskUserCard(props: { data?: any }) {
       setModeOpen(false);   // US-002: header 弹出层互斥
       setTplOpen(false);    // US-003: header 弹出层互斥
       setSkipConfirmOpen(false);   // US-004: header 弹出层互斥
+      setReleaseConfirmOpen(false);   // US-010: 释放确认气泡并入互斥组
     }, ctxIconNode),
     moreOpen ? hdrMoreMenu : null,
     ctxOpen ? hdrCtxBubble : null,
@@ -7105,6 +7257,13 @@ function AskUserCard(props: { data?: any }) {
         className: "qm-actions",
         style: { display: "flex", alignItems: "center", gap: 8, flex: "none" },
       },
+        // US-010: 释放阻塞 🔒 icon 移到 qm-actions 首位（ModelCapsule 之前），
+        // 与「更多」⋮ 之间隔开整排控件，避免容器误触（boss 反馈 2）。
+        // 出现条件不变（题级 slowActive / stuck 故障兜底）；点击走二次确认
+        // → 基线 rescue（converge 收尾 + toast，语义与 334ad7b 逐字一致）。
+        (slowActive || (stuck && !reqId))
+          ? releaseLockBtn(rescue, "qm-release-lock")
+          : null,
         ModelCapsule({
           R, providers, modelId: anModel, disabled: answered || busy,
           followActive,   // 服务端标记：此值来自「跟随当前对话模型」
@@ -7132,7 +7291,7 @@ function AskUserCard(props: { data?: any }) {
             // US-002: header 弹出层互斥——打开模式下拉时收起「更多/上下文」。
             // US-003: 模板选择弹层并入同一互斥组。
             // US-004: 跳过问卷确认气泡并入同一互斥组。
-            if (v) { setMoreOpen(false); setCtxOpen(false); setTplOpen(false); setSkipConfirmOpen(false); }
+            if (v) { setMoreOpen(false); setCtxOpen(false); setTplOpen(false); setSkipConfirmOpen(false); setReleaseConfirmOpen(false); }
           },
           popRef: modePopRef,
           onChange: (m: AnMode) => {
@@ -7209,13 +7368,6 @@ function AskUserCard(props: { data?: any }) {
         // US-001: 「更多」(⋮) 与「查看上下文」(ⓘ) 两个 icon 微按钮 + 弹出层，
         // 纯增量插在现有控件之后、进度 pill 之前（demo v5 形态）。
         headerPopups,
-        // US-005: 释放阻塞 🔒 icon——非常驻，越过阻塞阈值后才出现（demo v5
-        // 形态）。出现条件沿用阻塞横幅判定（题级 slowActive / stuck 故障兜底），
-        // 点击走基线 rescue 逻辑（converge 收尾 + toast，语义与 334ad7b
-        // 逐字一致）；原横幅内的释放按钮随之移除。
-        (slowActive || (stuck && !reqId))
-          ? releaseLockBtn(rescue, "qm-release-lock")
-          : null,
         // #1 the progress counter now lives in the SAME flex row, so it can no
         // longer crowd the controls; #2 the permanent completion chip is gone
         // (replaced by the one-shot toast in runAnalysis).
@@ -7324,7 +7476,9 @@ function AskUserCard(props: { data?: any }) {
       R.createElement("button", {
         type: "button", disabled: busy, style: btnPrimary,
         onClick: goNext,
-      }, isOtherPage ? "提交" : "下一步")));
+      }, isOtherPage ? "提交" : "下一步")),
+    // US-010: 🔒 二次确认气泡统一挂卡片根（四处 🔒 共用一个气泡实例）。
+    releaseConfirmNode);
 }
 
 // ══════════════════════════════════════════════════════════════════
@@ -8491,15 +8645,14 @@ function SettingsButton(props: { R: any; onOpen: () => void }): any {
 
   // ── 图标：内联 SVG（boss 2026-11-15 需求 4 + 问卷选定）────────────
   // boss 从 6 个候选中选定「6 · 文档 file-text」（表单/文字语义）。
-  // 尺寸口径（boss 2026-11-15 五轮，附截图）：**高度与按钮文字大小一致**
-  // ——按钮文字 fontSize 为 12，故图标也取 12×12（此前 8px 过小）。
-  // 参照对象是宿主「优化」按钮旁的文档图标：图形与字符等高、无阴影无
-  // 背景、颜色随文本（currentColor）。strokeWidth 1.75 保持细线，
-  // 避免小尺寸下笔画糊成一团。内联 path，不依赖外网。
-  // 按钮 height:28 / padding 不动，点击热区不变。
+  // 尺寸口径（US-010 2026-11-23）：**对齐宿主「优化」按钮旁的文档图标**
+  // ——16×16、strokeWidth 2（约 16px、线宽 2 的黑色描边文档形）。
+  // 此前 12×12/1.75 与宿主图标并排时偏小偏细，观感不一致。
+  // 保持 fill:none / stroke:currentColor / 无背景无阴影 / 颜色随文本。
+  // 内联 path，不依赖外网。按钮 height:28 / padding 不动，点击热区不变。
   const QM_SVG_PROPS = {
-    width: 12, height: 12, viewBox: "0 0 24 24", fill: "none",
-    stroke: "currentColor", strokeWidth: 1.75, strokeLinecap: "round",
+    width: 16, height: 16, viewBox: "0 0 24 24", fill: "none",
+    stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round",
     strokeLinejoin: "round", "aria-hidden": "true", className: "qm-entry-icon",
     style: {
       display: "block", boxShadow: "none", background: "none",
