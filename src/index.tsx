@@ -11456,7 +11456,8 @@ function customApiCategory(R: any, scope: string, isSession: boolean): any[] {
     // ── 请求预览：让用户「看见」最终发出去的 URL 与 body ──
     // US-021（2026-11-23 boss 需求 2）：URL 也支持 {{...}} 插值，
     // 典型用法是 Bark/Server酱 这类「消息内容拼在路径里」的服务，例如
-    // https://api.example.com/push/{{title}}/{{content}}
+    // https://api.example.com/push/{{title}}/{{content}}（示例已脱敏，
+    // 真实测试端点不写入仓库/发布包）
     // 预览里把占位符替换成示例值，并在路径值上做 encode —— 与后端
     // _custom_api_build_request 的口径一致（插值值必须 percent-encode，
     // 否则标题里的空格/斜杠/# 会破坏 URL 结构）。

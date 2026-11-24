@@ -2062,9 +2062,10 @@ def _custom_api_build_request(cfg: dict, values: dict) -> tuple[str, dict, bytes
 
     # ── URL 占位符插值（2026-11-23 boss 需求 2）──────────────────
     #
-    # 需求原文：「对于 get 接口，api 地址可以使用类似
+    # 需求原文（2026-11-23）：「对于 get 接口，api 地址可以使用类似
     # https://api.example.com/push/{{title}}/{{content}}，这种自动插值的
     # 方式，而对于 post，除了地址外，data 参数也可以这种方式插值」。
+    # （示例 URL 已脱敏：真实测试端点不写入仓库/发布包）
     #
     # 所以**两种方法都先对 URL 做插值**，不只是 GET。典型用途是 Bark/Server酱
     # 这类「消息内容直接拼在路径里」的服务。
