@@ -141,7 +141,7 @@ function injectStyles(): void {
       "color:var(--app-text-secondary,inherit)}",
       ".qm-md hr{border:none;border-top:1px solid var(--app-border-subtle,rgba(127,127,127,0.18));",
       "margin:8px 0}",
-      ".qm-md a{color:var(--app-accent,#ff7f16);text-decoration:none}",
+      ".qm-md a{color:var(--app-accent, #ff7f16);text-decoration:none}",
       // ── 查看分析弹层：隐藏滚动条但保留滚轮/触控滚动（问题2）──
       // 面板用 maxHeight + overflow:auto 裁长内容，浏览器会画出可见滚动条；
       // 这里与模型列表 (:1436 scrollbarWidth:none) 保持一致——隐藏滚动条槽、
@@ -191,9 +191,28 @@ function injectStyles(): void {
       "}",
       // ── 设置弹窗 UI（2026-11-12 柔和通透风，参照用户 HTML 稿）──
       // 字体沿用宿主继承（用户要求保持原字体）；颜色/圆角/布局对齐参考稿：
-      // primary #3b82f6、主文字 #1e293b、次要 #64748b、分隔线 #f1f5f9、输入底 #f8fafc。
+      // 主色统一取 var(--app-accent)（回落 #ff7f16）、主文字 #1e293b、
+      // 次要 #64748b、分隔线 #f1f5f9、输入底 #f8fafc。
+      // 2026-11-23：本块所有颜色已全部改为 CSS 变量，不再硬编码蓝色 ——
+      // 否则宿主切主题时面板不跟随（实测过：面板蓝、卡片橙两张皮）。
       ".qm-set-wrap{font-size:13px;color:var(--app-text-primary,#1e293b);",
-      "max-height:90vh;display:flex;flex-direction:column;overflow:hidden}",
+      "max-height:90vh;display:flex;flex-direction:column;overflow:hidden;",
+      // 需求 1（2026-11-24）：删除确认气泡的定位基准
+      "position:relative}",
+      // 删除二次确认气泡（形态对齐问卷卡「释放确认」气泡：白底、细边、红确定键）
+      ".qm-set-delconfirm{position:absolute;left:50%;top:34%;",
+      "transform:translate(-50%,-50%);z-index:1300;width:300px;max-width:86%;",
+      "padding:14px 16px;border-radius:10px;",
+      "background:var(--app-bg-elevated,#fff);",
+      "border:1px solid var(--app-border-strong,rgba(127,127,127,0.45));",
+      "box-shadow:0 8px 24px rgba(0,0,0,0.18)}",
+      ".qm-set-dctitle{font-size:13px;font-weight:600;margin-bottom:6px;",
+      "overflow-wrap:anywhere}",
+      ".qm-set-dcdesc{font-size:12px;line-height:1.6;",
+      "color:var(--app-text-secondary,inherit)}",
+      ".qm-set-dcbtns{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}",
+      ".qm-set-dcok{background:#d92d20;color:#fff;border:none;font-weight:500}",
+      ".qm-set-dcok:hover{background:#b42318}",
       // 中间内容区滚动（参考稿 .tab-content：flex:1 + 自身滚动），footer 不随内容滚走
       ".qm-set-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:none}",
       ".qm-set-scroll::-webkit-scrollbar{width:0;height:0;display:none}",
@@ -202,12 +221,12 @@ function injectStyles(): void {
       "box-shadow:0 20px 40px -10px rgba(0,0,0,0.08);overflow:hidden}",
       ".qm-set-head{display:flex;align-items:center;justify-content:space-between;",
       "gap:12px;padding:18px 24px 6px;margin:0}",
-      // 「当前模式：」前缀 + 胶囊 组成一个右对齐的横向组（2026-11-13）。
+      // 「生效标签」前缀 + 胶囊 组成一个右对齐的横向组（2026-11-13）。
       ".qm-set-runtime-wrap{display:inline-flex;align-items:center;gap:6px;",
       "white-space:nowrap}",
       ".qm-set-runtime-label{font-size:12px;font-weight:400;",
       "color:var(--app-text-secondary,#64748b)}",
-      ".qm-set-runtime{font-size:12px;font-weight:500;color:#3b82f6;",
+      ".qm-set-runtime{font-size:12px;font-weight:500;color:var(--app-accent, #ff7f16);",
       "background:#eff6ff;padding:6px 12px;border-radius:20px;white-space:nowrap}",
       // 头部右侧组：模式胶囊 + ✕ 左右排列（boss 2026-11-15 四轮：间隔 4 → 6px）
       ".qm-set-right{display:flex;align-items:center;flex:0 0 auto;gap:6px;}",
@@ -232,7 +251,7 @@ function injectStyles(): void {
       "box-shadow:none!important;background:none}",
       ".qm-set-close{flex:0 0 auto;width:26px;height:26px;",
       "display:inline-flex;align-items:center;justify-content:center;border:0;",
-      "border-radius:8px;background:transparent;cursor:pointer;font-size:14px;",
+      "border-radius:8px;background:transparent;cursor:pointer;font-size:13px;",
       "line-height:1;padding:0;color:var(--app-text-tertiary,#94a3b8);",
       "transition:background .15s ease,color .15s ease}",
       ".qm-set-close:hover{background:var(--app-fill-subtle,rgba(127,127,127,0.12));",
@@ -252,9 +271,9 @@ function injectStyles(): void {
       "background:var(--app-fill-strong,#e2e8f0)}",
       // 选中态 = 参考稿激活胶囊：蓝底白字 + 投影（类名/结构不变，仅换视觉）。
       // hover 规则 specificity 更高，需显式钉住已选中项的悬停色。
-      ".qm-set-tabon{background:#3b82f6;color:#fff;border-bottom:0;border-radius:20px;",
-      "font-weight:500;box-shadow:0 4px 12px rgba(59,130,246,.25)}",
-      ".qm-set-tabon:hover{background:#3b82f6;color:#fff}",
+      ".qm-set-tabon{background:var(--app-accent, #ff7f16);color:#fff;border-bottom:0;border-radius:20px;",
+      "font-weight:500;box-shadow:0 4px 12px var(--app-accent-soft, rgba(255,127,22,.25))}",
+      ".qm-set-tabon:hover{background:var(--app-accent, #ff7f16);color:#fff}",
       ".qm-set-subhint{font-size:12px;color:var(--app-text-tertiary,#86909c);margin:0 28px 6px}",
       // 加载骨架脉动（2026-11-13 方案A）：内容未定时占位，不渲染半成品设置行。
       // 尊重系统「减少动态效果」偏好：开启时不做动画，静态灰块同样能表达"加载中"。
@@ -283,8 +302,14 @@ function injectStyles(): void {
       // 文字不折行 + 按钮组允许换行排列。
       ".qm-set-stalebtns{flex-wrap:wrap}",
       ".qm-set-stalebtns .qm-set-btn{white-space:nowrap}",
-      // US-007：时段卡字段网格窄屏单列；名称不再限宽
-      ".qm-set-schedgrid{grid-template-columns:1fr}",
+      // US-007：时段卡字段网格窄屏单列；名称不再限宽。
+      // 需求 3（2026-11-24 真机截图）：必须带 .qm-set-wrap 前缀提高特异性——
+      // 基础规则 .qm-set-schedgrid{...1fr 1fr} 声明在本 media 块**之后**，
+      // 同特异性时后者胜出，导致手机上仍是两列、下拉文字被截断。
+      ".qm-set-wrap .qm-set-schedgrid{grid-template-columns:1fr}",
+      ".qm-set-wrap .qm-set-schedgrid .qm-set-native{width:100%;min-width:0}",
+      // 需求 5：两列开关行窄屏回落单列（同样带前缀防被后声明的基础规则覆盖）
+      ".qm-set-wrap .qm-set-rowpair{grid-template-columns:1fr;column-gap:0}",
       ".qm-set-schedname{max-width:none}",
       ".qm-set-foot{margin:8px 16px 0;padding:14px 0 16px}",
       "}",
@@ -300,7 +325,7 @@ function injectStyles(): void {
       ".qm-set-scopenote{margin:0 0 12px;padding:7px 10px;border-radius:7px;font-size:12px;line-height:1.5;color:#a86400;background:rgba(255,170,40,.12);border:1px solid rgba(255,170,40,.34)}",
       // ── 每项作用域标签 ──
       ".qm-set-rowtitle{display:inline-flex;align-items:center;gap:6px}",
-      ".qm-set-scopetag{display:inline-block;font-size:10px;line-height:1;padding:2px 5px;border-radius:3px;letter-spacing:.02em;border:1px solid rgba(127,127,127,.36);background:transparent;color:var(--app-text-tertiary,#86909c);white-space:nowrap}",
+      ".qm-set-scopetag{display:inline-block;font-size:11px;line-height:1;padding:2px 5px;border-radius:3px;letter-spacing:.02em;border:1px solid rgba(127,127,127,.36);background:transparent;color:var(--app-text-tertiary,#86909c);white-space:nowrap}",
       ".qm-set-scopesession{border-color:rgba(28,111,208,.45);background:rgba(28,111,208,.1);color:#1c6fd0;font-weight:600}",
       ".qm-set-scopero{border-color:rgba(138,138,138,.3);background:rgba(138,138,138,.08);color:#8a8a8a}",
       ".qm-set-scopeboth{border-color:rgba(28,111,208,.3);background:rgba(28,111,208,.06);color:#3b7dd8}",
@@ -319,11 +344,11 @@ function injectStyles(): void {
       "background:var(--app-fill-subtle,rgba(127,127,127,.05))}",
       ".qm-set-editortitle{font-size:13px;font-weight:600;margin-bottom:8px;color:var(--app-text-primary,#1e293b)}",
       ".qm-set-field{margin-bottom:8px}",
-      ".qm-set-fieldlabel{font-size:11px;color:var(--app-text-tertiary,#64748b);margin-bottom:3px}",
+      ".qm-set-fieldlabel{font-size:13px;color:var(--app-text-tertiary,#64748b);margin-bottom:3px}",
       ".qm-set-input,.qm-set-textarea{width:100%;box-sizing:border-box;font:inherit;font-size:12px;",
       "padding:7px 10px;border-radius:8px;border:1px solid transparent;",
       "background:var(--app-bg-elevated,#fff);color:var(--app-text-primary,#1e293b);outline:none;resize:vertical}",
-      ".qm-set-input:focus,.qm-set-textarea:focus{border-color:#3b82f6}",
+      ".qm-set-input:focus,.qm-set-textarea:focus{border-color:var(--app-accent, #ff7f16)}",
       ".qm-set-editorbtns{display:flex;gap:8px;margin-top:4px}",
       // ── 缓存清理 ──
       ".qm-set-cachehint{font-size:11px;line-height:1.5;color:var(--app-text-tertiary,#86909c);margin:0 0 8px}",
@@ -341,7 +366,7 @@ function injectStyles(): void {
       // ── 置灰：不适用当前作用域的项 ──
       ".qm-set-rowlocked{opacity:.5}",
       ".qm-set-rowlocked .qm-set-rowctl{pointer-events:none}",
-      ".qm-set-lockhint{font-size:10px;line-height:1;padding:2px 5px;border-radius:3px;color:#8a8a8a;border:1px dashed rgba(138,138,138,.45)}",
+      ".qm-set-lockhint{font-size:11px;line-height:1;padding:2px 5px;border-radius:3px;color:#8a8a8a;border:1px dashed rgba(138,138,138,.45)}",
       ".qm-set-scopebtndis{opacity:.45;cursor:not-allowed}",
       ".qm-set-scopebtndis:hover{background:transparent}",
       // ── 会话页签 ──
@@ -372,7 +397,7 @@ function injectStyles(): void {
       "background-image:url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E\");",
       "background-repeat:no-repeat;background-position:right 10px center}",
       ".qm-set-native:hover,.qm-set-native:focus{background-color:var(--app-bg-elevated,#fff);",
-      "border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}",
+      "border-color:var(--app-accent, #ff7f16);box-shadow:0 0 0 3px var(--app-accent-soft, rgba(255,127,22,.1))}",
       // ── 厂商 + 模型双联动 ──
       // 双联动是「包一层的 div」，不像单 <select> 那样本身就是 rowctl 的直接子项：
       // 宽度由内容决定时它会靠左摆，视觉上就没贴右边界（截图里的错位就是这个）。
@@ -402,9 +427,9 @@ function injectStyles(): void {
       ".qm-set-conflict{margin:4px 28px 10px;padding:8px 12px;border-radius:8px;",
       "font-size:12px;line-height:1.5;color:#a86400;background:rgba(255,170,40,.12);",
       "border:1px solid rgba(255,170,40,.34)}",
-      ".qm-set-badgeon{background:rgba(59,130,246,.12);color:#3b82f6;font-weight:500}",
+      ".qm-set-badgeon{background:var(--app-accent-soft, rgba(255,127,22,.12));color:var(--app-accent, #ff7f16);font-weight:500}",
       ".qm-set-badgeglobal{background:rgba(127,127,127,.12);color:var(--app-text-tertiary,#6b7280);font-weight:500}",
-      ".qm-set-fallbackclose{position:absolute;top:8px;right:10px;width:24px;height:24px;line-height:1;border:0;border-radius:6px;background:transparent;color:inherit;font-size:14px;cursor:pointer;opacity:.6}",
+      ".qm-set-fallbackclose{position:absolute;top:8px;right:10px;width:24px;height:24px;line-height:1;border:0;border-radius:6px;background:transparent;color:inherit;font-size:13px;cursor:pointer;opacity:.6}",
       ".qm-set-fallbackclose:hover{opacity:1;background:rgba(127,127,127,.14)}",
       ".qm-set-fallback{position:fixed}",
       ".qm-set-tabbody{display:flex;flex-direction:column;gap:2px;padding:0 28px}",
@@ -456,7 +481,7 @@ function injectStyles(): void {
       ".qm-set-stalecardtitle{font-size:13px;font-weight:600;line-height:1.45;",
       "color:var(--app-text-primary,#1e293b);flex:1 1 auto;min-width:0;",
       "word-break:break-word}",
-      ".qm-set-staletag{font-size:10px;line-height:1;padding:3px 6px;border-radius:4px;",
+      ".qm-set-staletag{font-size:11px;line-height:1;padding:3px 6px;border-radius:4px;",
       "background:#fef3c7;color:#b45309;flex:0 0 auto;white-space:nowrap}",
       ".qm-set-stalecardmeta{display:flex;flex-direction:column;gap:3px;",
       "font-size:11px;line-height:1.5;color:var(--app-text-secondary,#64748b)}",
@@ -479,7 +504,7 @@ function injectStyles(): void {
       "column-gap:20px;padding:13px 0;",
       "border-bottom:1px solid var(--app-border-subtle,#f1f5f9)}",
       ".qm-set-row:last-child{border-bottom:0}",
-      ".qm-set-rowlabel{display:flex;flex-direction:column;gap:4px;font-size:14px;",
+      ".qm-set-rowlabel{display:flex;flex-direction:column;gap:4px;font-size:13px;",
       "font-weight:500;min-width:0;color:var(--app-text-primary,#1e293b)}",
       ".qm-set-rownote{font-size:12px;font-weight:400;color:var(--app-text-tertiary,#64748b);line-height:1.5}",
       // 控件列定宽右对齐：无论里面是开关还是下拉，右边界都落在同一条竖线上。
@@ -509,11 +534,11 @@ function injectStyles(): void {
       "border-right:0;transition:all .2s}",
       ".qm-set-segbtn:last-child{border-right:0}",
       ".qm-set-segon{background:var(--app-bg-elevated,#fff);",
-      "color:#3b82f6;font-weight:500;box-shadow:0 2px 4px rgba(0,0,0,.04)}",
+      "color:var(--app-accent, #ff7f16);font-weight:500;box-shadow:0 2px 4px rgba(0,0,0,.04)}",
       // 开关 = 参考稿 iOS 风格（放大到 42x24，激活蓝）
       ".qm-set-switch{width:44px;height:24px;border-radius:24px;cursor:pointer;position:relative;",
       "background:var(--app-fill-strong,#cbd5e1);transition:background .2s;flex-shrink:0}",
-      ".qm-set-switch-on{background:#3b82f6}",
+      ".qm-set-switch-on{background:var(--app-accent, #ff7f16)}",
       ".qm-set-knob{position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;",
       "background:#fff;transition:left .2s;box-shadow:0 2px 4px rgba(0,0,0,.12)}",
       ".qm-set-switch-on .qm-set-knob{left:22px}",
@@ -530,7 +555,7 @@ function injectStyles(): void {
       "border-radius:8px;padding:7px 12px;justify-content:flex-start;",
       "background:var(--app-fill-subtle,#f8fafc)}",
       ".qm-set-selecttext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
-      ".qm-set-selectarrow{color:var(--app-text-tertiary,#64748b);font-size:10px}",
+      ".qm-set-selectarrow{color:var(--app-text-tertiary,#64748b);font-size:13px}",
       ".qm-set-list{display:flex;flex-direction:column;gap:10px}",
       // 模板卡 = 参考稿 prompt-card：浅边框圆角卡，悬停轻微浮起
       ".qm-set-item{border:1px solid var(--app-border-subtle,#f1f5f9);",
@@ -538,7 +563,7 @@ function injectStyles(): void {
       ".qm-set-item:hover{border-color:var(--app-border-strong,#cbd5e1);",
       "box-shadow:0 4px 12px rgba(0,0,0,.03)}",
       ".qm-set-itemhead{display:flex;align-items:center;gap:8px;margin-bottom:6px}",
-      ".qm-set-itemname{font-size:14px;font-weight:600;color:var(--app-text-primary,#1e293b)}",
+      ".qm-set-itemname{font-size:13px;font-weight:600;color:var(--app-text-primary,#1e293b)}",
       ".qm-set-tag{font-size:11px;padding:2px 8px;border-radius:6px;",
       "background:var(--app-fill-subtle,#f8fafc);color:var(--app-text-secondary,#64748b)}",
       ".qm-set-tagbuiltin{background:var(--app-fill-subtle,rgba(127,127,127,0.24))}",
@@ -547,22 +572,22 @@ function injectStyles(): void {
       "display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}",
       ".qm-set-toolbar{display:flex;gap:8px;margin-top:14px}",
       // 通用按钮 = 参考稿 .btn：灰底无边框圆角 8；主按钮见下方复合选择器
-      ".qm-set-btn{font-size:14px;padding:9px 22px;height:auto;cursor:pointer;border-radius:8px;",
+      ".qm-set-btn{font-size:13px;padding:9px 22px;height:auto;cursor:pointer;border-radius:8px;",
       "border:0;background:var(--app-fill-subtle,#f8fafc);color:var(--app-text-primary,#1e293b);",
       "transition:all .2s}",
       ".qm-set-btn:hover{background:var(--app-fill-strong,#e2e8f0)}",
       // 保存按钮 = 参考稿 .btn-save：蓝底白字 + 蓝色柔光，hover 加深。
       // 必须用复合选择器且声明在 .qm-set-btn 之后：两条同特异性规则按顺序
       // 覆盖，否则通用按钮的灰底会压过这里的蓝底（用户报「保存按钮不高亮」的根因）。
-      ".qm-set-btn.qm-set-btnprimary{background:#3b82f6;color:#fff;",
-      "box-shadow:0 4px 12px rgba(59,130,246,.2)}",
+      ".qm-set-btn.qm-set-btnprimary{background:var(--app-accent, #ff7f16);color:#fff;",
+      "box-shadow:0 4px 12px var(--app-accent-soft, rgba(255,127,22,.2))}",
       ".qm-set-btn.qm-set-btnprimary:hover{background:#2563eb}",
       ".qm-set-btn.qm-set-btnprimary:disabled{opacity:.45}",
       // 新建模板按钮 = 参考稿 btn-new-template：虚线边框，悬停转蓝
       ".qm-set-btnnew{border:1px dashed var(--app-border-strong,#cbd5e1);",
       "background:var(--app-bg-elevated,#fff)}",
-      ".qm-set-btnnew:hover{border-color:#3b82f6;color:#3b82f6;",
-      "background:rgba(59,130,246,.06)}",
+      ".qm-set-btnnew:hover{border-color:var(--app-accent, #ff7f16);color:var(--app-accent, #ff7f16);",
+      "background:var(--app-accent-soft, rgba(255,127,22,.06))}",
       ".qm-set-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px;",
       "color:var(--app-text-secondary,#4e5969)}",
       // ── 时段调度页签（US-007，纯 UI 占位）──
@@ -588,8 +613,12 @@ function injectStyles(): void {
       "background:rgba(217,48,37,.06)}",
       // 卡内字段网格：两列；窄屏（640px media 块）改单列
       ".qm-set-schedgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}",
+      // 需求 5（2026-11-24）：默认参数页「携带上下文 / 并行分析各题」一行两列。
+      // 子行仍用 .qm-set-row 结构（scope 标记/锁定态不丢），外层只负责分栏。
+      ".qm-set-rowpair{display:grid;grid-template-columns:1fr 1fr;column-gap:18px;",
+      "align-items:start}",
       ".qm-set-schedfield{display:flex;flex-direction:column;gap:4px;min-width:0}",
-      ".qm-set-schedfieldlabel{font-size:11px;color:var(--app-text-tertiary,#94a3b8)}",
+      ".qm-set-schedfieldlabel{font-size:13px;color:var(--app-text-tertiary,#94a3b8)}",
       ".qm-set-schedfield .qm-set-native,.qm-set-schedfield .qm-set-input{",
       "width:100%;max-width:none;box-sizing:border-box}",
       // 起止时间行：原生 time 输入，样式对齐 .qm-set-native 口径
@@ -600,8 +629,178 @@ function injectStyles(): void {
       "background:var(--app-fill-subtle,#f8fafc);color:var(--app-text-primary,#1e293b);",
       "outline:none;min-width:0;box-sizing:border-box;transition:all .2s}",
       ".qm-set-schedtime input[type=time]:focus{background:var(--app-bg-elevated,#fff);",
-      "border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.1)}",
+      "border-color:var(--app-accent, #ff7f16);box-shadow:0 0 0 3px var(--app-accent-soft, rgba(255,127,22,.1))}",
       ".qm-set-schedadd{align-self:flex-start;margin-top:2px}",
+      // ══════════════════════════════════════════════════════════════
+      // 统一配置 · 时间策略（US-024，2026-11-23 架构重构）
+      //
+      // 按 boss 定稿的设计稿 demo/统一配置-时间策略-demo-v3.html 实现。
+      // 类名统一 qm-set-ts* 前缀，与既有 qm-set-sched*（US-007 演示版）
+      // 并存不冲突 —— 后者在 schedule 页签被本次实现替换，但 styles
+      // 保留不删（回退时仍可用，且删样式属额外风险）。
+      //
+      // 配色全部走 CSS 变量（var(--app-accent) 系列），与插件其它区域同源；
+      // 圆角/间距与 qm-set-* 同族。
+      // ══════════════════════════════════════════════════════════════
+      // 「此刻生效」横条：一眼看出当前按哪条策略在跑
+      ".qm-set-nowbar{display:flex;align-items:center;gap:8px;font-size:12px;",
+      "line-height:1.6;padding:9px 13px;border-radius:9px;margin:0 0 12px;",
+      "background:var(--app-accent-soft, rgba(255,127,22,.06));border:1px solid var(--app-accent-soft, rgba(255,127,22,.22));",
+      "color:var(--app-text-secondary,#64748b)}",
+      ".qm-set-nowbar.fallback{background:var(--app-fill-subtle,#f8fafc);",
+      "border-color:var(--app-border-subtle,#f1f5f9)}",
+      ".qm-set-nowbar b{color:var(--app-accent-text, #ff7f16);font-weight:600}",
+      ".qm-set-nowbar.fallback b{color:var(--app-text-primary,#1e293b)}",
+      // 策略卡
+      ".qm-set-tslist{display:flex;flex-direction:column;gap:10px}",
+      ".qm-set-tscard{position:relative;background:var(--app-bg-elevated,#fff);",
+      "border:1px solid var(--app-border,#e5e7eb);border-radius:10px;",
+      "padding:11px 13px 11px 15px;transition:border-color .15s,background .15s,box-shadow .15s}",
+      // 左侧状态条：命中时亮蓝，普通态透明，hover 时显灰
+      ".qm-set-tscard::before{content:'';position:absolute;left:0;top:10px;bottom:10px;",
+      "width:3px;border-radius:0 2px 2px 0;background:transparent;transition:background .15s}",
+      ".qm-set-tscard:hover{border-color:var(--app-border-strong,#cbd5e1);",
+      "box-shadow:0 2px 8px rgba(0,0,0,.06)}",
+      ".qm-set-tscard:hover::before{background:var(--app-border-strong,#cbd5e1)}",
+      ".qm-set-tscard.qm-set-tshit{border-color:var(--app-accent-soft, rgba(255,127,22,.5));",
+      "background:var(--app-accent-soft, rgba(255,127,22,.045))}",
+      ".qm-set-tscard.qm-set-tshit::before{background:var(--app-accent, #ff7f16)}",
+      ".qm-set-tscard.qm-set-tshit:hover{border-color:var(--app-accent, #ff7f16)}",
+      ".qm-set-tscard.qm-set-tsedit{border-color:var(--app-accent, #ff7f16);",
+      "box-shadow:0 0 0 3px var(--app-accent-soft, rgba(255,127,22,.12))}",
+      ".qm-set-tscard.qm-set-tsedit::before{background:var(--app-accent, #ff7f16)}",
+      // 卡片顶行：序号 / 名称 / 生效徽标 / 时段 / 弹性空隙 / 操作
+      ".qm-set-tstop{display:flex;align-items:center;gap:8px;min-width:0}",
+      ".qm-set-tsidx{flex:none;width:18px;height:18px;border-radius:5px;",
+      "background:var(--app-fill-subtle,#f8fafc);color:var(--app-text-tertiary,#94a3b8);",
+      "font-size:11px;display:flex;align-items:center;justify-content:center;",
+      "font-family:ui-monospace,SFMono-Regular,Menlo,monospace}",
+      ".qm-set-tscard.qm-set-tshit .qm-set-tsidx{background:var(--app-accent, #ff7f16);color:#fff;font-weight:700}",
+      ".qm-set-tsname{font-size:13px;font-weight:600;color:var(--app-text-primary,#1e293b);",
+      "flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
+      ".qm-set-tsbadge{flex:none;font-size:11px;line-height:1.6;padding:0 7px;",
+      "border-radius:4px;background:var(--app-accent, #ff7f16);color:#fff;font-weight:600}",
+      // 时段：等宽字体 + nowrap。nowrap 必须有，否则「22:00 → 08:00 次日」
+      // 会折成两行，卡高跳动、时段读起来断裂。
+      ".qm-set-tstime{flex:none;font-size:12px;color:var(--app-text-secondary,#64748b);",
+      "font-family:ui-monospace,SFMono-Regular,Menlo,monospace;white-space:nowrap;",
+      "padding:1px 8px;border-radius:5px;background:var(--app-fill-subtle,#f8fafc);",
+      "border:1px solid var(--app-border-subtle,#f1f5f9)}",
+      ".qm-set-tscard.qm-set-tshit .qm-set-tstime{color:var(--app-accent-text, #ff7f16);",
+      "border-color:var(--app-accent-soft, rgba(255,127,22,.28));background:var(--app-accent-soft, rgba(255,127,22,.08))}",
+      ".qm-set-tstime .nt{font-size:11px;color:var(--app-text-tertiary,#94a3b8);margin-left:3px}",
+      ".qm-set-tssp{flex:1;min-width:4px}",
+      // 操作按钮：常显边框（boss 定案⑤：一眼可辨「可编辑」）
+      ".qm-set-tsacts{display:flex;align-items:center;gap:6px;flex:none}",
+      ".qm-set-tsbtn{font-size:13px;line-height:1;padding:5px 9px;border-radius:6px;",
+      "border:1px solid var(--app-border,#e5e7eb);background:transparent;cursor:pointer;",
+      "color:var(--app-text-secondary,#64748b);transition:all .15s;white-space:nowrap}",
+      ".qm-set-tsbtn:hover{color:var(--app-accent-text, #ff7f16);border-color:var(--app-accent-soft, rgba(255,127,22,.45));",
+      "background:var(--app-accent-soft, rgba(255,127,22,.06))}",
+      ".qm-set-tsbtn.qm-set-tsdel:hover{color:#d93025;border-color:#f3c2bd;",
+      "background:rgba(217,48,37,.06)}",
+      // 引用行 + 参数胶囊
+      ".qm-set-tsrefs{margin-top:7px;font-size:11px;color:var(--app-text-secondary,#64748b);",
+      "display:flex;align-items:center;gap:5px;flex-wrap:wrap}",
+      ".qm-set-tsrefs .v{color:var(--app-text-tertiary,#94a3b8)}",
+      ".qm-set-tsrefs .sep{color:var(--app-text-quaternary,#cbd5e1)}",
+      ".qm-set-tschips{margin-top:7px;display:flex;align-items:center;gap:6px;flex-wrap:wrap}",
+      ".qm-set-tschip{font-size:11px;line-height:1.7;padding:0 7px;border-radius:4px;",
+      "background:var(--app-fill-subtle,#f8fafc);color:var(--app-text-secondary,#64748b);",
+      "border:1px solid var(--app-border-subtle,#f1f5f9);white-space:nowrap}",
+      ".qm-set-tschip.mode{color:var(--app-accent-text, #ff7f16);background:var(--app-accent-soft, rgba(255,127,22,.08));",
+      "border-color:var(--app-accent-soft, rgba(255,127,22,.22));font-weight:600}",
+      // 布尔参数在展示态用小开关表达（boss 定案②：不用删除线）
+      ".qm-set-tssw{display:inline-flex;align-items:center;gap:4px;font-size:11px;",
+      "color:var(--app-text-tertiary,#94a3b8);white-space:nowrap}",
+      ".qm-set-tssw .mini{width:16px;height:9px;border-radius:5px;",
+      "background:var(--app-border,#e5e7eb);position:relative;transition:background .15s}",
+      ".qm-set-tssw .mini::after{content:'';position:absolute;top:1px;left:1px;",
+      "width:7px;height:7px;border-radius:50%;background:#fff;transition:left .15s}",
+      ".qm-set-tssw.on .mini{background:var(--app-accent, #ff7f16)}",
+      ".qm-set-tssw.on .mini::after{left:8px}",
+      ".qm-set-tssw.on{color:var(--app-accent-text, #ff7f16)}",
+      // 编辑态表单：两列网格，窄屏（640px media）改单列
+      ".qm-set-tsform{margin-top:10px;display:grid;grid-template-columns:1fr 1fr;",
+      "gap:10px 14px;padding-top:10px;border-top:1px solid var(--app-border-subtle,#f1f5f9)}",
+      ".qm-set-tsf{display:flex;flex-direction:column;gap:4px;min-width:0}",
+      ".qm-set-tsf.full{grid-column:1 / -1}",
+      ".qm-set-tsf label{font-size:13px;color:var(--app-text-tertiary,#94a3b8);",
+      "display:flex;align-items:center;gap:5px}",
+      ".qm-set-tsf label .tag{font-size:11px;padding:0 4px;border-radius:3px;",
+      "background:var(--app-accent-soft, rgba(255,127,22,.1));color:var(--app-accent-text, #ff7f16);line-height:1.6}",
+      ".qm-set-tsf .fc{display:flex;align-items:center;gap:6px;min-width:0}",
+      ".qm-set-tsf .fc>*{min-width:0}",
+      ".qm-set-tsf .fc input[type=text],.qm-set-tsf .fc select{",
+      "font:inherit;font-size:13px;line-height:1.4;padding:7px 10px;border-radius:8px;",
+      "border:1px solid var(--app-border,#e5e7eb);background:var(--app-bg-elevated,#fff);",
+      "color:var(--app-text-primary,#1e293b);outline:none;box-sizing:border-box;width:100%;",
+      "transition:border-color .15s,box-shadow .15s}",
+      ".qm-set-tsf .fc input[type=text]:focus,.qm-set-tsf .fc select:focus{",
+      "border-color:var(--app-accent, #ff7f16);box-shadow:0 0 0 3px var(--app-accent-soft, rgba(255,127,22,.1))}",
+      ".qm-set-tsf .fc input[type=time]{font:inherit;font-size:13px;line-height:1.4;",
+      "padding:7px 10px;border-radius:8px;border:1px solid var(--app-border,#e5e7eb);",
+      "background:var(--app-bg-elevated,#fff);color:var(--app-text-primary,#1e293b);",
+      "outline:none;box-sizing:border-box;flex:1 1 0;min-width:0;transition:border-color .15s}",
+      ".qm-set-tsf .fc input[type=time]:focus{border-color:var(--app-accent, #ff7f16);",
+      "box-shadow:0 0 0 3px var(--app-accent-soft, rgba(255,127,22,.1))}",
+      ".qm-set-tsdash{flex:none;color:var(--app-text-tertiary,#94a3b8);font-size:12px}",
+      // 编辑态底栏
+      ".qm-set-tsfoot{margin-top:10px;display:flex;align-items:center;gap:8px}",
+      ".qm-set-tsfoot .note{flex:1;min-width:0;font-size:12px;",
+      "color:var(--app-text-tertiary,#94a3b8);line-height:1.5}",
+      // 空态
+      ".qm-set-tsempty{text-align:center;padding:26px 16px;color:var(--app-text-secondary,#64748b);",
+      "font-size:12px;line-height:1.9}",
+      ".qm-set-tsempty b{display:block;font-size:13px;color:var(--app-text-primary,#1e293b);",
+      "margin-bottom:4px}",
+      // 运行参数的内嵌分类页签（避免顶层页签过多）
+      ".qm-set-subtabs{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;",
+      "scrollbar-width:none;padding-bottom:2px}",
+      ".qm-set-subtabs::-webkit-scrollbar{width:0;height:0;display:none}",
+      ".qm-set-subtab{background:transparent;border:1px solid var(--app-border,#e5e7eb);",
+      "cursor:pointer;font-size:13px;line-height:1;padding:6px 12px;border-radius:999px;",
+      "color:var(--app-text-secondary,#64748b);white-space:nowrap;flex:0 0 auto;",
+      "transition:all .15s}",
+      ".qm-set-subtab:hover{color:var(--app-text-primary,#1e293b);",
+      "border-color:var(--app-border-strong,#cbd5e1)}",
+      ".qm-set-subtabon{background:var(--app-accent, #ff7f16);color:#fff;border-color:var(--app-accent, #ff7f16);font-weight:500}",
+      ".qm-set-subtabon:hover{background:var(--app-accent, #ff7f16);color:#fff}",
+      ".qm-set-subtab .n{font-size:11px;margin-left:4px;opacity:.75}",
+      // 参数组 / 通知配置卡（可复用 .qm-set-tscard 的形态）
+      ".qm-set-pmcard{background:var(--app-bg-elevated,#fff);",
+      "border:1px solid var(--app-border,#e5e7eb);border-radius:10px;padding:11px 13px}",
+      ".qm-set-pmcard.readonly{background:var(--app-fill-subtle,#f8fafc)}",
+      ".qm-set-pmhead{display:flex;align-items:center;gap:8px;margin-bottom:9px}",
+      ".qm-set-pmname{font-size:13px;font-weight:600;color:var(--app-text-primary,#1e293b)}",
+      ".qm-set-pmused{font-size:11px;padding:0 6px;border-radius:4px;line-height:1.7;",
+      "background:var(--app-fill-subtle,#f8fafc);color:var(--app-text-tertiary,#94a3b8);",
+      "border:1px solid var(--app-border-subtle,#f1f5f9)}",
+      ".qm-set-pmused.builtin{background:var(--app-accent-soft, rgba(255,127,22,.08));color:var(--app-accent-text, #ff7f16);",
+      "border-color:var(--app-accent-soft, rgba(255,127,22,.22))}",
+      // 参数网格：一行两列（boss 定案⑥：默认参数卡 598px → 398px）
+      ".qm-set-pgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px 14px}",
+      ".qm-set-pitem{display:flex;flex-direction:column;gap:3px;min-width:0}",
+      ".qm-set-pitem.full{grid-column:1 / -1}",
+      ".qm-set-pitem.inline{flex-direction:row;align-items:center;justify-content:space-between}",
+      ".qm-set-pitem label{font-size:13px;color:var(--app-text-tertiary,#94a3b8)}",
+      ".qm-set-pitem select,.qm-set-pitem input{font:inherit;font-size:12px;line-height:1.4;",
+      "padding:6px 9px;border-radius:7px;border:1px solid var(--app-border,#e5e7eb);",
+      "background:var(--app-bg-elevated,#fff);color:var(--app-text-primary,#1e293b);",
+      "outline:none;box-sizing:border-box;width:100%;transition:border-color .15s}",
+      ".qm-set-pitem select:focus,.qm-set-pitem input:focus{border-color:var(--app-accent, #ff7f16);",
+      "box-shadow:0 0 0 3px var(--app-accent-soft, rgba(255,127,22,.1))}",
+      ".qm-set-pmadd{align-self:flex-start;margin-top:10px}",
+      // 策略库列表容器
+      ".qm-set-pmlist{display:flex;flex-direction:column;gap:10px}",
+      // 窄屏：策略卡/参数网格/表单全部改单列（桌面不变）
+      "@media (max-width:640px){",
+      ".qm-set-tsform{grid-template-columns:1fr}",
+      ".qm-set-pgrid{grid-template-columns:1fr}",
+      ".qm-set-tstop{flex-wrap:wrap}",
+      ".qm-set-tstime{order:5}",
+      ".qm-set-tsacts{order:6;margin-left:auto}",
+      "}",
       // ── 自定义 API 通知卡（US-008，纯 UI 占位）──
       // 卡容器/网格/字段复用 .qm-set-sched*（demo v5 同一卡形态），
       // 这里只补 API 卡特有元素：标题徽标 / 启用开关 / 测试按钮。
@@ -609,14 +808,14 @@ function injectStyles(): void {
       ".qm-set-apititle{font-size:13px;font-weight:600;color:var(--app-text-primary,#1e293b);",
       "display:inline-flex;align-items:center}",
       // 「新增渠道」徽标 = demo v5 内联样式（accent 底白字小圆角）
-      ".qm-set-apibadge{display:inline-block;font-size:10px;font-weight:700;color:#fff;",
-      "background:var(--app-accent,#3b82f6);border-radius:4px;padding:1px 6px;",
+      ".qm-set-apibadge{display:inline-block;font-size:11px;font-weight:700;color:#fff;",
+      "background:var(--app-accent, #ff7f16);border-radius:4px;padding:1px 6px;",
       "margin-left:8px;vertical-align:2px}",
       // 启用开关 = demo .switch 形态（34×19 胶囊 + 滑动白点），纯演示可点击
       ".qm-set-apiswitch{flex:0 0 auto;margin-left:auto;position:relative;width:34px;",
       "height:19px;border-radius:10px;border:none;padding:0;cursor:pointer;",
       "background:#d9d9d9;transition:background .2s}",
-      ".qm-set-apiswitch.on{background:var(--app-accent,#3b82f6)}",
+      ".qm-set-apiswitch.on{background:var(--app-accent, #ff7f16)}",
       ".qm-set-apiswitchdot{position:absolute;top:2px;left:2px;width:15px;height:15px;",
       "border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);",
       "transition:left .2s}",
@@ -628,8 +827,86 @@ function injectStyles(): void {
       "border-radius:6px;background:transparent;cursor:pointer;",
       "border:1.5px solid var(--app-border-strong,#cbd5e1);",
       "color:var(--app-text-secondary,#4e5969);transition:all .15s}",
-      ".qm-set-apitest:hover{border-color:var(--app-accent,#3b82f6);",
-      "color:var(--app-accent,#3b82f6)}",
+      ".qm-set-apitest:hover{border-color:var(--app-accent, #ff7f16);",
+      "color:var(--app-accent, #ff7f16)}",
+      // ── 自定义 API · 必传可见性与参数行（US-020，2026-11-23）──
+      // boss 核心诉求原文：「用户不知道哪些是属于必传项，是否符合大部分的
+      // API 请求以及参数要求」。以下样式全部服务于「必传一眼可见」。
+      //
+      // 必传星号：红色，与正文有足够对比度（不用 accent 色，避免和「新增」
+      // 这类主动作混淆——**危险/必填用红、可选用灰**是本项目的既有口径）。
+      ".qm-apireq{color:#d92d20;font-weight:700;margin-left:2px}",
+      // 区块图例：一行小字说明「标 * 为必传项」，放在表单顶部
+      ".qm-apilegend{font-size:11px;color:var(--app-text-tertiary,#94a3b8);",
+      "margin:2px 0 6px}",
+      // 顶部汇总条：缺项时橙色告警，齐备时绿色确认。
+      // 两种态用同一元素切换 class，避免布局跳动。
+      ".qm-apistatus{display:flex;align-items:center;gap:6px;font-size:12px;",
+      "padding:6px 10px;border-radius:6px;margin:8px 0}",
+      ".qm-apistatus.miss{background:rgba(212,107,8,.08);color:#d46b08;",
+      "border:1px solid rgba(212,107,8,.35)}",
+      ".qm-apistatus.ok{background:rgba(56,158,13,.08);color:#389e0d;",
+      "border:1px solid rgba(56,158,13,.35)}",
+      // 系统字段区：锁定不可删，用浅底区分于用户自定义区
+      ".qm-apisysblock{background:var(--app-surface-subtle,rgba(127,127,127,.06));",
+      "border:1px solid var(--app-border-subtle,rgba(127,127,127,.18));",
+      "border-radius:6px;padding:8px 10px;margin:6px 0}",
+      ".qm-apisysrow{display:flex;align-items:center;gap:8px;font-size:12px;",
+      "padding:3px 0}",
+      ".qm-apisysname{flex:0 0 78px;font-weight:600;",
+      "color:var(--app-text-primary,#1e293b)}",
+      ".qm-apisysval{flex:1 1 auto;color:var(--app-text-secondary,#4e5969);",
+      "font-family:SF Mono,Monaco,Consolas,monospace;font-size:11px}",
+      ".qm-apisystag{flex:0 0 auto;font-size:11px;padding:1px 5px;border-radius:3px;",
+      "background:rgba(217,45,32,.1);color:#d92d20}",
+      // 参数行表格：参数名 / 参数值 / 必填 / 操作 四列
+      ".qm-apiparamhead,.qm-apiparamrow{display:flex;align-items:center;gap:6px;",
+      "font-size:12px}",
+      ".qm-apiparamhead{padding:0 0 4px;color:var(--app-text-tertiary,#94a3b8);",
+      "font-size:11px}",
+      ".qm-apiparamrow{padding:3px 0;position:relative}",
+      ".qm-apiparamrow.miss{padding-left:7px}",
+      // 必传未填的整行标红竖条：比只标红色文字更醒目
+      ".qm-apiparamrow.miss::before{content:'';position:absolute;left:0;top:2px;",
+      "bottom:2px;width:3px;border-radius:2px;background:#d92d20}",
+      ".qm-apipk,.qm-apipv{min-width:0;height:26px;padding:0 7px;font-size:12px;",
+      "border-radius:5px;border:1px solid var(--app-border-strong,#cbd5e1);",
+      "background:var(--app-surface-raised,#fff);color:inherit;font-family:inherit}",
+      ".qm-apipk{flex:0 0 34%}",
+      ".qm-apipv{flex:1 1 auto}",
+      ".qm-apipk.bad,.qm-apipv.bad{border-color:#d92d20}",
+      ".qm-apireqbox{flex:0 0 auto;display:inline-flex;align-items:center;gap:3px;",
+      "font-size:11px;color:var(--app-text-secondary,#4e5969);cursor:pointer}",
+      ".qm-apidel{flex:0 0 auto;width:24px;height:24px;border:none;background:none;",
+      "color:var(--app-text-tertiary,#94a3b8);cursor:pointer;font-size:13px;",
+      "border-radius:4px}",
+      ".qm-apidel:hover{color:#d92d20;background:rgba(217,45,32,.08)}",
+      ".qm-apiadd{align-self:flex-start;height:26px;padding:0 10px;font-size:12px;",
+      "border-radius:5px;border:1px dashed var(--app-border-strong,#cbd5e1);",
+      "background:transparent;color:var(--app-accent, #ff7f16);cursor:pointer}",
+      ".qm-apiadd:hover{border-color:var(--app-accent, #ff7f16);",
+      "background:var(--app-accent-soft, rgba(255,127,22,.06))}",
+      // 请求预览：等宽字体、浅底、可滚动，让用户直接对照对方 API 文档
+      ".qm-apipreview{margin:6px 0 0;padding:8px 10px;border-radius:6px;",
+      "background:var(--app-surface-subtle,rgba(127,127,127,.06));",
+      "border:1px solid var(--app-border-subtle,rgba(127,127,127,.18));",
+      "font-family:SF Mono,Monaco,Consolas,monospace;font-size:11px;",
+      "line-height:1.55;white-space:pre-wrap;word-break:break-all;",
+      "max-height:180px;overflow:auto;color:var(--app-text-secondary,#4e5969)}",
+      ".qm-apipreviewlabel{font-size:11px;color:var(--app-text-tertiary,#94a3b8);",
+      "margin-top:8px}",
+      // 高级模式开关行
+      ".qm-apiadvrow{display:flex;align-items:center;gap:8px;margin:8px 0 4px;",
+      "font-size:12px}",
+      ".qm-apibody{width:100%;min-height:96px;padding:8px 10px;font-size:12px;",
+      "border-radius:6px;border:1px solid var(--app-border-strong,#cbd5e1);",
+      "background:var(--app-surface-raised,#fff);color:inherit;",
+      "font-family:SF Mono,Monaco,Consolas,monospace;resize:vertical}",
+      ".qm-apibody.bad{border-color:#d92d20}",
+      // 测试结果行
+      ".qm-apitestres{font-size:11px;line-height:1.6;word-break:break-all}",
+      ".qm-apitestres.ok{color:#389e0d}",
+      ".qm-apitestres.err{color:#d92d20}",
     ].join("");
     document.head.appendChild(el);
   } catch (_) { /* ignore */ }
@@ -1380,6 +1657,17 @@ type EffectiveConfig = {
   sessionConfig?: Record<string, any>;
   /** 全局层的**原始**值（磁盘 analysis_prefs）。 */
   globalConfig?: Record<string, any>;
+  /** 基础配置原始值（不含时段覆盖）—— 2026-11-23 起与 globalConfig 同义，
+   *  但语义更准确：会话层已移除，这一层就是「基础配置」本身。 */
+  baseConfig?: Record<string, any>;
+  /** 当前命中的时间策略（null = 未命中 → 用基础配置）。 */
+  schedule?: { id: string; name: string } | null;
+  /** 三个策略库的快照。 */
+  libraries?: {
+    param_sets?: any[];
+    notify_profiles?: any[];
+    schedules?: any[];
+  };
 };
 
 let _cfgCache: { chatId: string; at: number; data: EffectiveConfig } | null = null;
@@ -1416,6 +1704,17 @@ async function fetchEffectiveConfig(
         ? d.session_config : undefined,
       globalConfig: (d.global_config && typeof d.global_config === "object")
         ? d.global_config : undefined,
+      // ── 策略库与命中策略（US-024，2026-11-23）──────────────────────
+      //
+      // 必须在这里显式透传：这个函数**只挑已知字段**构造 data，
+      // 后端返回的新字段若不登记就会被静默丢弃（本轮实测：库里明明有
+      // 3 条策略，UI 上一张卡都渲染不出来，因为 libraries 在这一层就没了）。
+      // 与 MEMORY「派生元数据不得在出口被裁掉」是同一类缺陷。
+      baseConfig: (d.base_config && typeof d.base_config === "object")
+        ? d.base_config : undefined,
+      schedule: (d.schedule && typeof d.schedule === "object") ? d.schedule : null,
+      libraries: (d.libraries && typeof d.libraries === "object")
+        ? d.libraries : undefined,
     };
     _cfgCache = { chatId: key, at: Date.now(), data };
     return data;
@@ -3313,7 +3612,7 @@ function ModelCapsule(props: {
                   display: "flex", alignItems: "center", gap: 8,
                   padding: "6px 12px", paddingLeft: 18, cursor: "pointer",
                   borderLeft: "3px solid " + (active
-                    ? "var(--app-accent, #1677ff)" : "transparent"),
+                    ? "var(--app-accent, #ff7f16)" : "transparent"),
                   borderBottom: "1px solid var(--app-border-subtle, rgba(127,127,127,0.12))",
                   background: active ? "var(--app-accent-soft, rgba(22,119,255,0.10))" : "transparent",
                 },
@@ -3547,7 +3846,7 @@ function TemplatePickList(props: {
           display: "flex", alignItems: "center", gap: 6,
           padding: "6px 12px", cursor: "pointer",
           borderLeft: "3px solid " + (t.id === value
-            ? "var(--app-accent, #1677ff)" : "transparent"),
+            ? "var(--app-accent, #ff7f16)" : "transparent"),
           borderBottom: "1px solid var(--app-border-subtle, rgba(127,127,127,0.12))",
           background: t.id === value ? "var(--app-accent-soft, rgba(22,119,255,0.10))" : "transparent",
         },
@@ -3571,12 +3870,12 @@ function TemplatePickList(props: {
           "aria-hidden": "true",
           style: {
             flex: "none", fontSize: 12, fontWeight: 600,
-            color: "var(--app-accent, #1677ff)",
+            color: "var(--app-accent, #ff7f16)",
           },
         }, "✓") : null)),
     R.createElement("div", {
       style: { padding: "6px 12px", cursor: "pointer", fontSize: 12,
-               color: "var(--app-accent, #1677ff)",
+               color: "var(--app-accent, #ff7f16)",
                borderTop: "1px solid var(--app-border-subtle, rgba(127,127,127,0.18))" },
       onClick: () => onManage(),
     }, "＋ 管理模板…"));
@@ -3659,8 +3958,8 @@ function TemplateManager(props: {
           R.createElement("div", { style: { display: "flex", gap: 8, marginTop: 10 } },
             R.createElement("button", {
               type: "button",
-              style: { ...rowBtn, borderColor: "var(--app-accent, #1677ff)",
-                       color: "var(--app-accent, #1677ff)" },
+              style: { ...rowBtn, borderColor: "var(--app-accent, #ff7f16)",
+                       color: "var(--app-accent, #ff7f16)" },
               onClick: () => onSave(edit),
             }, "保存"),
             R.createElement("button", {
@@ -3696,8 +3995,8 @@ function TemplateManager(props: {
           R.createElement("div", { style: { marginTop: 10 } },
             R.createElement("button", {
               type: "button",
-              style: { ...rowBtn, borderColor: "var(--app-accent, #1677ff)",
-                       color: "var(--app-accent, #1677ff)" },
+              style: { ...rowBtn, borderColor: "var(--app-accent, #ff7f16)",
+                       color: "var(--app-accent, #ff7f16)" },
               onClick: () => onEditChange({ id: "", name: "", system: "", user: "" }),
             }, "＋ 新建模板"))));
 
@@ -7763,6 +8062,42 @@ const settingsState: {
     /** 阈值切换中（防连点导致两次保存互相覆盖）。 */
     thrBusy: boolean;
   };
+  /** ── 策略库（US-024，2026-11-23）────────────────────────────────
+   *
+   *  三个库的数据由 `/effective-config` 的 `libraries` 字段一起下发，
+   *  但**写操作走各自的 CRUD 端点**（/param-sets、/notify-profiles、
+   *  /schedules），写完重新拉一次 libraries 而不是本地推测：
+   *  后端会做引用校验、id 生成、重复 id 去重，前端复制这些规则必然漂移。
+   *
+   *  `activeId` 是后端算好的「此刻命中的策略 id」，前端直接高亮，
+   *  不自己再算一遍时段匹配（两处各算一份 = 迟早不一致）。
+   */
+  libs: {
+    paramSets: any[];
+    notifyProfiles: any[];
+    schedules: any[];
+    /** 当前命中的策略 id（null = 未命中 → 用基础配置） */
+    activeId: string | null;
+    /** 库操作进行中（防连点） */
+    busy: boolean;
+    /** 库操作结果提示（引用冲突等必须让用户看到原因） */
+    msg: string;
+    msgKind: string;
+  };
+  /** 运行参数页签的内嵌分类（默认参数 / 问卷参数组 / ...） */
+  runSub: string;
+  /** 正在编辑的策略 id（"" = 无；"__new__" = 新建中） */
+  schedEdit: string;
+  /** 策略编辑态的草稿（与 draft 分开：draft 是 prefs 的键值草稿，
+   *  策略是库条目，生命周期与保存语义都不同，混在一起会互相污染）。 */
+  schedDraft: {
+    id: string; name: string; start: string; end: string;
+    param_set_id: string; notify_profile_id: string;
+  } | null;
+  /** 删除二次确认（2026-11-24 boss 需求 1）：非空 = 面板内展示确认气泡，
+   *  点「确定」才真正执行删除。kind：ts=时间策略 / ps=参数组 / np=通知配置 /
+   *  tpl=提示词模板。避免误删（✕ 按钮很小、卡片密集，极易点错）。 */
+  delConfirm: { kind: string; id: string; name: string } | null;
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
   sessData: null, cfg: null, cfgError: "", chatId: "",
@@ -7777,8 +8112,219 @@ const settingsState: {
   stale: { rows: [], scanned: false, busy: false, msg: "", msgKind: "info", page: 0,
            exceeded: [], within: [], threshold: null, thrBusy: false,
            blocking: [], residual: [], resPage: 0, copied: "" },
+  libs: { paramSets: [], notifyProfiles: [], schedules: [], activeId: null,
+          busy: false, msg: "", msgKind: "info" },
+  runSub: "default",
+  schedEdit: "",
+  schedDraft: null,
+  delConfirm: null,
 };
 let settingsPanelRoot: any = null;
+
+// ══════════════════════════════════════════════════════════════════════
+// 策略库 API（US-024，2026-11-23）
+// ══════════════════════════════════════════════════════════════════════
+//
+// 三个库（参数组 / 通知配置 / 时间策略）的读写。
+//
+// 设计要点：
+//   · **写操作一律以后端返回为准**：写完重新拉 libraries，不在前端本地
+//     追加/删除条目。后端负责 id 生成、引用校验、重复去重，前端复制这套
+//     规则必然与后端漂移（历史教训：两处各算一份 → 显示与事实不符）。
+//   · **失败必须把原因露出来**：引用冲突（409）时后端会在 detail 里说明
+//     "被哪几条策略引用"，这条信息对用户是唯一可行动的线索，绝不吞掉。
+//   · 所有函数返回 boolean，调用方据此决定是否重绘。
+
+/** 统一处理库请求的响应：成功返回 body，失败把 detail 写进 libs.msg。 */
+async function libRequest(
+  path: string, init?: { method?: string; body?: any },
+): Promise<any | null> {
+  try {
+    const opts: any = {
+      method: (init && init.method) || "GET",
+      headers: authHeaders(),
+    };
+    if (init && init.body !== undefined) {
+      opts.body = JSON.stringify(init.body);
+    }
+    const resp = await fetch(apiUrl(path), opts);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      // FastAPI 的 HTTPException 把说明放在 detail；取不到就退回状态码，
+      // 但绝不编造一句"操作失败"糊过去 —— 用户需要知道为什么。
+      const detail = (data && (data.detail || data.message)) || ("HTTP " + resp.status);
+      settingsState.libs.msg = String(detail);
+      settingsState.libs.msgKind = "error";
+      settingsRenderPanel();
+      return null;
+    }
+    settingsState.libs.msg = "";
+    settingsState.libs.msgKind = "info";
+    return data;
+  } catch (e: any) {
+    settingsState.libs.msg = "请求失败：" + (e && e.message ? e.message : String(e));
+    settingsState.libs.msgKind = "error";
+    settingsRenderPanel();
+    return null;
+  }
+}
+
+/** 只拉策略库三件套（写操作后刷新用）。
+ *
+ *  为什么不复用 loadEffectiveConfigIntoSettings：那会把整份 config 重拉一遍，
+ *  连带重置 draft 之外的一堆状态（keyTs/conflictNote 等），而这里只想刷新
+ *  库列表。窄口径刷新不会误伤编辑中的草稿。
+ */
+async function loadLibraries(): Promise<boolean> {
+  const d = await libRequest("/question-modal/libs");
+  if (!d) return false;
+  const lib = d.libraries || d;
+  settingsState.libs.paramSets = Array.isArray(lib.param_sets) ? lib.param_sets : [];
+  settingsState.libs.notifyProfiles = Array.isArray(lib.notify_profiles) ? lib.notify_profiles : [];
+  settingsState.libs.schedules = Array.isArray(lib.schedules) ? lib.schedules : [];
+  if (d.active_id !== undefined) {
+    settingsState.libs.activeId = d.active_id || null;
+  } else if (d.schedule !== undefined) {
+    settingsState.libs.activeId = (d.schedule && d.schedule.id) || null;
+  }
+  settingsRenderPanel();
+  return true;
+}
+
+// ── 问卷参数组 ───────────────────────────────────────────────────────
+
+async function saveParamSet(item: {
+  id?: string; name: string; params: Record<string, any>;
+}): Promise<boolean> {
+  settingsState.libs.busy = true;
+  settingsRenderPanel();
+  const d = await libRequest("/question-modal/param-sets",
+    { method: "POST", body: item });
+  settingsState.libs.busy = false;
+  if (!d) return false;
+  await loadLibraries();
+  return true;
+}
+
+async function deleteParamSet(id: string, force?: boolean): Promise<boolean> {
+  settingsState.libs.busy = true;
+  settingsRenderPanel();
+  const q = "?id=" + encodeURIComponent(id) + (force ? "&force=true" : "");
+  const d = await libRequest("/question-modal/param-sets" + q, { method: "DELETE" });
+  settingsState.libs.busy = false;
+  if (!d) return false;
+  settingsState.libs.msg = d.cleared_in && d.cleared_in.length
+    ? ("已删除，同时清空了 " + d.cleared_in.length + " 条策略对该参数组的引用")
+    : "";
+  await loadLibraries();
+  return true;
+}
+
+// ── 通知配置 ─────────────────────────────────────────────────────────
+
+async function saveNotifyProfile(item: {
+  id?: string; name: string; channels: Record<string, string>;
+}): Promise<boolean> {
+  settingsState.libs.busy = true;
+  settingsRenderPanel();
+  const d = await libRequest("/question-modal/notify-profiles",
+    { method: "POST", body: item });
+  settingsState.libs.busy = false;
+  if (!d) return false;
+  await loadLibraries();
+  return true;
+}
+
+async function deleteNotifyProfile(id: string, force?: boolean): Promise<boolean> {
+  settingsState.libs.busy = true;
+  settingsRenderPanel();
+  const q = "?id=" + encodeURIComponent(id) + (force ? "&force=true" : "");
+  const d = await libRequest("/question-modal/notify-profiles" + q, { method: "DELETE" });
+  settingsState.libs.busy = false;
+  if (!d) return false;
+  settingsState.libs.msg = d.cleared_in && d.cleared_in.length
+    ? ("已删除，同时清空了 " + d.cleared_in.length + " 条策略对该通知配置的引用")
+    : "";
+  await loadLibraries();
+  return true;
+}
+
+// ── 时间策略 ─────────────────────────────────────────────────────────
+
+async function saveSchedule(item: {
+  id?: string; name: string; start: string; end: string;
+  param_set_id: string; notify_profile_id: string;
+}): Promise<boolean> {
+  settingsState.libs.busy = true;
+  settingsRenderPanel();
+  const d = await libRequest("/question-modal/schedules",
+    { method: "POST", body: item });
+  settingsState.libs.busy = false;
+  if (!d) return false;
+  // 保存成功后退出编辑态：留在编辑态会让用户以为没保存上。
+  settingsState.schedEdit = "";
+  settingsState.schedDraft = null;
+  await loadLibraries();
+  return true;
+}
+
+async function deleteSchedule(id: string): Promise<boolean> {
+  settingsState.libs.busy = true;
+  settingsRenderPanel();
+  const d = await libRequest(
+    "/question-modal/schedules?id=" + encodeURIComponent(id), { method: "DELETE" });
+  settingsState.libs.busy = false;
+  if (!d) return false;
+  await loadLibraries();
+  return true;
+}
+
+// ── 删除二次确认（2026-11-24 boss 需求 1）────────────────────────────
+// 所有删除类操作不再直接执行：先弹面板内确认气泡，点「确定」才走到这里。
+// 误删风险来自 ✕ 按钮小 + 卡片密集；二次确认把「点击」与「执行」拆开。
+function requestDeleteConfirm(kind: string, id: string, name: string): void {
+  settingsState.delConfirm = { kind, id, name };
+  settingsRenderPanel();
+}
+
+async function executeConfirmedDelete(): Promise<void> {
+  const dc = settingsState.delConfirm;
+  settingsState.delConfirm = null;   // 无论成功失败都先收起气泡
+  if (!dc) { settingsRenderPanel(); return; }
+  const id = dc.id;
+  if (dc.kind === "ts") {
+    await deleteSchedule(id);
+  } else if (dc.kind === "ps") {
+    const ps = settingsState.libs.paramSets
+      .filter((x: any) => String(x.id) === id)[0];
+    const usedBy = ((ps && ps.used_by) || []).length;
+    const ok = await deleteParamSet(id, false);
+    if (!ok && usedBy) {
+      // 409：引用冲突。这里**不自动 force** —— 强制删除会清空策略的引用，
+      // 属于有副作用的动作，必须让用户明确选择（与原实现同一口径）。
+      settingsState.libs.msg += "（如需强制删除，请先在时间策略里解除引用）";
+    }
+  } else if (dc.kind === "np") {
+    const np = settingsState.libs.notifyProfiles
+      .filter((x: any) => String(x.id) === id)[0];
+    const usedBy = ((np && np.used_by) || []).length;
+    const ok = await deleteNotifyProfile(id, false);
+    if (!ok && usedBy) {
+      settingsState.libs.msg += "（如需强制删除，请先在时间策略里解除引用）";
+    }
+  } else if (dc.kind === "tpl") {
+    const res = await deleteTemplate(id);
+    if (res && res.ok === false) {
+      settingsState.saveMsg = String(res.error || res.detail || "删除失败（内置模板不可删除）");
+    } else {
+      settingsState.saveMsg = "模板已删除";
+      reloadTemplates();
+    }
+  }
+  settingsRenderPanel();
+}
+
+
 
 /** Pull the session-override list once, then repaint.  Read-only: the settings
  *  UI is still a preview and never writes an override. */
@@ -7918,6 +8464,11 @@ async function loadGlobalCfg(): Promise<void> {
     const d = await resp.json();
     const p = (d && d.prefs) || {};
     settingsState.globalCfg = p && typeof p === "object" ? p : {};
+    // US-020: 把自定义 API 的配置同步进本地草稿（apiDemo）。
+    // 为什么不直接用 cfgValue 渲染而要多这份草稿：参数行是**数组**，
+    // 增删行/改键名需要逐字符重建（受控输入），每改一个字符就回写后端会
+    // 造成大量请求。草稿在本地累积，由页面「保存」统一提交（见卡片说明）。
+    try { apiDemoFromCfg(settingsState.globalCfg); } catch (_) { /* ignore */ }
     try { settingsRenderPanel(); } catch (_) { /* closed */ }
   } catch (_) { /* keep whatever we had */ }
 }
@@ -8071,23 +8622,15 @@ async function cfgSave(): Promise<void> {
   settingsRenderPanel();
 
   try {
-    let url = "/question-modal/prefs";
-    let body: any = patch;
-    if (isSession) {
-      url = "/question-modal/session-prefs";
-      body = {
-        chat_id: settingsState.chatId,
-        session_id: settingsState.sessionId,
-        agent_id: settingsState.agentId,
-        settings: patch,
-        // 「我打开面板时这些键的最后写入时间」。后端据此判断本次保存是否
-        // 覆盖了别处的改动，并在 conflicts 里回报（需求 2）。
-        seen: settingsState.keyTs || {},
-        // 会话页保存 = 声明"本会话按会话模式运行"（D1）。
-        // 无改动时 patch 为空，靠这个标记完成模式切换且不写任何值。
-        set_scope: "session",
-      };
-    }
+    // 2026-11-23 架构重构：会话层已下线，保存**只有一条路径** `POST /prefs`
+    // （写全局基础配置）。
+    //
+    // 原先这里按 isSession 二选一跳 `/session-prefs` —— 那个端点的后端实现
+    // 现在返回 410，一旦有调用就会让用户看到「保存失败（410）」。
+    // 目前 isSession 恒为 false（scopeChoice 不再产生 "session"）所以碰不到，
+    // 但这属于**靠巧合不出错**的死分支，留着迟早被后人改回去踩中，必须删掉。
+    const url = "/question-modal/prefs";
+    const body: any = patch;
     const resp = await fetch(apiUrl(url), {
       method: "POST", headers: authHeaders(), body: JSON.stringify(body),
     });
@@ -8162,106 +8705,16 @@ async function cfgSave(): Promise<void> {
     // 全局值变了要重新读，否则全局页还显示旧值
     if (!isSession) void loadGlobalCfg();
 
-    // ── 保存即切换运行模式（2026-11-13 裁定；2026-11-14 收窄到「模式页」）──
+    // ── 保存后同步（2026-11-23 架构重构后简化）──────────────────────
     //
-    // 用户原话：「切换到对应的模式后，点击保存，应该将当前会话切换到对应
-    // 的模式，且右上角的胶囊中展示的模式也一并修改」。
+    // 原实现（约 100 行）有三件事，随会话层下线全部失去意义：
+    //   ① 保存即切换运行模式（session ↔ default）—— 两个模式已合并，没有可切的了
+    //   ② POST /session-prefs set_scope —— 该端点现在返回 410，调用必失败
+    //   ③ 按模式拼接「已切换到会话模式/默认模式」的提示 —— 会向用户报告
+    //      一次不存在的切换（旧文案暗示的功能已经删了，属于谎报）
     //
-    // 语义：**在「模式页」保存时，保存动作本身 = 把本会话切换到该页代表的
-    // 模式**。
-    //   · 在「会话模式」页保存 → 写会话覆盖 → 本会话 = 会话模式（天然成立）
-    //   · 在「默认模式」页保存 → 打 __active_scope__=default 标记 → 本会话
-    //     暂不叠加会话层 = 默认模式（数据保留，切回可恢复）
-    //
-    // 2026-11-14 用户追加裁定：此切换**仅限模式页**。全局配置页/提示词页
-    // 保存的是"对所有模式生效"的公共项，改它们不得改运行模式（详见下方
-    // isModeTab 处的说明）。
-    // ── 只有「模式页」的保存才允许切换运行模式（2026-11-14 用户裁定）──────
-    //
-    // 用户原话：「人工模式提醒 / 单题分析超时 / 等待提示阈值等这些设置，
-    // 不应该跟随默认模式，当前的保存时除了保存之外，还会将当前的运行模式
-    // 直接改成了默认模式，所以是错的。这些是对所有模式生效的，所以如果
-    // 模式数据修改的情况下，修改这些内容不应该修改运行模式」。
-    //
-    // 缺陷（旧代码 `switchedTo = isSession ? "session" : "default"`）：
-    //   「全局配置」页与「提示词」页保存时，isSession=false → 恒判成
-    //   "default" → 无条件 POST set_scope="default" → **只改了个等待阈值，
-    //   就把正在用的会话静默切到默认模式**。这不是用户点的动作。
-    //
-    // 正确语义（用户表格）：
-    //   · 会话模式页 / 默认模式页 = **模式数据**（模式/模型/提示词模板/
-    //     携带上下文/并行分析），保存即把本会话切到该页代表的作用域
-    //   · 全局配置页 / 提示词页 = **对所有模式生效的公共项**，保存只写值，
-    //     绝不触碰运行模式
-    //
-    // 判定依据用「页签」而不是 scope：scope 只有 session/global 两值，
-    // 三个非会话页（default/global/prompt）在它眼里完全一样，分不开。
-    const MODE_TABS = ["session", "default"];
-    const isModeTab = MODE_TABS.indexOf(String(settingsState.tab)) >= 0;
-
-    let switchedTo: "session" | "default" | "" = "";
-    if (isModeTab) switchedTo = isSession ? "session" : "default";
-    if (switchedTo === "default") {
-      try {
-        const r = await fetch(apiUrl("/question-modal/session-prefs"), {
-          method: "POST", headers: authHeaders(),
-          body: JSON.stringify({
-            chat_id: settingsState.chatId || "",
-            session_id: settingsState.sessionId || "",
-            agent_id: settingsState.agentId || "",
-            // 2026-11-13 方案 D1（用户裁定）：切到默认模式**只打标记**，
-            // 不删本会话的自定义项 —— 这样切回会话模式时数据原样恢复。
-            //
-            // 旧做法是 settings:{}（= 清空整条覆盖），实测会把会话里设过的
-            // 模型/模板/上下文一起删掉，切回来只拿到全局值的副本。
-            settings: {},
-            set_scope: "default",
-          }),
-        });
-        if (!r.ok) {
-          // 删覆盖失败不能让用户以为已切到默认模式 —— 如实回报。
-          settingsState.saveMsg = "已保存全局默认，但未能清除本会话的模式覆盖（"
-            + r.status + "），本会话仍在会话模式。";
-          switchedTo = "";
-        }
-      } catch (e: any) {
-        settingsState.saveMsg = "已保存全局默认，但未能清除本会话的模式覆盖："
-          + (e && e.message ? e.message : e) + "，本会话仍在会话模式。";
-        switchedTo = "";
-      }
-      // 覆盖变了，key_ts 基线一并作废（下次保存重新取）。
-      settingsState.keyTs = {};
-    }
-
-    // 无论切换到哪个模式，都把页面上的"模式"显示同步过来 —— 胶囊、页签、
-    // 作用域三者必须一起变，否则会出现"胶囊说会话、页签写默认"的错乱。
-    if (switchedTo) {
-      settingsState.scopeChoice = switchedTo;
-      settingsState.tab = switchedTo;
-      settingsState.scope = switchedTo === "session" ? "session" : "global";
-    }
-    if (switchedTo === "default") {
-      // 与按钮旁「保存为全局默认（对未设会话的会话生效）」同口径：
-      // 本会话已被标记为不叠加会话层（数据仍保留），故现在是跟随全局。
-      settingsState.saveMsg = "已保存为全局默认；本会话已切换到默认模式"
-        + "（跟随全局，原会话设置仍保留，切回会话模式可恢复）。";
-    } else if (switchedTo === "session") {
-      // 与按钮旁「保存到本会话（只覆盖你改过的项，不改全局）」同口径。
-      settingsState.saveMsg = "已保存到本会话；本会话当前按会话模式运行"
-        + "（未改动的项仍跟随全局，全局默认未被修改）。";
-    } else {
-      // ── 全局配置页 / 提示词页（对所有模式生效的公共项）──────────────
-      //
-      // 这两页保存**不改运行模式**（2026-11-14 用户裁定），所以不能沿用
-      // 上面两句带"已切换到某模式"的文案 —— 那会谎报一次没发生的切换。
-      // 必须如实告知"值已保存、运行模式未变"，否则用户会以为又被切了。
-      const _what = String(settingsState.tab) === "prompt" ? "提示词模板" : "全局配置";
-      settingsState.saveMsg = "已保存" + _what + "；运行模式未变"
-        + (settingsState.scopeChoice === "session"
-            ? "（本会话仍按「会话模式」运行）"
-            : "（本会话仍按「默认模式」运行）") + "。";
-    }
-
+    // 现在只需如实说「已保存」，具体保存到哪由 footer 的说明承担。
+    settingsState.saveMsg = "已保存";
     void fetchEffectiveConfig(
       settingsState.chatId, true, settingsState.sessionId, settingsState.agentId,
     ).then((nd) => {
@@ -8379,21 +8832,12 @@ async function tplSave(): Promise<void> {
   settingsRenderPanel();
 }
 
-async function tplDelete(id: string): Promise<void> {
+/** 需求 1（2026-11-24）：删除入口只弹面板内确认气泡（原生 window.confirm
+ *  不是气泡形态，且阻塞宿主渲染）；真正删除在 executeConfirmedDelete 的
+ *  tpl 分支（含失败提示与 reloadTemplates）。 */
+function tplDelete(id: string): void {
   const t = settingsState.templates.filter((x: any) => x.id === id)[0];
-  const ok = typeof window !== "undefined" && typeof window.confirm === "function"
-    ? window.confirm("确定删除模板「" + ((t && t.name) || id) + "」？")
-    : false;
-  if (!ok) return;
-  const res = await deleteTemplate(id);
-  if (res && res.ok === false) {
-    settingsState.saveMsg = String(res.error || res.detail || "删除失败（内置模板不可删除）");
-    settingsRenderPanel();
-    return;
-  }
-  settingsState.saveMsg = "模板已删除";
-  reloadTemplates();
-  settingsRenderPanel();
+  requestDeleteConfirm("tpl", id, String((t && t.name) || id));
 }
 
 /** Resolve the chat this panel should target, then PULL the lock.
@@ -8456,23 +8900,14 @@ function openSettingsPanel(): void {
   loadEffectiveConfigIntoSettings(() => {
     // 迟到的回调（面板已经被重新打开过）不许改页签（2026-11-13）。
     if (openSeq !== _settingsOpenSeq) return;
-    const hasSess = !!(settingsState.cfg && settingsState.cfg.has_session);
-    // 初始页签 = 本会话的**真实运行模式**，不读任何记忆（2026-11-13 用户裁定）。
+    // 2026-11-23 架构重构：会话模式/默认模式已合并为「统一配置」。
     //
-    // 规则只有一条：
-    //   本会话有覆盖 → 落在「会话模式」页签；无覆盖 → 落在「默认模式」页签。
-    //
-    // 为什么彻底删掉「记住上次页签」：
-    //   `qm:v1:scopeChoice` 是**全局** localStorage 键，所有会话共用一份值。
-    //   于是「在会话2 点默认模式」会把这条记忆改成 default，切回会话1 时
-    //   会话1 也被显示成默认模式 —— 用户看到的就是「会话1 变成默认模式了」，
-    //   而它实际仍按会话覆盖运行（数据没错，只是标签骗人）。
-    //   任何"跨会话共享的记忆"都会重演这个问题，所以直接去掉，
-    //   让每个会话的显示 100% 由 has_session 决定，无歧义、无残留状态。
-    const init = hasSess ? "session" : "default";
-    settingsState.scopeChoice = init;
-    settingsState.tab = init === "session" ? "session" : "default";
-    settingsState.scope = init === "session" ? "session" : "global";
+    // 初始页签固定为「时间策略」—— 它是这套配置的入口（先看到"现在按哪条
+    // 策略在跑"，再进运行参数改细节）。不再按 has_session 分叉：那个判据
+    // 随会话层一起没了意义，留着会让首屏落在一个已不存在的页签上。
+    settingsState.scopeChoice = "global";
+    settingsState.tab = "schedule";
+    settingsState.scope = "global";
     settingsState.draft = {};
     settingsState.saveMsg = "";
     // 打开面板这一刻的「各键最后写入时间」。保存时原样发回成为 `seen`，
@@ -8484,14 +8919,12 @@ function openSettingsPanel(): void {
     );
     settingsState.conflictNote = "";
     settingsRenderPanel();
-    // 初始打开也要把「默认模式」页的全局值拉齐：该页 cfgValue 走
+    // 初始打开也要把全局值拉齐：运行参数 › 默认参数 页的 cfgValue 走
     // globalCfg ?? 出厂默认，globalCfg 为空时整页显示的是出厂默认而非
-    // 当前磁盘全局值——用户改完保存、重开（未点选择器/页签，不会触发
-    // onTabChange 的 loadGlobalCfg）看到的就是出厂默认，像「没保存生效」
-    // （2026-11-12 用户多次复测反馈的根因）。
-    if (settingsState.tab === "global" || settingsState.tab === "default") {
-      void loadGlobalCfg();
-    }
+    // 当前磁盘全局值——用户改完保存、重开看到的就是出厂默认，像
+    // 「没保存生效」（2026-11-12 用户多次复测反馈的根因）。
+    // 现在默认落在时间策略页，但用户随时会切到运行参数，所以照旧预拉。
+    void loadGlobalCfg();
     // 通知频道状态（可用性 + 测试结果）每次打开面板都刷一次：宿主侧配置
     // （如微信刚绑定、刚产生第一条会话）会在面板关闭期间变化，缓存会显示
     // 过期的「不可用」。
@@ -8630,6 +9063,30 @@ function loadEffectiveConfigIntoSettings(onDone?: () => void): void {
     if (settingsState.chatId !== target) { done(); return; }
     if (d) {
       settingsState.cfg = d; settingsState.cfgError = "";
+      // ── 策略库随主配置一起落到 state（US-024，2026-11-23）──────────
+      //
+      // 后端 /effective-config 已经返回 `libraries` 与 `schedule`，但早期
+      // 版本这里只存了 cfg 本身，库数据没人接 —— 结果时间策略页永远显示
+      // 「尚未配置时间策略」，而磁盘上明明有三条（实测暴露：UI 结构判据
+      // 里 3 张卡渲染成 0 张）。这不是渲染问题，是数据没进 state。
+      //
+      // 在这里统一落库，前端就不必为了首屏再单独发一次 /libs：
+      // /libs 只用于**写操作后的窄口径刷新**。
+      try {
+        const libs = (d as any).libraries;
+        if (libs && typeof libs === "object") {
+          settingsState.libs.paramSets = Array.isArray(libs.param_sets) ? libs.param_sets : [];
+          settingsState.libs.notifyProfiles =
+            Array.isArray(libs.notify_profiles) ? libs.notify_profiles : [];
+          settingsState.libs.schedules = Array.isArray(libs.schedules) ? libs.schedules : [];
+        }
+        const sch = (d as any).schedule;
+        settingsState.libs.activeId = (sch && sch.id) ? String(sch.id) : null;
+      } catch (e) {
+        // 库数据异常不该阻断整份配置生效：主配置仍然可用，
+        // 只是策略页会空。留日志而不是静默。
+        console.warn("[question-modal] 读取策略库失败", e);
+      }
       // 打开面板即同步「挂起释放阈值」当前值（原 loadStaleThreshold 在
       // openSettingsPanel 里单独发一次请求的职责，2026-11-19 合并到这里）：
       // 主配置响应本就含 release_after_sec，单独再发一次不带会话身份的
@@ -8862,21 +9319,68 @@ function SettingsButton(props: { R: any; onOpen: () => void }): any {
  *   提示词 / 诊断 → scope-independent pages
  */
 const SETTINGS_TABS: Array<{ key: string; label: string; hint: string }> = [
-  { key: "session", label: "会话模式", hint: "" },
-  { key: "default", label: "默认模式", hint: "" },
-  // US-007：时段调度页签（位于「默认模式」之后）。本版仅 UI 展示，
-  // 不接存储与生效逻辑（生效走读时计算，见需求可行性评估 需求一/四）。
-  { key: "schedule", label: "时段调度", hint: "" },
-  { key: "global", label: "全局配置", hint: "" },
-  // 参考稿提示词页没有顶部说明行，第一行就是「模板库共享范围」。
-  { key: "prompt", label: "提示词", hint: "" },
-  // 2026-11-15 新增：挂起问卷清理。背景是 manual 问卷本该 30 分钟自动释放，
-  // 但 release_survey 的 _reason UnboundLocalError 让 watchdog 释放失败，
-  // 问卷永远停在 pending、对应会话一直 409。bug 已修，但历史残骸不会自愈
-  // （pending 记录可能已丢失、只剩 survey_state；会话文件也早已不存在），
-  // 所以需要一个能「先看清、再手动处置」的页签。
+  // 2026-11-23 架构重构（boss 裁定）：「会话模式 / 默认模式」两个页签合并。
+  //
+  // boss 原话：「不再采用会话模式或者默认模式，全部采用统一的配置，所有的
+  // 会话都生效同一种配置……所有的设置参数，直接使用时间段这个策略来匹配」。
+  //
+  // 新结构（对齐定稿设计稿 demo/统一配置-时间策略-demo-v3.html）：
+  //   ① 时间策略  —— 按时段匹配，命中即覆盖参数组 + 通知配置
+  //   ② 运行参数  —— 内嵌分类：默认参数 / 问卷参数组 / 通知配置 / 模型 / 提示词
+  //   ③ 问卷清理  —— 原样保留（挂起问卷处置，与本次重构无关）
+  //
+  // 旧页签映射（避免用户找不到原来设置项）：
+  //   会话模式 + 默认模式 → 运行参数 › 默认参数
+  //   全局配置            → 运行参数 › 模型（显示类/行为类项在此）
+  //   提示词              → 运行参数 › 提示词
+  //   时段调度            → 时间策略（从纯 UI 占位升级为真实生效）
+  { key: "schedule", label: "时间策略", hint: "" },
+  { key: "run", label: "运行参数", hint: "" },
   { key: "stale", label: "问卷清理", hint: "" },
 ];
+
+/** 运行参数页签的内嵌分类。
+ *
+ *  boss 定稿：顶层只留 3 个页签，原来的 6 个收进「运行参数」内嵌分段，
+ *  否则页签在窄屏要横向滚很久。
+ *
+ *  ## 2026-11-23 二次拆分（boss 反馈）
+ *
+ *  > 「模型页签，其中即包含了通知的内容，也包含了自定义api的内容，
+ *  >   同时也包含了一些基本配置。这个需要做拆分」
+ *
+ *  起因是「模型」这个分类名不副实 —— 里面**一个模型相关条目都没有**，
+ *  实际混装了四类东西：通知渠道、自定义 API 整卡、超时/阈值/拦截记录。
+ *  拆分后每个分类只装同一性质的内容：
+ *
+ *    default          默认参数（答题参数：模式/模型/提示词/上下文/并行）
+ *    param-sets       问卷参数组（命名库，供时间策略引用）
+ *    notify-profiles  通知配置（命名库，供时间策略引用）
+ *    custom-api       自定义 API 渠道（整卡：参数行/必传/预览/测试）
+ *    behavior         行为参数（单题超时 / 等待阈值 / 拦截记录）
+ *
+ *  注意「模型」这个 key 已**废弃**：settingsState.runSub 若残留旧值
+ *  "model"，会在下面归一为 "behavior"（见 subKey 归一逻辑），
+ *  否则用户升级后会落在一个不存在的分类上看到空白。
+ */
+const RUN_SUBTABS: Array<{ key: string; label: string }> = [
+  { key: "default", label: "默认参数" },
+  { key: "param-sets", label: "问卷参数组" },
+  { key: "notify-profiles", label: "通知配置" },
+  { key: "custom-api", label: "自定义 API" },
+  { key: "behavior", label: "行为参数" },
+  { key: "prompt", label: "提示词" },
+];
+
+/** 已废弃的内嵌分类 key → 新 key。
+ *
+ *  `model` 是 2026-11-23 早先版本的混装分类，现已拆成
+ *  notify-profiles + custom-api + behavior 三类。残留值必须归一，
+ *  否则会落到不存在的分类上白屏（与 tab 归一同一个道理）。
+ */
+const RUN_SUB_ALIAS: Record<string, string> = {
+  model: "behavior",
+};
 
 /** Keys a per-session override may hold.
  *
@@ -9419,29 +9923,1777 @@ const schedDemoSeed = (): SchedDemoItem[] => [
 ];
 let schedDemoItems: SchedDemoItem[] = schedDemoSeed();
 
-// ── 自定义 API 通知 · 纯 UI 演示状态（US-008）──────────────────────
-// 同 US-007 的 schedDemoItems：本版只做界面展示。启用开关/URL/请求方法/
-// Token 位置/Token 输入/发送测试按钮都只改这份**模块级演示数据**并重绘，
-// 不写 prefs、不调用后端、不影响 notify_channel_pc/bg 的任何现有逻辑。
+// ── 自定义 API 渠道 · 参数行（US-020，2026-11-23）──────────────────
+//
+// 从「纯 UI 演示」升级为真实配置：值来自后端 prefs，改动写回后端。
+// boss 需求原文：「允许通过新增行的方式自定义参数，自定义参数除了系统提供
+// 的 title 和 content 之外，其他类型的参数由用户自定义添加……当前的方式中，
+// 用户不知道哪些是属于必传项，是否符合大部分的 API 请求以及参数要求」。
+type ApiParamRow = { key: string; value: string; required: boolean };
+
 type ApiDemoState = {
-  enabled: boolean;   // 启用开关（demo v5 为开启态）
+  enabled: boolean;   // 启用开关
   url: string;        // 请求地址（URL）
-  method: string;     // 请求方法：post-json / get-query
-  tokenPos: string;   // Token 位置：bearer / query / none
-  token: string;      // Token（password 输入，回显打码形态）
-};
-let apiDemo: ApiDemoState = {
-  enabled: true,
-  url: "https://example.com/hook/notify",
-  method: "post-json",
-  tokenPos: "bearer",
-  token: "sk-demo-0000000000000000",
+  method: string;     // post_json / get_query
+  tokenPos: string;   // bearer / query / none
+  token: string;      // Token（密码框，空串 = 未设置，后端回显打码串）
+  tokenSet: boolean;  // 后端是否已存有 token（打码回显时置 true）
+  mode: string;       // basic / advanced
+  params: ApiParamRow[];   // 基础模式参数行
+  bodyTpl: string;    // 高级模式 body 模板
 };
 
+// 默认空状态。**不预填演示 URL/Token**：预填会让用户误以为已配好，
+// 也可能把示例值误发到 example.com。
+let apiDemo: ApiDemoState = {
+  enabled: false,
+  url: "",
+  method: "post_json",
+  tokenPos: "none",
+  token: "",
+  tokenSet: false,
+  mode: "basic",
+  params: [],
+  bodyTpl: "",
+};
+// 最近一次测试结果（仅本次面板生命周期内保留；历史在 /notify/test-log）
+let apiTestResult: { ok: boolean; text: string } | null = null;
+
+/** 把当前参数行数组推进设置草稿（由页面「保存」统一提交）。
+ *
+ *  为什么单独一个函数：参数行的五个改动点（改名/改值/改必填/增行/删行）
+ *  都必须落到同一处，漏一个就会出现「改了但保存后丢失」。集中成一处后
+ *  新增改动点只要记得调它即可，比在五处各写一遍更容易守。
+ */
+function apiSyncParamsDraft(): void {
+  try {
+    cfgEdit("custom_api_params", apiDemo.params.map((r) => ({
+      key: String(r.key || ""),
+      value: String(r.value || ""),
+      required: !!r.required,
+    })));
+  } catch (_) { /* settings 面板未就绪 */ }
+}
+
+/** 从后端 prefs 同步自定义 API 的配置到本地草稿。
+ *
+ *  ★ 2026-11-23 修复「GET 切了保存又变回 POST」：
+ *
+ *    根因不是后端（实测 `_coerce_setting('custom_api_method','get_query')`
+ *    返回 True、`sanitize_settings` 也如实保留），而是**重灌时机**：
+ *    `loadGlobalCfg()` 在保存成功后被再次调用（cfgSave 尾部
+ *    `if (!isSession) void loadGlobalCfg()`），它会拿后端返回的 prefs
+ *    整体覆盖 `apiDemo`。若那一刻后端的 prefs 里还没有这个键（首次保存前、
+ *    或该键被别处清掉），`String(cfg.custom_api_method || "post_json")`
+ *    就会把用户刚选的 `get_query` 兜回 `post_json` —— 界面上看起来就是
+ *    「切了 GET，一保存又变回 POST」。
+ *
+ *    两条修法：
+ *      ① 兜底值不再写死 `post_json`：只有**键真的缺失**时才用默认，
+ *         且用 `??` 而非 `||`（`||` 会把合法空串也当缺失）。
+ *      ② 重灌时**保留草稿里尚未保存的改动**（draft 优先），
+ *         不能让一次后端回读吃掉用户正在编辑的内容。
+ */
+function apiDemoFromCfg(cfg: any): void {
+  if (!cfg || typeof cfg !== "object") return;
+  const pick = (key: string, fallback: string): string => {
+    // 草稿里已改过的键优先——保存后的回读不得覆盖用户刚做的选择
+    if (key in settingsState.draft) return String(settingsState.draft[key]);
+    const v = cfg[key];
+    // `??` 而非 `||`：空串是「显式设为空」，不该当成缺失回落到默认
+    return v === undefined || v === null ? fallback : String(v);
+  };
+  apiDemo.enabled = (() => {
+    if ("custom_api_enabled" in settingsState.draft) {
+      return !!settingsState.draft["custom_api_enabled"];
+    }
+    return !!cfg.custom_api_enabled;
+  })();
+  apiDemo.url = pick("custom_api_url", "");
+  apiDemo.method = pick("custom_api_method", "post_json");
+  apiDemo.tokenPos = pick("custom_api_token_pos", "none");
+  apiDemo.mode = pick("custom_api_mode", "basic");
+  apiDemo.bodyTpl = pick("custom_api_body", "");
+  // 后端把真实 token 换成 8 星掩码 + custom_api_token_set；草稿里保存的
+  // 是「用户新输入的明文」或空串（空串 = 不修改，沿用后端已存值）。
+  apiDemo.token = "";
+  apiDemo.tokenSet = !!cfg.custom_api_token_set;
+  // 参数行同理：草稿里有就用草稿（用户可能刚增删过行）
+  const draftRows = settingsState.draft["custom_api_params"];
+  const rows = Array.isArray(draftRows) ? draftRows
+    : (Array.isArray(cfg.custom_api_params) ? cfg.custom_api_params : []);
+  apiDemo.params = rows
+    .filter((r: any) => r && typeof r === "object")
+    .map((r: any) => ({
+      key: String(r.key || ""),
+      value: String(r.value || ""),
+      required: !!r.required,
+    }));
+}
+
+/** 自定义 API 的必传缺失清单（与后端 _custom_api_required_missing 同口径）。 */
+function apiMissingItems(): string[] {
+  const missing: string[] = [];
+  if (!String(apiDemo.url || "").trim()) missing.push("请求地址");
+  if (apiDemo.mode === "advanced") {
+    if (!String(apiDemo.bodyTpl || "").trim()) missing.push("body 模板");
+  } else {
+    apiDemo.params.forEach((r) => {
+      if (r.required && !String(r.value || "").trim()) {
+        missing.push(String(r.key || "").trim() || "未命名参数");
+      }
+    });
+  }
+  return missing;
+}
+
+/** 参数名重复的行号集合（重复行整行报错，与后端「重复键整行拒绝」一致）。 */
+function apiDupKeys(): Set<number> {
+  const seen: Record<string, number> = {};
+  const dup = new Set<number>();
+  apiDemo.params.forEach((r, i) => {
+    const k = String(r.key || "").trim();
+    if (!k) return;
+    if (seen[k] !== undefined) {
+      dup.add(i);
+      dup.add(seen[k]);
+    } else {
+      seen[k] = i;
+    }
+  });
+  return dup;
+}
+
+/** 参数名是否合法（与后端正则 ^[A-Za-z_][A-Za-z0-9_.\-]*$ 同源）。 */
+function apiKeyValid(k: string): boolean {
+  return /^[A-Za-z_][A-Za-z0-9_.\-]*$/.test(k);
+}
+
+/** 占位符插值（前端预览用；真实发送时后端会再算一次）。 */
+function apiFill(text: string, values: Record<string, string>): string {
+  let out = String(text || "");
+  ["title", "content", "count", "stamp", "token"].forEach((n) => {
+    out = out.split("{{" + n + "}}").join(values[n] || "");
+  });
+  return out;
+}
+
+/** 预览用的示例值：让用户看到「发出去长什么样」，而不是占位符本身。 */
+const API_PREVIEW_VALUES: Record<string, string> = {
+  title: "（问卷标题）",
+  content: "「（问卷标题）」有 3 道题等你作答",
+  count: "3",
+  stamp: "来自智能体-2026-01-01 00:00:00",
+  token: apiDemo.tokenSet || apiDemo.token ? "（已设置的 Token）" : "（未设置 Token）",
+};
+
+// ══════════════════════════════════════════════════════════════════
+// 设置行注册表（US-023，2026-11-23）
+// ══════════════════════════════════════════════════════════════════
+//
+// ## 为什么要有这张表
+//
+// boss 原话：「当前的插件设置面板，大量的内容都是重复，面板内容比较重复」。
+// 实测确认：设置面板主体 `settingsTabBody` 单函数 932 行，其中「答题模式 /
+// 默认模型 / 提示词模板 / 携带上下文 / 并行分析各题」这 5 个概念，在
+// 「会话模式」页和「默认模式」页**各写了一份渲染代码**——同一语义画两遍。
+//
+// 后果不是「代码不好看」，而是**改一处必须记得改另一处**，漏一处就出现
+// 「两个页签行为不一致」。本仓历史上已发生过同类问题（页签数据错层）。
+//
+// ## 设计原则（本轮严格自我约束）
+//
+// 1. **零存储改动**：不新增任何 prefs 键、不改生效值解析、不动后端。
+//    boss 裁定：「先只做第一步：拆行定义表 + 渲染器（零存储改动，消重复代码）」。
+// 2. **行为完全等价**：重构前后每个页签渲染出的 DOM 结构、data 属性、
+//    控件类型、文案必须逐一相同。任何「顺手优化文案/顺序」都禁止
+//    （本仓教训：把参考值当改动授权会导致视觉回归）。
+// 3. **只收拢「结构」不收拢「差异」**：两页之间确实存在的差异
+//    （行 id、itemScope、开关 key、模型行说明、读值作用域）必须作为
+//    参数显式保留，不允许为了「统一」而抹平。
+//
+// ## 两页的真实差异（逐项核对源码得出，不是推测）
+//
+//   概念      | 会话页                            | 默认页
+//   ----------|-----------------------------------|--------------------------------
+//   答题模式  | id=s1, label=答题模式, scope=session| id=a1, label=默认答题模式, both
+//   默认模型  | id=s2, itemScope=session          | id=b1, itemScope=both, wide=true
+//   提示词    | id=s3, 值=模板id 或首项           | id=b2, 值=模板id 或首项
+//   携带上下文| id=s4, 开关key=s4sw, session      | id=b3, 开关key=s3, both
+//   并行分析  | id=s5, 开关key=s5sw, session      | id=b4, 开关key=s4, global
+//   模型说明  | 三态动态文案（含 cfgExplicitEmpty）| 固定「自动读取当前对话模型…」
+//
+// 注意「携带上下文/并行分析」的 itemScope 两页不同（session vs both/global），
+// 这不是笔误——它决定该行在会话作用域下是否显示「仅全局」锁提示。
+// 重构必须原样保留，否则会改变现有界面的锁提示行为。
+
+/** 行定义：一个设置项在界面上的完整描述（不含具体值）。 */
+type SettingRowDef = {
+  id: string;
+  label: string;
+  kind: "seg" | "model" | "select" | "switch";
+  cfgKey: string;
+  /** 读值作用域：决定 cfgValue(key, fallback, scope) 的第三参 */
+  readScope: "session" | "global";
+  /** 行的作用域标记（setRow 第 6 参）：session / global / both */
+  itemScope: string;
+  note: string;
+  wide?: boolean;
+  /** 开关控件的内部 key（两页原值不同，保留以免改变 DOM） */
+  switchKey?: string;
+  /** 仅当 mode !== "recommend" 时渲染（「只用推荐」下 4 项分析设置无意义） */
+  hideWhenRecommend?: boolean;
+  /** seg 选项标签（映射到存储值由调用方提供的表完成） */
+  segItems?: string[];
+  /** 与下一行合并成一行两列（2026-11-24 boss 需求 5：默认参数页的
+   *  「携带上下文 / 并行分析各题」两个开关并排，压低面板高度）。
+   *  仅当**相邻两行都为 true** 时生效；移动端 640px 以下自动回落单列。 */
+  pair?: boolean;
+};
+
+/**
+ * 构造「答题模式 + 分析四项」这 5 行。
+ *
+ * 以前这 5 行在 session 与 default 两个分支里各写一遍（约 60 行 × 2），
+ * 现在只有这一处；两页所有差异通过参数显式表达。
+ */
+function buildModeRows(opts: {
+  ids: { mode: string; model: string; tpl: string; ctx: string; parallel: string };
+  readScope: "session" | "global";
+  itemScope: { mode: string; model: string; tpl: string; ctx: string; parallel: string };
+  modeLabel: string;
+  modelNote: string;
+  switchKeys: { ctx: string; parallel: string };
+  modelWide?: boolean;
+  /** true = 「携带上下文」「并行分析各题」两个开关合并为一行两列（需求 5） */
+  pairSwitches?: boolean;
+}): SettingRowDef[] {
+  return [
+    {
+      id: opts.ids.mode,
+      label: opts.modeLabel,
+      kind: "seg",
+      cfgKey: "mode",
+      readScope: opts.readScope,
+      itemScope: opts.itemScope.mode,
+      note: "本会话的问卷默认用哪种方式推进",
+      segItems: ["自动分析", "只用推荐", "人工"],
+    },
+    {
+      id: opts.ids.model,
+      label: "默认模型",
+      kind: "model",
+      cfgKey: "model_id",
+      readScope: opts.readScope,
+      itemScope: opts.itemScope.model,
+      note: opts.modelNote,
+      wide: opts.modelWide,
+      hideWhenRecommend: true,
+    },
+    {
+      id: opts.ids.tpl,
+      label: "提示词模板",
+      kind: "select",
+      cfgKey: "template_id",
+      readScope: opts.readScope,
+      itemScope: opts.itemScope.tpl,
+      note: "自动分析模式下将调用提示词并自动分析",
+      hideWhenRecommend: true,
+    },
+    {
+      id: opts.ids.ctx,
+      label: "携带上下文",
+      kind: "switch",
+      cfgKey: "with_context",
+      readScope: opts.readScope,
+      itemScope: opts.itemScope.ctx,
+      note: "附带上次决策与会话历史",
+      switchKey: opts.switchKeys.ctx,
+      hideWhenRecommend: true,
+      pair: !!opts.pairSwitches,
+    },
+    {
+      id: opts.ids.parallel,
+      label: "并行分析各题",
+      kind: "switch",
+      cfgKey: "parallel",
+      readScope: opts.readScope,
+      itemScope: opts.itemScope.parallel,
+      note: "逐题并发调用模型，更快，但更耗额度。",
+      switchKey: opts.switchKeys.parallel,
+      hideWhenRecommend: true,
+      pair: !!opts.pairSwitches,
+    },
+  ];
+}
+
+/** 会话页的 5 行定义（原 s1..s5，读会话作用域）。 */
+const MODE_ROWS_SESSION = buildModeRows({
+  ids: { mode: "s1", model: "s2", tpl: "s3", ctx: "s4", parallel: "s5" },
+  readScope: "session",
+  itemScope: { mode: "session", model: "session", tpl: "session", ctx: "session", parallel: "session" },
+  modeLabel: "答题模式",
+  // 模型行说明是动态的（三态来源），这里放占位，渲染时由 renderSettingRow 覆盖
+  modelNote: "",
+  switchKeys: { ctx: "s4sw", parallel: "s5sw" },
+});
+
+/** 默认页的 5 行定义（原 a1/b1..b4，读全局作用域）。 */
+const MODE_ROWS_DEFAULT = buildModeRows({
+  ids: { mode: "a1", model: "b1", tpl: "b2", ctx: "b3", parallel: "b4" },
+  readScope: "global",
+  itemScope: { mode: "both", model: "both", tpl: "both", ctx: "both", parallel: "global" },
+  modeLabel: "默认答题模式",
+  modelNote: "自动读取当前对话模型；改动即自动切换",
+  switchKeys: { ctx: "s3", parallel: "s4" },
+  modelWide: true,
+  pairSwitches: true,
+});
+
+/** 一行设置值的读取（供渲染器使用）。 */
+function rowValue(def: SettingRowDef, fallback: any): any {
+  // 会话页读会话作用域（cfgValue 第二参 fallback、第三参 scope）
+  return cfgValue(def.cfgKey, fallback, def.readScope);
+}
+
+/**
+ * 单行渲染器：把一条 SettingRowDef 画成界面。
+ *
+ * 这里集中处理所有 kind，两页共用。行为与原实现逐项等价：
+ *   seg    → setSeg + MODE_LABEL/MODE_BY_LABEL 映射
+ *   model  → setModelPicker（会话页用动态三态说明，默认页用固定说明）
+ *   select → 有模板用真下拉，无模板降级为静态文案「默认六步思维链」
+ *   switch → setSwitch，onPick 写草稿
+ */
+function renderSettingRow(
+  R: any, def: SettingRowDef, ctx: {
+    scope: string;
+    modeLabel: Record<string, string>;
+    modeByLabel: Record<string, string>;
+    groups: ProviderGroup[];
+    tplChoices: any[];
+    tplOpts: string[];
+    explicitEmptyModel: boolean;
+    edit: (k: string, v: any) => void;
+  },
+): any {
+  const v = rowValue(def, def.cfgKey === "mode" ? "manual" : (def.kind === "switch" ? false : ""));
+  let control: any;
+
+  if (def.kind === "seg") {
+    control = setSeg(R, "g1", def.segItems || [],
+      ctx.modeLabel[String(v || "manual")] || "人工",
+      (lb: string) => ctx.edit(def.cfgKey, ctx.modeByLabel[lb] || "manual"));
+  } else if (def.kind === "model") {
+    control = setModelPicker(R, "sel2", String(v || ""), ctx.groups,
+      (val: string) => ctx.edit(def.cfgKey, val));
+  } else if (def.kind === "select") {
+    if (ctx.tplChoices.length) {
+      // 会话页与默认页的「当前值」表达式略有不同（默认页多了 || 首项），
+      // 但对用户可见结果相同：都保证下拉停在一个真实存在的选项上。
+      const cur = String(v || "") || (ctx.tplChoices[0] && ctx.tplChoices[0].value) || "";
+      control = setSelect(R, "sel3", cur, ctx.tplChoices,
+        (val: string) => ctx.edit(def.cfgKey, val));
+    } else {
+      control = setSelect(R, "sel3", "默认六步思维链");
+    }
+  } else {
+    control = setSwitch(R, def.switchKey || (def.id + "sw"), !!v,
+      (nv: boolean) => ctx.edit(def.cfgKey, nv));
+  }
+
+  // 说明文字：模型行的三态说明只在会话页生效（默认页走固定文案）
+  let note = def.note;
+  if (def.kind === "model" && def.readScope === "session") {
+    note = ctx.explicitEmptyModel
+      ? "已显式设为空（本会话不指定模型）"
+      : "自动读取当前对话模型；改动即自动切换";
+  }
+  if (def.kind === "select" && !ctx.tplChoices.length) {
+    note = "模板库未加载，暂不可选";
+  }
+
+  return setRow(R, def.id, def.label, control, note, def.itemScope, ctx.scope, def.wide);
+}
+
+/** 按定义表渲染一组行；hideWhenRecommend 的行在「只用推荐」下跳过。 */
+function renderSettingRows(
+  R: any, defs: SettingRowDef[], ctx: Parameters<typeof renderSettingRow>[2] & {
+    currentMode: string;
+  },
+): any[] {
+  // 需求 5（2026-11-24）：相邻两个 pair 行合并进一行两列容器。
+  // 先过滤可见性再配对，避免「只用推荐」下出现孤儿 pair（两行都 hideWhenRecommend，
+  // 要么一起出现要么一起消失，正常不会孤儿；防御式处理：落单按普通行渲染）。
+  const visible = defs
+    .filter((d) => !d.hideWhenRecommend || ctx.currentMode !== "recommend");
+  const out: any[] = [];
+  for (let i = 0; i < visible.length; i++) {
+    const d = visible[i];
+    const nxt = visible[i + 1];
+    if (d.pair && nxt && nxt.pair) {
+      out.push(R.createElement("div", {
+        key: "pair-" + d.id + "+" + nxt.id,
+        className: "qm-set-rowpair",
+        "data-qm-rowpair": "1",
+      }, [
+        renderSettingRow(R, d, ctx),
+        renderSettingRow(R, nxt, ctx),
+      ]));
+      i++;
+    } else {
+      out.push(renderSettingRow(R, d, ctx));
+    }
+  }
+  return out;
+}
+
+/** ══════════════════════════════════════════════════════════════════════
+ *  时间策略页签（US-024，2026-11-23）
+ *  ══════════════════════════════════════════════════════════════════════
+ *
+ *  对齐 boss 定稿设计稿 demo/统一配置-时间策略-demo-v3.html。
+ *
+ *  交互约定（设计稿「待确认」六条 + 本轮补充）：
+ *    ① 非编辑态紧凑布局，卡片只读展示，看不到任何输入框
+ *    ② 布尔参数用小开关表达开/关（不用删除线）
+ *    ③ 编辑态**原位展开**（卡片就地变表单），其余卡片不动
+ *    ④ 命中态淡蓝底 + 左侧蓝条 + 「生效中」徽标
+ *    ⑤ 编辑按钮常显边框，一眼可辨"可编辑"
+ *    ⑥ 运行参数页一行两列压缩高度（见 runTab）
+ *
+ *  为什么编辑态是"原位展开"而不是弹窗：卡片信息密度低，弹窗会遮住
+ *  其它策略，用户比对"这条和那条时段是否重叠"时就看不见了。原位展开
+ *  保留了上下文。
+ */
+
+/** 把 HH:MM 格式化成展示串；跨零点时补「次日」提示。
+ *  跨零点判定与后端一致：start > end（后端 match_schedule 同口径）。 */
+function tsTimeLabel(start: string, end: string): any[] {
+  const s = String(start || "");
+  const e = String(end || "");
+  const cross = s && e && s !== e && s > e;
+  const kids: any[] = [s + " → " + e];
+  if (cross) {
+    kids.push({ __nt: true } as any);
+  }
+  return kids;
+}
+
+/** 渲染时间段文本（含跨零点「次日」小字）。
+ *  React.createElement 不接受普通对象，所以这里返回元素数组由调用方拼。 */
+function tsTimeNode(R: any, start: string, end: string): any {
+  const s = String(start || "");
+  const e = String(end || "");
+  const cross = !!s && !!e && s !== e && s > e;
+  const kids: any[] = [R.createElement("span", { key: "t" }, s + " → " + e)];
+  if (cross) {
+    kids.push(R.createElement("span", { key: "nt", className: "nt" }, "次日"));
+  }
+  return R.createElement("span", { className: "qm-set-tstime" }, kids);
+}
+
+/** 取参数组/通知配置的显示名（找不到时回退 id，再找不到回退「未引用」）。 */
+function libNameById(list: any[], id: string, fallback: string): string {
+  const key = String(id || "");
+  if (!key) return fallback;
+  const hit = list.filter((x: any) => String(x && x.id) === key)[0];
+  return hit ? String(hit.name || hit.id || key) : (key + "（已删除）");
+}
+
+/** 参数组内容 → 展示胶囊（模式 / 模型 / 两个开关）。 */
+function paramSetChips(R: any, params: any): any[] {
+  const p = params || {};
+  const MODE_TXT: Record<string, string> = {
+    ai: "自动分析", recommend: "只用推荐", manual: "人工",
+  };
+  const chips: any[] = [];
+  if (p.mode) {
+    chips.push(R.createElement("span", {
+      key: "m", className: "qm-set-tschip mode",
+    }, MODE_TXT[String(p.mode)] || String(p.mode)));
+  }
+  if (p.model_id) {
+    chips.push(R.createElement("span", { key: "md", className: "qm-set-tschip" },
+      String(p.model_id)));
+  }
+  const sw = (key: string, label: string) => R.createElement("span", {
+    key, className: "qm-set-tssw" + (p[key] ? " on" : ""),
+  }, [
+    R.createElement("span", { key: "i", className: "mini" }),
+    R.createElement("span", { key: "l", className: "lb" }, label),
+  ]);
+  // 两个开关恒显示（哪怕 false）：展示态要完整反映这组参数，
+  // 只显示 true 的话用户看不出"这组是把并行关掉的"。
+  chips.push(sw("with_context", "携带上下文"));
+  chips.push(sw("parallel", "并行分析"));
+  return chips;
+}
+
+/** 单条策略卡（展示态 / 编辑态二选一）。 */
+function renderScheduleCard(
+  R: any, item: any, idx: number,
+  ctx: {
+    activeId: string | null;
+    editing: boolean;
+    draft: any;
+    paramSets: any[];
+    notifyProfiles: any[];
+    busy: boolean;
+  },
+): any {
+  const id = String(item.id || "");
+  const isHit = !!ctx.activeId && ctx.activeId === id;
+  const cls = "qm-set-tscard"
+    + (isHit ? " qm-set-tshit" : "")
+    + (ctx.editing ? " qm-set-tsedit" : "");
+
+  // ── 编辑态 ──────────────────────────────────────────────────────
+  if (ctx.editing && ctx.draft) {
+    const d = ctx.draft;
+    const setD = (field: string, v: string) => {
+      d[field] = v;
+      settingsRenderPanel();
+    };
+    // 动态 data 属性必须先算好键名：对象字面量里不能用 "a" + b 当键
+    // （esbuild 直接报 Expected ":" but found "+"）。
+    const timeInput = (field: "start" | "end") => {
+      const props: any = {
+        key: field, type: "time",
+        // 需求 4（2026-11-24）：显示秒（HH:mm:ss）。开始默认 :00、结束默认 :59，
+        // 消除 23:59:01~23:59:59 的空缺；step=1 是原生 time 输入显示秒的开关。
+        step: 1, value: String(d[field] || ""),
+        onChange: (e: any) => setD(field, e && e.target ? String(e.target.value) : ""),
+      };
+      props["data-qm-ts-" + field] = id;
+      return R.createElement("input", props);
+    };
+    const refSel = (field: "param_set_id" | "notify_profile_id",
+                    list: any[], placeholder: string) => {
+      const opts: any[] = [R.createElement("option", { key: "none", value: "" },
+        placeholder)];
+      list.forEach((x: any, i: number) => {
+        opts.push(R.createElement("option", { key: "o" + i, value: String(x.id) },
+          String(x.name || x.id)));
+      });
+      // 已引用但库条目已被删：补一个占位项，否则 select 会静默显示第一项，
+      // 用户以为引用还在（实测过的坑：未匹配 value 时浏览器回落到首项）。
+      const cur = String(d[field] || "");
+      if (cur && !list.some((x: any) => String(x.id) === cur)) {
+        opts.push(R.createElement("option", { key: "gone", value: cur },
+          cur + "（已删除）"));
+      }
+      const selProps: any = {
+        key: field, className: "qm-set-native", value: cur,
+        onChange: (e: any) => setD(field, e && e.target ? String(e.target.value) : ""),
+      };
+      selProps["data-qm-ts-" + field] = id;
+      return R.createElement("select", selProps, opts);
+    };
+
+    // 编辑态与展示态必须带同一个定位属性：否则「切到编辑态后还剩几张卡」
+    // 这类断言会把正在编辑的那张漏掉（本轮实测：编辑 sc-2 时判据数出 2 张
+    // 卡而非 3 张，实际 DOM 是对的，是属性只挂在展示态上）。
+    const editProps: any = { className: cls, key: "sc" + id };
+    if (id) editProps["data-qm-ts-card"] = id;
+    return R.createElement("div", editProps,
+      R.createElement("div", { className: "qm-set-tstop" }, [
+        R.createElement("span", { className: "qm-set-tsidx" }, String(idx + 1)),
+        R.createElement("span", { className: "qm-set-tsname", style: { flex: "1 1 auto" } },
+          R.createElement("input", {
+            type: "text", value: String(d.name || ""),
+            placeholder: "策略名称（如：夜间值守）",
+            className: "qm-set-input", style: { width: "100%" },
+            "data-qm-ts-name": id,
+            onChange: (e: any) => setD("name",
+              e && e.target ? String(e.target.value) : ""),
+          })),
+      ]),
+      R.createElement("div", { className: "qm-set-tsform" }, [
+        R.createElement("div", { className: "qm-set-tsf full", key: "time" }, [
+          R.createElement("label", { key: "l" }, "生效时间段"),
+          R.createElement("div", { className: "fc", key: "c" }, [
+            timeInput("start"),
+            R.createElement("span", { key: "d", className: "qm-set-tsdash" }, "→"),
+            timeInput("end"),
+          ]),
+        ]),
+        R.createElement("div", { className: "qm-set-tsf", key: "ps" }, [
+          R.createElement("label", { key: "l" }, [
+            R.createElement("span", { key: "t" }, "问卷参数组"),
+            R.createElement("span", { key: "g", className: "tag" }, "引用"),
+          ]),
+          R.createElement("div", { className: "fc", key: "c" },
+            refSel("param_set_id", ctx.paramSets, "不覆盖参数")),
+        ]),
+        R.createElement("div", { className: "qm-set-tsf", key: "np" }, [
+          R.createElement("label", { key: "l" }, [
+            R.createElement("span", { key: "t" }, "通知配置"),
+            R.createElement("span", { key: "g", className: "tag" }, "引用"),
+          ]),
+          R.createElement("div", { className: "fc", key: "c" },
+            refSel("notify_profile_id", ctx.notifyProfiles, "不覆盖通知")),
+        ]),
+      ]),
+      R.createElement("div", { className: "qm-set-tsfoot" }, [
+        R.createElement("span", { key: "n", className: "note" },
+          "参数组内容在「运行参数 › 问卷参数组」里改"),
+        R.createElement("button", {
+          key: "cancel", type: "button", className: "qm-set-btn",
+          "data-qm-ts-cancel": id,
+          disabled: !!ctx.busy,
+          onClick: () => {
+            settingsState.schedEdit = "";
+            settingsState.schedDraft = null;
+            settingsRenderPanel();
+          },
+        }, "取消"),
+        R.createElement("button", {
+          key: "ok", type: "button", className: "qm-set-btn qm-set-btnprimary",
+          "data-qm-ts-save": id,
+          disabled: !!ctx.busy,
+          onClick: () => {
+            const payload = {
+              name: String(d.name || "").trim() || "未命名策略",
+              start: String(d.start || "00:00"),
+              end: String(d.end || "23:59"),
+              param_set_id: String(d.param_set_id || ""),
+              notify_profile_id: String(d.notify_profile_id || ""),
+            };
+            void (d.id
+              ? saveSchedule(Object.assign({ id: String(d.id) }, payload))
+              : saveSchedule(payload));
+          },
+        }, ctx.busy ? "保存中…" : "完成"),
+      ]),
+    );
+  }
+
+  // ── 展示态 ──────────────────────────────────────────────────────
+  const psId = String(item.param_set_id || "");
+  const npId = String(item.notify_profile_id || "");
+  const ps = ctx.paramSets.filter((x: any) => String(x.id) === psId)[0];
+  return R.createElement("div", { className: cls, key: "sc" + id,
+                                  "data-qm-ts-card": id }, [
+    R.createElement("div", { className: "qm-set-tstop", key: "top" }, [
+      R.createElement("span", { key: "i", className: "qm-set-tsidx" }, String(idx + 1)),
+      R.createElement("span", { key: "n", className: "qm-set-tsname" },
+        String(item.name || "未命名策略")),
+      isHit ? R.createElement("span", { key: "b", className: "qm-set-tsbadge" }, "生效中") : null,
+      R.createElement("span", { key: "t", style: { display: "contents" } },
+        tsTimeNode(R, item.start, item.end)),
+      R.createElement("span", { key: "s", className: "qm-set-tssp" }),
+      R.createElement("div", { key: "a", className: "qm-set-tsacts" }, [
+        R.createElement("button", {
+          key: "e", type: "button", className: "qm-set-tsbtn",
+          "data-qm-ts-edit": id,
+          onClick: () => {
+            settingsState.schedEdit = id;
+            settingsState.schedDraft = {
+              id,
+              name: String(item.name || ""),
+              start: String(item.start || ""),
+              end: String(item.end || ""),
+              param_set_id: psId,
+              notify_profile_id: npId,
+            };
+            settingsRenderPanel();
+          },
+        }, "✎ 编辑"),
+        R.createElement("button", {
+          key: "d", type: "button", className: "qm-set-tsbtn qm-set-tsdel",
+          "data-qm-ts-del": id, title: "删除这条策略",
+          disabled: !!ctx.busy,
+          onClick: () => {
+            // 需求 1（2026-11-24）：二次确认气泡，避免误删。
+            requestDeleteConfirm("ts", id, String(item.name || "未命名策略"));
+          },
+        }, "✕"),
+      ]),
+    ]),
+    R.createElement("div", { className: "qm-set-tsrefs", key: "refs" }, [
+      R.createElement("span", { key: "l1", className: "v" }, "参数组"),
+      R.createElement("span", { key: "s1", className: "sep" }, "·"),
+      R.createElement("span", { key: "v1" },
+        libNameById(ctx.paramSets, psId, "未引用（不覆盖参数）")),
+      R.createElement("span", { key: "s2", className: "sep" }, "|"),
+      R.createElement("span", { key: "l2", className: "v" }, "通知"),
+      R.createElement("span", { key: "s3", className: "sep" }, "·"),
+      R.createElement("span", { key: "v2" },
+        libNameById(ctx.notifyProfiles, npId, "未引用（不覆盖通知）")),
+    ]),
+    ps ? R.createElement("div", { className: "qm-set-tschips", key: "chips" },
+      paramSetChips(R, ps.params)) : null,
+  ]);
+}
+
+/** 时间策略页签主体。 */
+function tsTabBody(R: any): any[] {
+  const lib = settingsState.libs;
+  const kids: any[] = [];
+
+  // ── 此刻生效横条 ──────────────────────────────────────────────
+  const active = lib.schedules.filter(
+    (s: any) => lib.activeId && String(s.id) === String(lib.activeId))[0];
+  if (active) {
+    const ps = lib.paramSets.filter(
+      (x: any) => String(x.id) === String(active.param_set_id || ""))[0];
+    const np = lib.notifyProfiles.filter(
+      (x: any) => String(x.id) === String(active.notify_profile_id || ""))[0];
+    const now = new Date();
+    const hhmm = ("0" + now.getHours()).slice(-2) + ":"
+      + ("0" + now.getMinutes()).slice(-2);
+    kids.push(R.createElement("div", {
+      className: "qm-set-nowbar", key: "nowbar", "data-qm-nowbar": "hit",
+    }, [
+      R.createElement("span", { key: "i" }, "◷"),
+      R.createElement("span", { key: "t" }, [
+        "当前时间 ", R.createElement("b", { key: "b1" }, hhmm),
+        " 命中「", R.createElement("b", { key: "b2" }, String(active.name || "")),
+        "」",
+        ps ? [" → 参数组 ", R.createElement("b", { key: "b3" }, String(ps.name || ""))] : " → 不覆盖参数",
+        np ? [" · 通知 ", R.createElement("b", { key: "b4" }, String(np.name || ""))] : " · 不覆盖通知",
+      ]),
+    ]));
+  } else {
+    kids.push(R.createElement("div", {
+      className: "qm-set-nowbar fallback", key: "nowbar", "data-qm-nowbar": "none",
+    }, [
+      R.createElement("span", { key: "i" }, "◷"),
+      R.createElement("span", { key: "t" }, [
+        lib.schedules.length
+          ? "当前时刻没有命中任何时间策略 → 使用「运行参数 › "
+          : "尚未配置时间策略 → 所有会话都使用「运行参数 › ",
+        R.createElement("b", { key: "b1" }, "默认参数"),
+        "」",
+      ]),
+    ]));
+  }
+
+  // ── 操作结果提示（引用冲突的原因必须可见）───────────────────────
+  if (lib.msg) {
+    kids.push(R.createElement("div", {
+      key: "msg",
+      className: "qm-set-schednote",
+      style: lib.msgKind === "error"
+        ? { borderColor: "#f3c2bd", background: "rgba(217,48,37,.05)",
+            color: "#b3261e" }
+        : undefined,
+      "data-qm-libs-msg": lib.msgKind,
+    }, lib.msg));
+  }
+
+  // ── 策略列表 / 空态 ──────────────────────────────────────────
+  if (!lib.schedules.length && settingsState.schedEdit !== "__new__") {
+    kids.push(R.createElement("div", { className: "qm-set-tsempty", key: "empty" }, [
+      R.createElement("b", { key: "t" }, "还没有时间策略"),
+      "当前使用默认参数运行。",
+      R.createElement("br", { key: "br" }),
+      "如需按时间段自动切换（如夜间全自动、白天人工），添加一条即可。",
+    ]));
+  } else {
+    const cards = lib.schedules.map((it: any, i: number) =>
+      renderScheduleCard(R, it, i, {
+        activeId: lib.activeId,
+        editing: settingsState.schedEdit === String(it.id),
+        draft: settingsState.schedDraft,
+        paramSets: lib.paramSets,
+        notifyProfiles: lib.notifyProfiles,
+        busy: lib.busy,
+      }));
+    // 新建中的空卡：走同一条渲染路径，只是 item 是个空白对象
+    if (settingsState.schedEdit === "__new__" && settingsState.schedDraft) {
+      cards.push(renderScheduleCard(R, {}, lib.schedules.length, {
+        activeId: lib.activeId,
+        editing: true,
+        draft: settingsState.schedDraft,
+        paramSets: lib.paramSets,
+        notifyProfiles: lib.notifyProfiles,
+        busy: lib.busy,
+      }));
+    }
+    kids.push(R.createElement("div", { className: "qm-set-tslist", key: "list" }, cards));
+  }
+
+  // ── 添加按钮 ──────────────────────────────────────────────────
+  if (settingsState.schedEdit !== "__new__") {
+    kids.push(R.createElement("button", {
+      type: "button", key: "add",
+      className: "qm-set-btn qm-set-btnnew",
+      "data-qm-ts-add": "1",
+      disabled: !!lib.busy,
+      onClick: () => {
+        settingsState.schedEdit = "__new__";
+        settingsState.schedDraft = {
+          // 需求 4（2026-11-24）：开始秒默认 :00、结束秒默认 :59，
+          // 消除「结束分钟最后一秒」的空缺（如 23:59:59）。
+          id: "", name: "", start: "08:00:00", end: "18:00:59",
+          param_set_id: "", notify_profile_id: "",
+        };
+        settingsRenderPanel();
+      },
+    }, lib.schedules.length ? "＋ 添加时间策略" : "＋ 添加时间策略"));
+  }
+
+  return kids;
+}
+
+/** ══════════════════════════════════════════════════════════════════════
+ *  运行参数 › 问卷参数组 / 通知配置（US-024，2026-11-23）
+ *  ══════════════════════════════════════════════════════════════════════
+ *
+ *  两个库的编辑态都用「模块级草稿 + 整树重绘」的既有写法（settingsState
+ *  是普通对象、settingsRenderPanel 整树重渲染），与 stale 页签同款。
+ *  不用 React hooks 的原因：这个面板本身就是无 hooks 架构，混用会让
+ *  重绘时 hooks 顺序错乱。
+ */
+
+/** 参数组编辑草稿（模块级，与 schedDraft 同族）。 */
+let paramSetDraft: {
+  id: string; name: string; mode: string; model_id: string;
+  template_id: string; with_context: boolean; parallel: boolean;
+} | null = null;
+
+/** 通知配置编辑草稿。 */
+let notifyProfileDraft: {
+  id: string; name: string; pc: string; bg: string;
+} | null = null;
+
+/** 渲染单个参数组的编辑态表单。 */
+function renderParamSetEditor(
+  R: any, d: NonNullable<typeof paramSetDraft>,
+  ctx: {
+    groups: ProviderGroup[]; tplChoices: any[]; tplOpts: string[];
+    usedBy: string[];
+  },
+): any {
+  const MODE_OPTS: Array<{ v: string; l: string }> = [
+    { v: "ai", l: "自动分析" }, { v: "recommend", l: "只用推荐" }, { v: "manual", l: "人工" },
+  ];
+  const set = (k: string, v: any) => { (d as any)[k] = v; settingsRenderPanel(); };
+  const modeSel = () => R.createElement("select", {
+    key: "mode", value: d.mode, "data-qm-ps-mode": d.id || "new",
+    onChange: (e: any) => set("mode", e && e.target ? String(e.target.value) : "manual"),
+  }, MODE_OPTS.map((o) => R.createElement("option", { key: o.v, value: o.v }, o.l)));
+
+  const tplSel = () => {
+    const opts: any[] = [R.createElement("option", { key: "none", value: "" }, "（不指定）")];
+    ctx.tplChoices.forEach((c: any, i: number) => {
+      opts.push(R.createElement("option", { key: "t" + i, value: String(c.value) },
+        String(c.label)));
+    });
+    const cur = String(d.template_id || "");
+    if (cur && !ctx.tplChoices.some((c: any) => String(c.value) === cur)) {
+      opts.push(R.createElement("option", { key: "gone", value: cur }, cur + "（已删除）"));
+    }
+    return R.createElement("select", {
+      key: "tpl", value: cur, "data-qm-ps-tpl": d.id || "new",
+      onChange: (e: any) => set("template_id", e && e.target ? String(e.target.value) : ""),
+    }, opts);
+  };
+
+  const sw = (k: "with_context" | "parallel", label: string) => {
+    // 动态 data 键必须先算好（对象字面量里不能用 "a" + b 作键）
+    const swProps: any = {
+      key: "s", className: "qm-set-switch" + (d[k] ? " qm-set-switch-on" : ""),
+      role: "switch", "aria-checked": d[k] ? "true" : "false",
+      tabIndex: 0,
+      onClick: () => set(k, !d[k]),
+    };
+    swProps["data-qm-ps-" + k] = d.id || "new";
+    return R.createElement("div", { key: k, className: "qm-set-pitem inline" }, [
+      R.createElement("label", { key: "l" }, label),
+      R.createElement("div", swProps,
+        R.createElement("span", { key: "k", className: "qm-set-knob" })),
+    ]);
+  };
+
+  return R.createElement("div", { className: "qm-set-pmcard", key: "editor" }, [
+    R.createElement("div", { className: "qm-set-pmhead", key: "h" }, [
+      R.createElement("input", {
+        key: "n", type: "text", className: "qm-set-input", style: { flex: "1 1 auto" },
+        value: d.name, placeholder: "参数组名称（如：夜间全自动）",
+        "data-qm-ps-name": d.id || "new",
+        onChange: (e: any) => set("name", e && e.target ? String(e.target.value) : ""),
+      }),
+    ]),
+    R.createElement("div", { className: "qm-set-pgrid", key: "g" }, [
+      R.createElement("div", { className: "qm-set-pitem", key: "mode" }, [
+        R.createElement("label", { key: "l" }, "答题模式"), modeSel()]),
+      R.createElement("div", { className: "qm-set-pitem", key: "tpl" }, [
+        R.createElement("label", { key: "l" }, "提示词模板"), tplSel()]),
+      R.createElement("div", { className: "qm-set-pitem full", key: "model" }, [
+        R.createElement("label", { key: "l" }, "默认模型"),
+        R.createElement("div", { key: "c" }, setModelPicker(
+          R, "psmodel", String(d.model_id || ""), ctx.groups,
+          (v: string) => set("model_id", v))),
+      ]),
+      R.createElement("div", { className: "qm-set-pitem full", key: "sws" }, [
+        R.createElement("div", { key: "inner", style: { display: "flex", gap: "18px" } },
+          [sw("with_context", "携带上下文"), sw("parallel", "并行分析")]),
+      ]),
+    ]),
+    R.createElement("div", { className: "qm-set-tsfoot", key: "f" }, [
+      R.createElement("span", { key: "n", className: "note" },
+        ctx.usedBy.length
+          ? ("当前被 " + ctx.usedBy.length + " 条策略引用：" + ctx.usedBy.join("、"))
+          : "尚未被任何策略引用"),
+      R.createElement("button", {
+        key: "c", type: "button", className: "qm-set-btn",
+        "data-qm-ps-cancel": d.id || "new",
+        onClick: () => { paramSetDraft = null; settingsRenderPanel(); },
+      }, "取消"),
+      R.createElement("button", {
+        key: "s", type: "button", className: "qm-set-btn qm-set-btnprimary",
+        "data-qm-ps-save": d.id || "new",
+        disabled: !!settingsState.libs.busy,
+        onClick: () => {
+          const payload: any = {
+            name: String(paramSetDraft && paramSetDraft.name || "").trim() || "未命名参数组",
+            params: {
+              mode: d.mode, model_id: d.model_id,
+              template_id: d.template_id,
+              with_context: d.with_context, parallel: d.parallel,
+            },
+          };
+          if (d.id) payload.id = d.id;
+          void (async () => {
+            const ok = await saveParamSet(payload);
+            if (ok) { paramSetDraft = null; settingsRenderPanel(); }
+          })();
+        },
+      }, settingsState.libs.busy ? "保存中…" : "保存"),
+    ]),
+  ]);
+}
+
+/** 问卷参数组分类主体。 */
+function paramSetsBody(
+  R: any,
+  ctx: { groups: ProviderGroup[]; tplChoices: any[]; tplOpts: string[] },
+): any[] {
+  const lib = settingsState.libs;
+  const kids: any[] = [];
+
+  kids.push(R.createElement("div", {
+    className: "qm-set-schednote", key: "note", "data-qm-runs-note": "param-sets",
+  }, [
+    R.createElement("div", { key: "t", className: "qm-set-schednotetitle" },
+      "问卷参数组是时间策略的引用对象"),
+    R.createElement("div", { key: "d", className: "qm-set-schednotedesc" },
+      "一条时间策略命中后，会用这里选中的参数组覆盖「默认参数」。"
+      + "被策略引用的参数组不能直接删除（需先解除引用）。"),
+  ]));
+
+  if (lib.msg) {
+    kids.push(R.createElement("div", {
+      key: "msg", className: "qm-set-schednote",
+      style: lib.msgKind === "error"
+        ? { borderColor: "#f3c2bd", background: "rgba(217,48,37,.05)", color: "#b3261e" }
+        : undefined,
+      "data-qm-libs-msg": lib.msgKind,
+    }, lib.msg));
+  }
+
+  // 编辑态优先渲染（原位展开：在它自己那张卡的位置）
+  const editingId = paramSetDraft ? (paramSetDraft.id || "__new__") : "";
+  const cards: any[] = [];
+  if (lib.paramSets.length === 0 && !paramSetDraft) {
+    cards.push(R.createElement("div", { className: "qm-set-tsempty", key: "empty" }, [
+      R.createElement("b", { key: "t" }, "还没有问卷参数组"),
+      "可以创建多套参数（如「白天人工」「夜间全自动」），再在时间策略里按时间段引用。",
+    ]));
+  }
+  lib.paramSets.forEach((ps: any, i: number) => {
+    const id = String(ps.id || "");
+    const usedBy = (ps.used_by || []).map((x: any) => String(x.name || x.id));
+    // 编辑态：用编辑器替换这张卡
+    if (paramSetDraft && editingId === id) {
+      cards.push(renderParamSetEditor(R, paramSetDraft, {
+        groups: ctx.groups, tplChoices: ctx.tplChoices, tplOpts: ctx.tplOpts, usedBy,
+      }));
+      return;
+    }
+    const p = ps.params || {};
+    const MODE_TXT: Record<string, string> = {
+      ai: "自动分析", recommend: "只用推荐", manual: "人工",
+    };
+    const usedCls = "qm-set-pmused" + (usedBy.length ? "" : "");
+    cards.push(R.createElement("div", { className: "qm-set-pmcard", key: "ps" + i,
+                                       "data-qm-ps-card": id }, [
+      R.createElement("div", { className: "qm-set-pmhead", key: "h" }, [
+        R.createElement("span", { key: "n", className: "qm-set-pmname" },
+          String(ps.name || "未命名")),
+        R.createElement("span", { key: "u", className: usedCls },
+          usedBy.length ? ("被 " + usedBy.length + " 条策略引用") : "未被引用"),
+        R.createElement("span", { key: "sp", style: { flex: "1" } }),
+        R.createElement("button", {
+          key: "e", type: "button", className: "qm-set-tsbtn",
+          "data-qm-ps-edit": id,
+          onClick: () => {
+            paramSetDraft = {
+              id, name: String(ps.name || ""),
+              mode: String(p.mode || "manual"),
+              model_id: String(p.model_id || ""),
+              template_id: String(p.template_id || ""),
+              with_context: !!p.with_context,
+              parallel: !!p.parallel,
+            };
+            settingsRenderPanel();
+          },
+        }, "✎ 编辑"),
+        R.createElement("button", {
+          key: "d", type: "button", className: "qm-set-tsbtn qm-set-tsdel",
+          "data-qm-ps-del": id,
+          disabled: !!lib.busy,
+          title: usedBy.length
+            ? "被策略引用，需先解除引用（或确认后强制删除）"
+            : "删除该参数组",
+          onClick: () => {
+            // 需求 1（2026-11-24）：二次确认气泡；409 引用冲突提示移到
+            // executeConfirmedDelete 的 ps 分支统一处理。
+            requestDeleteConfirm("ps", id, String(ps.name || "未命名参数组"));
+          },
+        }, "✕"),
+      ]),
+      R.createElement("div", { className: "qm-set-pgrid", key: "g" }, [
+        R.createElement("div", { className: "qm-set-pitem", key: "m" }, [
+          R.createElement("label", { key: "l" }, "答题模式"),
+          R.createElement("span", { key: "v", style: { fontSize: "12px" } },
+            MODE_TXT[String(p.mode || "")] || "未设置"),
+        ]),
+        R.createElement("div", { className: "qm-set-pitem", key: "md" }, [
+          R.createElement("label", { key: "l" }, "默认模型"),
+          R.createElement("span", { key: "v", style: { fontSize: "12px" } },
+            String(p.model_id || "跟随当前对话模型")),
+        ]),
+        R.createElement("div", { className: "qm-set-pitem full", key: "sw" }, [
+          R.createElement("div", { key: "i", style: { display: "flex", gap: "18px" } }, [
+            R.createElement("span", { key: "c", className: "qm-set-tssw" + (p.with_context ? " on" : "") }, [
+              R.createElement("span", { key: "k", className: "mini" }),
+              R.createElement("span", { key: "l" }, "携带上下文"),
+            ]),
+            R.createElement("span", { key: "p2", className: "qm-set-tssw" + (p.parallel ? " on" : "") }, [
+              R.createElement("span", { key: "k", className: "mini" }),
+              R.createElement("span", { key: "l" }, "并行分析"),
+            ]),
+          ]),
+        ]),
+      ]),
+    ]));
+  });
+
+  // 新建态（放在列表末尾，符合"添加"的直觉位置）
+  if (paramSetDraft && editingId === "__new__") {
+    cards.push(renderParamSetEditor(R, paramSetDraft, {
+      groups: ctx.groups, tplChoices: ctx.tplChoices, tplOpts: ctx.tplOpts, usedBy: [],
+    }));
+  }
+
+  kids.push(R.createElement("div", { className: "qm-set-pmlist", key: "list" }, cards));
+
+  if (!(paramSetDraft && editingId === "__new__")) {
+    kids.push(R.createElement("button", {
+      type: "button", key: "add", className: "qm-set-btn qm-set-btnnew qm-set-pmadd",
+      "data-qm-ps-add": "1",
+      disabled: !!lib.busy,
+      onClick: () => {
+        paramSetDraft = {
+          id: "", name: "", mode: "manual", model_id: "",
+          template_id: "", with_context: false, parallel: false,
+        };
+        settingsRenderPanel();
+      },
+    }, "＋ 新建问卷参数组"));
+  }
+  return kids;
+}
+
+/** 通知配置分类主体。 */
+function notifyProfilesBody(R: any): any[] {
+  const lib = settingsState.libs;
+  const kids: any[] = [];
+
+  kids.push(R.createElement("div", {
+    className: "qm-set-schednote", key: "note", "data-qm-runs-note": "notify-profiles",
+  }, [
+    R.createElement("div", { key: "t", className: "qm-set-schednotetitle" },
+      "命名通知配置，供时间策略按时间段引用"),
+    R.createElement("div", { key: "d", className: "qm-set-schednotedesc" },
+      "一条配置只描述「用哪个渠道」，渠道凭据（Token / Webhook）仍由各渠道自身维护。"
+      + "因此同一份配置可以被多条策略安全引用。"),
+  ]));
+
+  // 渠道选项来自后端探测结果（可用性判定在 /notify/channels，前端不重算）
+  const chanOpts = (scene: "pc" | "bg"): Array<{ v: string; l: string }> => {
+    const list = (settingsState.notifyChannels || [])
+      .filter((c: any) => scene !== "bg" || String(c.channel) !== "browser")
+      .map((c: any) => ({ v: String(c.channel || "off"), l: String(c.label || c.channel) }));
+    // 保证 off 一定在首位（「关闭」是合法且默认的选择）
+    const hasOff = list.some((o: any) => o.v === "off");
+    return hasOff ? list : [{ v: "off", l: "关闭" }].concat(list);
+  };
+
+  if (lib.msg) {
+    kids.push(R.createElement("div", {
+      key: "msg", className: "qm-set-schednote",
+      style: lib.msgKind === "error"
+        ? { borderColor: "#f3c2bd", background: "rgba(217,48,37,.05)", color: "#b3261e" }
+        : undefined,
+      "data-qm-libs-msg": lib.msgKind,
+    }, lib.msg));
+  }
+
+  const cards: any[] = [];
+  const editingId = notifyProfileDraft ? (notifyProfileDraft.id || "__new__") : "";
+  if (lib.notifyProfiles.length === 0 && !notifyProfileDraft) {
+    cards.push(R.createElement("div", { className: "qm-set-tsempty", key: "empty" }, [
+      R.createElement("b", { key: "t" }, "还没有通知配置"),
+      "创建后可在时间策略里按时间段引用（如夜间用值班号，白天用工作群）。",
+    ]));
+  }
+
+  lib.notifyProfiles.forEach((np: any, i: number) => {
+    const id = String(np.id || "");
+    const usedBy = (np.used_by || []).map((x: any) => String(x.name || x.id));
+    const ch = np.channels || {};
+
+    if (notifyProfileDraft && editingId === id) {
+      const d = notifyProfileDraft;
+      const set = (k: "name" | "pc" | "bg", v: string) => { d[k] = v; settingsRenderPanel(); };
+      const sel = (scene: "pc" | "bg") => {
+        const p: any = {
+          key: scene, value: String(d[scene] || "off"),
+          onChange: (e: any) => set(scene, e && e.target ? String(e.target.value) : "off"),
+        };
+        p["data-qm-np-" + scene] = id;
+        return R.createElement("select", p, chanOpts(scene).map(
+          (o) => R.createElement("option", { key: o.v, value: o.v }, o.l)));
+      };
+      cards.push(R.createElement("div", { className: "qm-set-pmcard", key: "ed" + i }, [
+        R.createElement("div", { className: "qm-set-pmhead", key: "h" }, [
+          R.createElement("input", {
+            key: "n", type: "text", className: "qm-set-input", style: { flex: "1 1 auto" },
+            value: d.name, placeholder: "配置名称（如：值班号通知）",
+            "data-qm-np-name": id,
+            onChange: (e: any) => set("name", e && e.target ? String(e.target.value) : ""),
+          }),
+        ]),
+        R.createElement("div", { className: "qm-set-pgrid", key: "g" }, [
+          R.createElement("div", { className: "qm-set-pitem", key: "pc" }, [
+            R.createElement("label", { key: "l" }, "PC 端打开时"), sel("pc")]),
+          R.createElement("div", { className: "qm-set-pitem", key: "bg" }, [
+            R.createElement("label", { key: "l" }, "后台运行时"), sel("bg")]),
+        ]),
+        R.createElement("div", { className: "qm-set-tsfoot", key: "f" }, [
+          R.createElement("span", { key: "n", className: "note" },
+            usedBy.length ? ("被 " + usedBy.length + " 处引用") : "尚未被引用"),
+          R.createElement("button", {
+            key: "c", type: "button", className: "qm-set-btn",
+            "data-qm-np-cancel": id,
+            onClick: () => { notifyProfileDraft = null; settingsRenderPanel(); },
+          }, "取消"),
+          R.createElement("button", {
+            key: "s", type: "button", className: "qm-set-btn qm-set-btnprimary",
+            "data-qm-np-save": id,
+            disabled: !!lib.busy,
+            onClick: () => {
+              const payload: any = {
+                name: String(d.name || "").trim() || "未命名通知配置",
+                channels: { pc: d.pc || "off", bg: d.bg || "off" },
+              };
+              if (d.id) payload.id = d.id;
+              void (async () => {
+                const ok = await saveNotifyProfile(payload);
+                if (ok) { notifyProfileDraft = null; settingsRenderPanel(); }
+              })();
+            },
+          }, lib.busy ? "保存中…" : "保存"),
+        ]),
+      ]));
+      return;
+    }
+
+    const chanLabel = (v: string) => {
+      const hit = (settingsState.notifyChannels || [])
+        .filter((c: any) => String(c.channel) === String(v))[0];
+      return hit ? String(hit.label || v) : (v === "off" ? "关闭" : v);
+    };
+    cards.push(R.createElement("div", { className: "qm-set-pmcard", key: "np" + i,
+                                       "data-qm-np-card": id }, [
+      R.createElement("div", { className: "qm-set-pmhead", key: "h" }, [
+        R.createElement("span", { key: "n", className: "qm-set-pmname" },
+          String(np.name || "未命名")),
+        R.createElement("span", { key: "u", className: "qm-set-pmused" },
+          usedBy.length ? ("被 " + usedBy.length + " 处引用") : "未被引用"),
+        R.createElement("span", { key: "sp", style: { flex: "1" } }),
+        R.createElement("button", {
+          key: "e", type: "button", className: "qm-set-tsbtn",
+          "data-qm-np-edit": id,
+          onClick: () => {
+            notifyProfileDraft = {
+              id, name: String(np.name || ""),
+              pc: String(ch.pc || "off"), bg: String(ch.bg || "off"),
+            };
+            settingsRenderPanel();
+          },
+        }, "✎ 编辑"),
+        R.createElement("button", {
+          key: "d", type: "button", className: "qm-set-tsbtn qm-set-tsdel",
+          "data-qm-np-del": id, disabled: !!lib.busy,
+          onClick: () => {
+            // 需求 1（2026-11-24）：二次确认气泡；409 提示移到确认执行器。
+            requestDeleteConfirm("np", id, String(np.name || "未命名通知配置"));
+          },
+        }, "✕"),
+      ]),
+      R.createElement("div", { className: "qm-set-pgrid", key: "g" }, [
+        R.createElement("div", { className: "qm-set-pitem", key: "pc" }, [
+          R.createElement("label", { key: "l" }, "PC 端打开时"),
+          R.createElement("span", { key: "v", style: { fontSize: "12px" } },
+            chanLabel(String(ch.pc || "off"))),
+        ]),
+        R.createElement("div", { className: "qm-set-pitem", key: "bg" }, [
+          R.createElement("label", { key: "l" }, "后台运行时"),
+          R.createElement("span", { key: "v", style: { fontSize: "12px" } },
+            chanLabel(String(ch.bg || "off"))),
+        ]),
+      ]),
+    ]));
+  });
+
+  if (notifyProfileDraft && editingId === "__new__") {
+    const d = notifyProfileDraft;
+    const set = (k: "name" | "pc" | "bg", v: string) => { d[k] = v; settingsRenderPanel(); };
+    const sel = (scene: "pc" | "bg") => {
+      const p: any = {
+        key: scene, value: String(d[scene] || "off"),
+        onChange: (e: any) => set(scene, e && e.target ? String(e.target.value) : "off"),
+      };
+      p["data-qm-np-" + scene] = "new";
+      return R.createElement("select", p, chanOpts(scene).map(
+        (o) => R.createElement("option", { key: o.v, value: o.v }, o.l)));
+    };
+    cards.push(R.createElement("div", { className: "qm-set-pmcard", key: "new" }, [
+      R.createElement("div", { className: "qm-set-pmhead", key: "h" }, [
+        R.createElement("input", {
+          key: "n", type: "text", className: "qm-set-input", style: { flex: "1 1 auto" },
+          value: d.name, placeholder: "配置名称（如：值班号通知）",
+          "data-qm-np-name": "new",
+          onChange: (e: any) => set("name", e && e.target ? String(e.target.value) : ""),
+        }),
+      ]),
+      R.createElement("div", { className: "qm-set-pgrid", key: "g" }, [
+        R.createElement("div", { className: "qm-set-pitem", key: "pc" }, [
+          R.createElement("label", { key: "l" }, "PC 端打开时"), sel("pc")]),
+        R.createElement("div", { className: "qm-set-pitem", key: "bg" }, [
+          R.createElement("label", { key: "l" }, "后台运行时"), sel("bg")]),
+      ]),
+      R.createElement("div", { className: "qm-set-tsfoot", key: "f" }, [
+        R.createElement("span", { key: "n", className: "note" }, "保存后可被时间策略引用"),
+        R.createElement("button", {
+          key: "c", type: "button", className: "qm-set-btn", "data-qm-np-cancel": "new",
+          onClick: () => { notifyProfileDraft = null; settingsRenderPanel(); },
+        }, "取消"),
+        R.createElement("button", {
+          key: "s", type: "button", className: "qm-set-btn qm-set-btnprimary",
+          "data-qm-np-save": "new", disabled: !!lib.busy,
+          onClick: () => {
+            const payload = {
+              name: String(d.name || "").trim() || "未命名通知配置",
+              channels: { pc: d.pc || "off", bg: d.bg || "off" },
+            };
+            void (async () => {
+              const ok = await saveNotifyProfile(payload);
+              if (ok) { notifyProfileDraft = null; settingsRenderPanel(); }
+            })();
+          },
+        }, lib.busy ? "保存中…" : "保存"),
+      ]),
+    ]));
+  }
+
+  kids.push(R.createElement("div", { className: "qm-set-pmlist", key: "list" }, cards));
+
+  if (!(notifyProfileDraft && editingId === "__new__")) {
+    kids.push(R.createElement("button", {
+      type: "button", key: "add", className: "qm-set-btn qm-set-btnnew qm-set-pmadd",
+      "data-qm-np-add": "1", disabled: !!lib.busy,
+      onClick: () => {
+        notifyProfileDraft = { id: "", name: "", pc: "off", bg: "off" };
+        settingsRenderPanel();
+      },
+    }, "＋ 新建通知配置"));
+  }
+  return kids;
+}
+
+/** ══════════════════════════════════════════════════════════════════════
+ *  运行参数的三个独立分类（2026-11-23 二次拆分）
+ *  ══════════════════════════════════════════════════════════════════════
+ *
+ *  boss 反馈「模型页签里既含通知、又含自定义 API、还含一些基本配置」。
+ *  拆分原则：**一个分类只装同一性质的东西**。
+ *
+ *  这里放的是从原「全局配置」页搬出来的三段：
+ *    notifyProfilesCategory —— 通知渠道两行（PC / 后台）
+ *    customApiCategory      —— 自定义 API 整卡
+ *    behaviorCategory       —— 超时 / 等待阈值 / 拦截记录
+ *
+ *  搬出来而不是复制：原处已删（否则同一项会出现在两个分类里，
+ *  用户改一处看不到另一处变，属最典型的双源漂移）。
+ *
+ *  ⚠️ 这三段内部逻辑**一行未改**（通知测试闸门、API 参数行、阈值钳制），
+ *  只换了容器和入口。它们刚在上一轮验证过，重写风险大于收益。
+ */
+
+/** 分类说明头（统一版式，四个分类共用，避免各写一套措辞与间距）。 */
+function categoryNote(
+  R: any, key: string, title: string, desc: string,
+): any {
+  return R.createElement("div", {
+    className: "qm-set-schednote", key: "note-" + key, "data-qm-runs-note": key,
+  }, [
+    R.createElement("div", { key: "t", className: "qm-set-schednotetitle" }, title),
+    R.createElement("div", { key: "d", className: "qm-set-schednotedesc" }, desc),
+  ]);
+}
+
+/** 分类「通知配置」：双场景渠道选择 + 测试闸门。 */
+function notifyProfilesCategory(R: any, scope: string): any[] {
+  const kids: any[] = [];
+  kids.push(categoryNote(
+    R, "notify",
+    "通知渠道的可用性由后端判定",
+    "频道必须同时满足「已启用 + 凭据完整 + 有真实会话」才可投递；"
+    + "不可用的频道会置灰并说明原因。所有频道需先测试通过才允许真正发送。",
+  ));
+  // 双场景两行（2026-11-19 boss 需求：通知不再固定单选）：
+  //   PC 端打开时（可选浏览器/IM）+ 后台运行时（仅 IM）。
+  // 后端按页面心跳自动选场景；测试闸门与结果展示两行各自独立。
+  kids.push(notifyChannelRow(R, scope, "pc", "PC 端打开时提醒频道"));
+  kids.push(notifyChannelRow(R, scope, "bg", "后台运行时提醒频道"));
+  return kids;
+}
+
+/** 分类「行为参数」：单题超时 / 等待阈值 / 拦截记录。 */
+function behaviorCategory(R: any, scope: string): any[] {
+  const kids: any[] = [];
+  kids.push(categoryNote(
+    R, "behavior",
+    "这些是全局行为参数，不随时段变化",
+    "控制分析超时、等待提示阈值与拦截日志保留量；对全部会话统一生效。",
+  ));
+
+  const TO_BY_LABEL: Record<string, number> = {
+    "30 秒": 30, "60 秒": 60, "120 秒（默认）": 120, "300 秒": 300, "600 秒": 600,
+  };
+  const TO_LABEL: Record<number, string> = {
+    30: "30 秒", 60: "60 秒", 120: "120 秒（默认）", 300: "300 秒", 600: "600 秒",
+  };
+  const WAIT_BY_LABEL: Record<string, number> = {
+    "30 秒": 30, "60 秒": 60, "120 秒": 120, "180 秒（默认）": 180,
+    "300 秒": 300, "600 秒": 600,
+  };
+  const WAIT_LABEL: Record<number, string> = {
+    30: "30 秒", 60: "60 秒", 120: "120 秒", 180: "180 秒（默认）",
+    300: "300 秒", 600: "600 秒",
+  };
+
+  kids.push(setRow(R, "e6", "单题分析超时",
+    setSelect(R, "sel4", TO_LABEL[Number(cfgValue("model_timeout_sec", 120, "global"))] || "120 秒（默认）",
+      ["30 秒", "60 秒", "120 秒（默认）", "300 秒", "600 秒"],
+      (lb: string) => cfgEdit("model_timeout_sec", TO_BY_LABEL[lb] ?? 120), false),
+    "超时后该题按未给出推荐处理（后端保护下限 30 秒）", "global", scope));
+
+  kids.push(setRow(R, "d4", "等待提示阈值",
+    setSelect(R, "sel5", WAIT_LABEL[Number(cfgValue("wait_hint_sec", 180, "global"))] || "180 秒（默认）",
+      ["30 秒", "60 秒", "120 秒", "180 秒（默认）", "300 秒", "600 秒"],
+      (lb: string) => cfgEdit("wait_hint_sec", WAIT_BY_LABEL[lb] ?? 180), false),
+    "超过后提示可释放（保护下限 30 秒）", "global", scope));
+
+  // d5 是可配置项（后端 gate_log_limit，0 = 不保留记录），此前误标成只读。
+  const LOG_OPTS = ["不保留", "最近 50 条", "最近 200 条（默认）", "最近 500 条", "最近 1000 条"];
+  const LOG_MAP: Record<string, number> = {
+    "不保留": 0, "最近 50 条": 50, "最近 200 条（默认）": 200,
+    "最近 500 条": 500, "最近 1000 条": 1000,
+  };
+  const LOG_LABEL: Record<number, string> = {
+    0: "不保留", 50: "最近 50 条", 200: "最近 200 条（默认）",
+    500: "最近 500 条", 1000: "最近 1000 条",
+  };
+  const lgv = Number(cfgValue("gate_log_limit", 200, "global"));
+  kids.push(setRow(R, "d5", "拦截记录",
+    setSelect(R, "sel6", LOG_LABEL[lgv] || "最近 200 条（默认）", LOG_OPTS,
+      (lb: string) => cfgEdit("gate_log_limit", LOG_MAP[lb] ?? 200), false),
+    "用于排查卡住问题；“不保留”= 不记录", "global", scope));
+
+  return kids;
+}
+
+/** 分类「自定义 API」：整卡（参数行 / 必传标记 / 请求预览 / 双模式 / SSRF 防护）。
+ *
+ *  2026-11-23 从「全局配置」页整体搬出 —— 它本就是一块独立能力，
+ *  和通知渠道、超时阈值放在同一个分类里毫无内聚性（boss 反馈的原话是
+ *  「模型页签里既含通知、又含自定义 API、还含基本配置」）。
+ *
+ *  内部逻辑一行未改，只换了容器。它依赖的都是模块级函数
+ *  （apiField/apiFill/apiMissingItems/cfgEdit…），没有局部变量耦合，
+ *  所以可以整体搬迁而不需要重写。
+ */
+function customApiCategory(R: any, scope: string, isSession: boolean): any[] {
+  const bodyKids: any[] = [];
+    const apiMissing = apiMissingItems();
+    const apiDup = apiDupKeys();
+
+    // 卡内小工具：字段（标签 + 控件），复用 .qm-set-schedfield 版式
+    const apiField = (key: string, label: string, ctrl: any, required?: boolean): any =>
+      R.createElement("div", { className: "qm-set-schedfield", key }, [
+        R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" },
+          label,
+          required ? R.createElement("span", { key: "r", className: "qm-apireq" }, "*") : null),
+        ctrl,
+      ]);
+
+    // ── 系统字段区块：title / content 锁定不可删 ──
+    const sysRow = (name: string, desc: string, tag: string) =>
+      R.createElement("div", { className: "qm-apisysrow", key: "sys-" + name }, [
+        R.createElement("span", { key: "n", className: "qm-apisysname" }, name),
+        R.createElement("span", { key: "d", className: "qm-apisysval" }, desc),
+        R.createElement("span", { key: "t", className: "qm-apisystag" }, tag),
+      ]);
+    const sysBlock = R.createElement("div", { className: "qm-apisysblock", key: "sysblock" }, [
+      R.createElement("div", { key: "h", className: "qm-set-schedfieldlabel" },
+        "系统字段（自动携带，不可删除）"),
+      sysRow("title", "{{title}}", "系统必传"),
+      sysRow("content", "{{content}}", "系统必传"),
+      R.createElement("div", { key: "tip", className: "qm-set-apinote",
+        style: { marginTop: 4 } },
+        "另有 {{count}} 题数、{{stamp}} 时间戳、{{token}} 可在参数值中引用。"),
+    ]);
+
+    // ── 参数行 ──
+    const paramRows = apiDemo.params.map((row, i) => {
+      const kBad = !!String(row.key || "").trim() && (!apiKeyValid(row.key) || apiDup.has(i));
+      const vBad = row.required && !String(row.value || "").trim();
+      return R.createElement("div", {
+        key: "prow-" + i,
+        className: "qm-apiparamrow" + (vBad ? " miss" : ""),
+        "data-qm-api-paramrow": String(i),
+      }, [
+        R.createElement("input", {
+          key: "k", type: "text", className: "qm-apipk" + (kBad ? " bad" : ""),
+          value: row.key, placeholder: "参数名",
+          "data-qm-api-paramkey": String(i),
+          title: apiDup.has(i) ? "参数名重复" :
+            (kBad ? "参数名只能包含字母、数字、下划线、点、连字符" : "对方 API 要求的参数名"),
+          onChange: (e: any) => {
+            apiDemo.params[i].key = e && e.target ? String(e.target.value) : "";
+            apiSyncParamsDraft();
+            settingsRenderPanel();
+          },
+        }),
+        R.createElement("input", {
+          key: "v", type: "text", className: "qm-apipv" + (vBad ? " bad" : ""),
+          value: row.value, placeholder: "参数值，可写 {{title}}",
+          "data-qm-api-paramvalue": String(i),
+          title: vBad ? "必传参数不能为空" : "支持 {{title}} {{content}} {{count}} {{stamp}} {{token}}",
+          onChange: (e: any) => {
+            apiDemo.params[i].value = e && e.target ? String(e.target.value) : "";
+            apiSyncParamsDraft();
+            settingsRenderPanel();
+          },
+        }),
+        R.createElement("label", { key: "r", className: "qm-apireqbox",
+          title: "勾选后此项为必传，为空时无法发送" }, [
+          R.createElement("input", {
+            key: "c", type: "checkbox", checked: !!row.required,
+            "data-qm-api-paramreq": String(i),
+            onChange: (e: any) => {
+              apiDemo.params[i].required = !!(e && e.target && e.target.checked);
+              apiSyncParamsDraft();
+              settingsRenderPanel();
+            },
+          }),
+          "必填",
+        ]),
+        R.createElement("button", {
+          key: "d", type: "button", className: "qm-apidel", title: "删除此行",
+          "data-qm-api-paramdel": String(i),
+          onClick: () => {
+            apiDemo.params.splice(i, 1);
+            apiSyncParamsDraft();
+            settingsRenderPanel();
+          },
+        }, "✕"),
+      ]);
+    });
+
+    const paramTable = R.createElement("div", { key: "ptable" }, [
+      R.createElement("div", { key: "head", className: "qm-apiparamhead" }, [
+        R.createElement("span", { key: "k", style: { flex: "0 0 34%" } }, "参数名"),
+        R.createElement("span", { key: "v", style: { flex: "1 1 auto" } }, "参数值"),
+        R.createElement("span", { key: "r", style: { flex: "0 0 44px" } }, "必填"),
+        R.createElement("span", { key: "d", style: { flex: "0 0 24px" } }, ""),
+      ]),
+      ...paramRows,
+      R.createElement("button", {
+        key: "add", type: "button", className: "qm-apiadd",
+        "data-qm-api-paramadd": "1",
+        title: "新增一行自定义参数",
+        onClick: () => {
+          if (apiDemo.params.length >= 20) {
+            toast("warning", "最多 20 个自定义参数");
+            return;
+          }
+          apiDemo.params.push({ key: "", value: "", required: false });
+          apiSyncParamsDraft();
+          settingsRenderPanel();
+        },
+      }, "+ 新增参数行"),
+    ]);
+
+    // ── 请求预览：让用户「看见」最终发出去的 URL 与 body ──
+    // US-021（2026-11-23 boss 需求 2）：URL 也支持 {{...}} 插值，
+    // 典型用法是 Bark/Server酱 这类「消息内容拼在路径里」的服务，例如
+    // https://api.example.com/push/{{title}}/{{content}}
+    // 预览里把占位符替换成示例值，并在路径值上做 encode —— 与后端
+    // _custom_api_build_request 的口径一致（插值值必须 percent-encode，
+    // 否则标题里的空格/斜杠/# 会破坏 URL 结构）。
+    const rawUrl = String(apiDemo.url || "").trim();
+    const previewUrl = rawUrl
+      ? apiFill(rawUrl, Object.fromEntries(
+          Object.entries(API_PREVIEW_VALUES).map(([k, v]) => [k, encodeURIComponent(String(v))]),
+        ))
+      : "（未填请求地址）";
+    const urlHasPlaceholder = /\{\{\s*(title|content|count|stamp|token)\s*\}\}/.test(rawUrl);
+    let previewBody = "";
+    if (apiDemo.mode === "advanced") {
+      previewBody = apiFill(String(apiDemo.bodyTpl || ""), API_PREVIEW_VALUES)
+        || "（高级模式未填写 body 模板）";
+    } else {
+      const obj: Record<string, string> = {
+        title: API_PREVIEW_VALUES.title,
+        content: API_PREVIEW_VALUES.content,
+      };
+      apiDemo.params.forEach((r) => {
+        const k = String(r.key || "").trim();
+        if (k) obj[k] = apiFill(String(r.value || ""), API_PREVIEW_VALUES);
+      });
+      previewBody = JSON.stringify(obj, null, 2);
+    }
+    const previewNode = R.createElement("div", { key: "preview" }, [
+      R.createElement("div", { key: "l1", className: "qm-apipreviewlabel" }, "请求预览"),
+      R.createElement("pre", { key: "u", className: "qm-apipreview",
+        "data-qm-api-preview": "url" },
+        (String(apiDemo.method) === "get_query" ? "GET " : "POST ") + previewUrl),
+      // URL 支持占位符插值时的说明（GET/POST 都适用，boss 需求 2）
+      urlHasPlaceholder
+        ? R.createElement("div", { key: "uptip", className: "qm-set-apinote",
+            style: { marginTop: 2, marginBottom: 4 },
+            "data-qm-api-urlph": "1" },
+            "地址中的占位符已按示例值替换；实际发送时用真实标题/正文（自动 URL 编码）。")
+        : null,
+      String(apiDemo.method) === "get_query" ? null :
+        R.createElement("pre", { key: "b", className: "qm-apipreview",
+          "data-qm-api-preview": "body" }, previewBody),
+    ]);
+
+    // ── 顶部汇总条：必传缺口一眼可见 ──
+    const statusNode = R.createElement("div", {
+      key: "status",
+      className: "qm-apistatus " + (apiMissing.length ? "miss" : "ok"),
+      "data-qm-api-status": apiMissing.length ? "missing" : "ok",
+    }, [
+      R.createElement("span", { key: "i" }, apiMissing.length ? "⚠" : "✓"),
+      R.createElement("span", { key: "t" },
+        apiMissing.length
+          ? "还缺 " + apiMissing.length + " 项必传参数：" + apiMissing.join("、")
+          : "必传项已填齐，可以测试发送"),
+    ]);
+
+    // ── 发送测试：必传未齐时置灰并说明缺什么 ──
+    const canTest = apiMissing.length === 0 && !!String(apiDemo.url || "").trim();
+    const testNode = R.createElement("div", { key: "foot", className: "qm-set-apifoot",
+      style: { flexDirection: "column", alignItems: "stretch", gap: 6 } }, [
+      R.createElement("div", { key: "btnrow",
+        style: { display: "flex", gap: 8, justifyContent: "flex-end" } }, [
+        R.createElement("button", {
+          key: "test", type: "button",
+          className: "qm-set-apitest",
+          "data-qm-api-test": "1",
+          disabled: !canTest,
+          style: canTest ? undefined : { opacity: 0.45, cursor: "not-allowed" },
+          title: canTest ? "按当前配置真实发送一次"
+            : ("还缺：" + apiMissing.join("、")),
+          onClick: () => {
+            if (!canTest) return;
+            apiTestResult = { ok: true, text: "正在发送…" };
+            settingsRenderPanel();
+            void (async () => {
+              try {
+                // 先把本卡的草稿提交，再调测试接口 —— 否则测的是旧配置。
+                await cfgSave();
+                const resp = await fetch(apiUrl("/question-modal/notify/test"), {
+                  method: "POST",
+                  headers: authHeaders(),
+                  body: JSON.stringify({ channel: "custom_api" }),
+                });
+                const r: any = await resp.json();
+                const ok = !!(r && (r.ok || r.delivered));
+                let txt = "";
+                if (ok) {
+                  txt = "发送成功" + (r && r.http ? "（HTTP " + r.http + "）" : "") +
+                    (r && r.elapsed_ms !== undefined ? " · " + r.elapsed_ms + "ms" : "");
+                } else {
+                  txt = "发送失败：" + ((r && (r.reason || r.error)) || "未知原因");
+                }
+                apiTestResult = { ok, text: txt };
+              } catch (err: any) {
+                apiTestResult = { ok: false, text: "发送失败：" + (err && err.message || err) };
+              }
+              settingsRenderPanel();
+            })();
+          },
+        }, "发送测试"),
+      ]),
+      apiTestResult
+        ? R.createElement("div", {
+            key: "res",
+            className: "qm-apitestres " + (apiTestResult.ok ? "ok" : "err"),
+            "data-qm-api-testresult": apiTestResult.ok ? "ok" : "err",
+          }, apiTestResult.text)
+        : null,
+    ]);
+
+    bodyKids.push(R.createElement("div", {
+      className: "qm-set-schedcard qm-set-apicard", key: "apicard",
+      "data-qm-api-card": "1",
+    }, [
+      // 顶行：标题 + 徽标 + 启用开关
+      R.createElement("div", { className: "qm-set-schedhead", key: "h" }, [
+        R.createElement("span", { key: "t", className: "qm-set-apititle" },
+          "自定义 API 通知",
+          R.createElement("span", { key: "badge", className: "qm-set-apibadge" }, "自定义渠道")),
+        R.createElement("button", {
+          type: "button", key: "sw", role: "switch",
+          className: "qm-set-apiswitch" + (apiDemo.enabled ? " on" : ""),
+          "data-qm-api-switch": "1",
+          "aria-checked": apiDemo.enabled ? "true" : "false",
+          title: apiDemo.enabled ? "已启用" : "已停用",
+          onClick: () => {
+            apiDemo.enabled = !apiDemo.enabled;
+            cfgEdit("custom_api_enabled", apiDemo.enabled);
+            settingsRenderPanel();
+          },
+        }, R.createElement("span", { className: "qm-set-apiswitchdot", key: "dot" })),
+      ]),
+      // 图例：必传星号说明（boss 核心诉求的可视化入口）
+      R.createElement("div", { key: "legend", className: "qm-apilegend",
+        "data-qm-api-legend": "1" },
+        "标 ",
+        R.createElement("span", { key: "s", className: "qm-apireq" }, "*"),
+        " 为必传项，未填写时无法发送测试。"),
+      statusNode,
+      // URL
+      apiField("furl", "请求地址", R.createElement("input", {
+        key: "url", type: "text", className: "qm-set-input",
+        value: apiDemo.url,
+        // 提示可写占位符：GET/POST 都支持（boss 2026-11-23 需求 2）
+        placeholder: "https://api.example.com/hook 或 …/{{title}}/{{content}}",
+        "data-qm-api-url": "1",
+        onChange: (e: any) => {
+          apiDemo.url = e && e.target ? String(e.target.value) : "";
+          cfgEdit("custom_api_url", apiDemo.url);
+          settingsRenderPanel();
+        },
+      }), true),
+      // 请求方法 + Token 位置
+      R.createElement("div", { className: "qm-set-schedgrid", key: "g" }, [
+        apiField("fmethod", "请求方法", R.createElement("select", {
+          key: "method", className: "qm-set-native", value: apiDemo.method,
+          "data-qm-api-method": "1",
+          onChange: (e: any) => {
+            apiDemo.method = e && e.target ? String(e.target.value) : "post_json";
+            cfgEdit("custom_api_method", apiDemo.method);
+            settingsRenderPanel();
+          },
+        }, [
+          R.createElement("option", { key: "p", value: "post_json" }, "POST（JSON）"),
+          R.createElement("option", { key: "g", value: "get_query" }, "GET（query 传参）"),
+        ])),
+        apiField("ftpos", "Token 位置（可选）", R.createElement("select", {
+          key: "tp", className: "qm-set-native", value: apiDemo.tokenPos,
+          "data-qm-api-tokenpos": "1",
+          onChange: (e: any) => {
+            apiDemo.tokenPos = e && e.target ? String(e.target.value) : "none";
+            cfgEdit("custom_api_token_pos", apiDemo.tokenPos);
+            settingsRenderPanel();
+          },
+        }, [
+          R.createElement("option", { key: "n", value: "none" }, "不携带 token"),
+          R.createElement("option", { key: "b", value: "bearer" }, "Authorization: Bearer 头"),
+          R.createElement("option", { key: "q", value: "query" }, "query 参数 token=…"),
+        ])),
+      ]),
+      // Token
+      apiField("ftoken",
+        apiDemo.tokenSet ? "Token（已设置，留空则不修改）" : "Token（可选）",
+        R.createElement("input", {
+          key: "tk", type: "password", className: "qm-set-input",
+          value: apiDemo.token,
+          placeholder: apiDemo.tokenSet ? "已保存，留空则不修改" : "选填",
+          "data-qm-api-token": "1",
+          onChange: (e: any) => {
+            apiDemo.token = e && e.target ? String(e.target.value) : "";
+            if (apiDemo.token) cfgEdit("custom_api_token", apiDemo.token);
+            settingsRenderPanel();
+          },
+        })),
+      // 高级模式开关
+      R.createElement("div", { key: "advrow", className: "qm-apiadvrow" }, [
+        R.createElement("label", { key: "l", style: { display: "inline-flex",
+          alignItems: "center", gap: 4, cursor: "pointer" } }, [
+          R.createElement("input", {
+            key: "c", type: "checkbox", checked: apiDemo.mode === "advanced",
+            "data-qm-api-advmode": "1",
+            onChange: (e: any) => {
+              apiDemo.mode = (e && e.target && e.target.checked) ? "advanced" : "basic";
+              cfgEdit("custom_api_mode", apiDemo.mode);
+              settingsRenderPanel();
+            },
+          }),
+          "高级模式（自己写完整 body 模板）",
+        ]),
+      ]),
+      apiDemo.mode === "advanced"
+        ? apiField("fbody", "body 模板", R.createElement("textarea", {
+            key: "bd", className: "qm-apibody" + (apiMissing.indexOf("body 模板") >= 0 ? " bad" : ""),
+            value: apiDemo.bodyTpl,
+            placeholder: '{"msgtype":"text","text":{"content":"{{content}}"}}',
+            "data-qm-api-body": "1",
+            onChange: (e: any) => {
+              apiDemo.bodyTpl = e && e.target ? String(e.target.value) : "";
+              cfgEdit("custom_api_body", apiDemo.bodyTpl);
+              settingsRenderPanel();
+            },
+          }), true)
+        : null,
+      // 系统字段（锁） + 自定义参数行（仅基础模式显示参数表）
+      sysBlock,
+      apiDemo.mode === "advanced" ? null : paramTable,
+      previewNode,
+      testNode,
+    ]));
+  return bodyKids;
+}
 function settingsTabBody(
-  R: any, tab: string, activeScope?: string, sessData?: any,
+  R: any, tabIn: string, activeScope?: string, sessData?: any,
   opts?: { modelOptions?: string[]; templateOptions?: string[]; providerGroups?: ProviderGroup[] },
 ): any {
+  // 2026-11-23：页签归一需要就地改写页签名，故复制到可变变量。
+  // 入参保持 `tabIn` 不改名，避免影响任何按名引用它的调试/报错信息。
+  let tab = tabIn;
   const bodyKids: any[] = [];
   const scope = activeScope === "session" ? "session" : "global";
   const isSession = scope === "session";
@@ -9506,51 +11758,135 @@ function settingsTabBody(
   // ═══════════════════ 当前会话 ═══════════════════
   // Only the four overridable keys.  Inherited values are SHOWN (so the page is
   // never blank) and editing one creates the override for this chat.
+  // ══════════════════════════════════════════════════════════════════
+  // 页签归一（2026-11-23 架构重构，最小侵入版）
+  // ══════════════════════════════════════════════════════════════════
+  //
+  // 顶层页签从 6 个收敛为 3 个（时间策略 / 运行参数 / 问卷清理）。
+  //
+  // 关键约束：**旧分支一律保留、不改一行**。它们内部逻辑经过多轮实测，
+  // 直接改写风险远大于收益。做法是把旧页签名「折」成新的 (tab, sub) 组合：
+  //
+  //     session / default  →  run · default     （两页合并 = 统一配置）
+  //     global             →  run · model       （全局行为项）
+  //     prompt             →  run · prompt      （模板库）
+  //
+  // 于是 `tab` 变量在进入旧分支前已被替换为折后值，旧分支里
+  // `tab === "session"` 之类的判断自然不再命中 —— 取而代之的是下面
+  // 新增的 `run · <sub>` 分支，它们复用同一批渲染原语与渲染器。
+  //
+  // 为什么用 let 而不是新变量：旧分支遍布整个函数体（约 1100 行），
+  // 逐个改名等于重写；就地改写入参变量的值是最小改动面。
+  // subKey 归一：已废弃的分类 key（model）必须映射到新 key。
+  // 否则 settingsState.runSub 里残留的旧值会让用户落在一个不存在的分类上
+  // 看到空白（与 tab 归一是同一个道理：绝不静默落到无效值）。
+  const rawSub = settingsState.runSub || "default";
+  const subKey = RUN_SUB_ALIAS[rawSub] || rawSub;
+  if (tab === "session" || tab === "default") {
+    tab = "run";
+  } else if (tab === "global") {
+    tab = "run";
+  } else if (tab === "prompt") {
+    tab = "run";
+  }
+
+  // 运行参数的子页签条（只在 run 页签渲染）。
+  if (tab === "run") {
+    bodyKids.push(R.createElement("div", {
+      className: "qm-set-subtabs", key: "subtabs", "data-qm-runs-sub": subKey,
+    }, RUN_SUBTABS.map((s, i) => {
+      const n = s.key === "param-sets" ? settingsState.libs.paramSets.length
+        : s.key === "notify-profiles" ? settingsState.libs.notifyProfiles.length
+        : s.key === "prompt" ? settingsState.templates.length
+        : 0;
+      const kids: any[] = [s.label];
+      if (n) kids.push(R.createElement("span", { key: "n", className: "n" }, String(n)));
+      return R.createElement("button", {
+        key: "st" + i, type: "button",
+        className: "qm-set-subtab" + (subKey === s.key ? " qm-set-subtabon" : ""),
+        "data-qm-runs-sub-btn": s.key,
+        onClick: () => { settingsState.runSub = s.key; settingsRenderPanel(); },
+      }, kids);
+    })));
+  }
+
+  // ═══════════════════ 时间策略（新）═══════════════════
+  if (tab === "schedule") {
+    bodyKids.push(...tsTabBody(R));
+    return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
+  }
+  // ═══════════════════ 运行参数 › 问卷参数组（新）═══════════════════
+  if (tab === "run" && subKey === "param-sets") {
+    bodyKids.push(...paramSetsBody(R, { groups, tplChoices, tplOpts }));
+    return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
+  }
+  // ═══════════════════ 运行参数 › 通知配置（新）═══════════════════
+  if (tab === "run" && subKey === "notify-profiles") {
+    bodyKids.push(...notifyProfilesBody(R));
+    return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
+  }
+  // ═══════════════════ 运行参数 › 默认参数 ═══════════════════
+  //
+  // 落到这里说明 sub=default：继续走下面的旧 `default` 分支逻辑？
+  // 不行 —— 旧分支已被折掉。这里直接渲染，复用 MODE_ROWS_DEFAULT
+  // 定义表（读全局作用域），与旧默认页逐项等价。
+  if (tab === "run" && subKey === "default") {
+    bodyKids.push(R.createElement("div", {
+      className: "qm-set-schednote", key: "notedef", "data-qm-runs-note": "default",
+    }, [
+      R.createElement("div", { key: "t", className: "qm-set-schednotetitle" },
+        "默认参数的生效时机"),
+      R.createElement("div", { key: "d", className: "qm-set-schednotedesc" },
+        "所有时间策略都未命中时使用这份参数。它是全局唯一的一份配置，"
+        + "对全部会话生效（不再区分会话级与默认级）。"),
+    ]));
+    const defMode2 = String(cfgValue("mode", "manual", "global"));
+    bodyKids.push(...renderSettingRows(R, MODE_ROWS_DEFAULT, {
+      scope, currentMode: defMode2,
+      modeLabel: MODE_LABEL, modeByLabel: MODE_BY_LABEL,
+      groups, tplChoices, tplOpts,
+      explicitEmptyModel: cfgExplicitEmpty("model_id"),
+      edit: cfgEdit,
+    }));
+    return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
+  }
+  // ═══════════════════ 运行参数 › 自定义 API（新，2026-11-23 拆分）═══════════════════
+  //
+  // 原来它藏在「模型」分类里。自定义 API 是一整块独立能力（参数行 /
+  // 必传标记 / 请求预览 / 双模式 / SSRF 防护），与通知渠道、超时阈值
+  // 没有任何内聚性，所以单独成类。
+  if (tab === "run" && subKey === "custom-api") {
+    bodyKids.push(...customApiCategory(R, scope, isSession));
+    return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
+  }
+  // ═══════════════════ 运行参数 › 行为参数（新，2026-11-23 拆分）═══════════════════
+  if (tab === "run" && subKey === "behavior") {
+    bodyKids.push(...behaviorCategory(R, scope));
+    return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
+  }
+  // ═══════════════════ 运行参数 › 提示词 ═══════════════════
+  //
+  // 通过临时把 tab 改回旧键复用既有分支 —— 模板编辑器（含未受控输入、
+  // 内建模板只读等细节）体量大且刚验证过，重写不划算。
+  if (tab === "run" && subKey === "prompt") {
+    tab = "prompt";
+  }
+
   if (tab === "session") {
-    // 2026-11-13 用户澄清后的最终规则（q1 澄清问卷）：
-    //   「自动分析」「人工」→ 显示 默认模型 / 提示词模板 / 携带上下文 / 并行分析各题
-    //   「只用推荐」        → 隐藏上述 4 行（该模式零模型调用，四项都无关）
-    // 两页各按自己的答题模式值判断；cfgValue 优先读 draft，点分段按钮即刻显隐。
+    // US-023（2026-11-23）：这 5 行原先与「默认模式」页各写一份，现改为
+    // 共用 MODE_ROWS_SESSION 定义表 + renderSettingRows 渲染器。
+    // 显隐规则不变（2026-11-13 q1 澄清）：「只用推荐」隐藏 4 行分析项。
+    // 说明文字保持不变；模型行的三态来源说明（跟随中/显式设空）由渲染器
+    // 依据 explicitEmptyModel 动态给出，与原实现等价。
     const sessMode = String(cfgValue("mode", "manual"));
-    const showAnalysisRows = sessMode !== "recommend";
-    bodyKids.push(setRow(R, "s1", "答题模式",
-      setSeg(R, "g1", ["自动分析", "只用推荐", "人工"],
-        MODE_LABEL[String(cfgValue("mode", "manual"))] || "人工",
-        (lb) => cfgEdit("mode", MODE_BY_LABEL[lb] || "manual")),
-      "本会话的问卷默认用哪种方式推进", "session", scope));
+    bodyKids.push(...renderSettingRows(R, MODE_ROWS_SESSION, {
+      scope, currentMode: sessMode,
+      modeLabel: MODE_LABEL, modeByLabel: MODE_BY_LABEL,
+      groups, tplChoices, tplOpts,
+      explicitEmptyModel: cfgExplicitEmpty("model_id"),
+      edit: cfgEdit,
+    }));
 
-    if (showAnalysisRows) {
-    bodyKids.push(setRow(R, "s2", "默认模型",
-      setModelPicker(R, "sel2", String(cfgValue("model_id", "")),
-        groups, (v) => cfgEdit("model_id", v)),
-      // 三态来源说明（与卡片胶囊共用同一份服务端标记，不会各说各话）：
-      //   跟随中   → 指明跟的是"本会话"的对话模型
-      //   显式设空 → 如实说你清掉了它
-      //   其余     → 正常说明
-      cfgExplicitEmpty("model_id")
-        ? "已显式设为空（本会话不指定模型）"
-        : "自动读取当前对话模型；改动即自动切换",
-      "session", scope, true));
-
-    const curTplId = String(cfgValue("template_id", "")) || (tplChoices[0] && tplChoices[0].value) || "";
-    bodyKids.push(setRow(R, "s3", "提示词模板",
-      tplChoices.length
-        ? setSelect(R, "sel3", curTplId, tplChoices,
-            (v) => cfgEdit("template_id", v))
-        : setSelect(R, "sel3", "默认六步思维链"),
-      tplChoices.length ? "自动分析模式下将调用提示词并自动分析" : "模板库未加载，暂不可选",
-      "session", scope));
-
-    bodyKids.push(setRow(R, "s4", "携带上下文",
-      setSwitch(R, "s4sw", !!cfgValue("with_context", false),
-        (v) => cfgEdit("with_context", v)),
-      "附带上次决策与会话历史", "session", scope));
-
-    bodyKids.push(setRow(R, "s5", "并行分析各题",
-      setSwitch(R, "s5sw", !!cfgValue("parallel", false),
-        (v) => cfgEdit("parallel", v)),
-      "逐题并发调用模型，更快，但更耗额度。", "session", scope));
-    }
 
     // sesshint 说明文字已按用户裁定移除（2026-11-04）。
     // 「清空本会话覆盖」按钮已按用户裁定移除（2026-11-12）：右上角作用域
@@ -9564,40 +11900,20 @@ function settingsTabBody(
   } else if (tab === "global" || tab === "default") {
     const isDefaultsTab = tab === "default";
     if (isDefaultsTab) {
-    // 2026-11-13 用户裁定：说明去掉「（可被会话覆盖）」，统一用会话模式页原文；
-    // 显隐规则同会话页（q1 澄清）：「只用推荐」隐藏 4 行，其余两模式全显示。
+    // US-023（2026-11-23）：这 5 行原先与「会话模式」页各写一份，现改为
+    // 共用 MODE_ROWS_DEFAULT 定义表 + renderSettingRows 渲染器。两页差异
+    // （行 id / itemScope / 开关 key / 模型行说明 / 读值作用域）全部由定义
+    // 表参数表达，渲染出的 DOM 与原实现逐项等价。
+    // 显隐规则不变（q1 澄清）：「只用推荐」隐藏 4 行分析项。
     const defMode = String(cfgValue("mode", "manual", "global"));
-    const showDefAnalysisRows = defMode !== "recommend";
-    bodyKids.push(setRow(R, "a1", "默认答题模式",
-      setSeg(R, "g1", ["自动分析", "只用推荐", "人工"],
-        MODE_LABEL[String(cfgValue("mode", "manual", "global"))] || "人工",
-        (lb) => cfgEdit("mode", MODE_BY_LABEL[lb] || "manual")),
-      "本会话的问卷默认用哪种方式推进", "both", scope));
+    bodyKids.push(...renderSettingRows(R, MODE_ROWS_DEFAULT, {
+      scope, currentMode: defMode,
+      modeLabel: MODE_LABEL, modeByLabel: MODE_BY_LABEL,
+      groups, tplChoices, tplOpts,
+      explicitEmptyModel: cfgExplicitEmpty("model_id"),
+      edit: cfgEdit,
+    }));
 
-    if (showDefAnalysisRows) {
-    bodyKids.push(setRow(R, "b1", "默认模型",
-      setModelPicker(R, "sel2", String(cfgValue("model_id", "", "global")),
-        groups, (v) => cfgEdit("model_id", v)),
-      "自动读取当前对话模型；改动即自动切换", "both", scope, true));
-
-    bodyKids.push(setRow(R, "b2", "提示词模板",
-      tplChoices.length
-        ? setSelect(R, "sel3", String(cfgValue("template_id", "", "global")) || tplChoices[0].value, tplChoices,
-            (v) => cfgEdit("template_id", v))
-        : setSelect(R, "sel3", "默认六步思维链"),
-      tplChoices.length ? "自动分析模式下将调用提示词并自动分析" : "模板库未加载，暂不可选",
-      "both", scope));
-
-    bodyKids.push(setRow(R, "b3", "携带上下文",
-      setSwitch(R, "s3", !!cfgValue("with_context", false, "global"),
-        (v) => cfgEdit("with_context", v)),
-      "附带上次决策与会话历史", "both", scope));
-
-    bodyKids.push(setRow(R, "b4", "并行分析各题",
-      setSwitch(R, "s4", !!cfgValue("parallel", false, "global"),
-        (v) => cfgEdit("parallel", v)),
-      "逐题并发调用模型，更快，但更耗额度。", "global", scope));
-    }
 
     } else {
     // ── 全局配置页（显示类 + 杂项）──
@@ -9605,143 +11921,10 @@ function settingsTabBody(
     //   不再暴露配置入口（badge_position/left、badge_style/round、
     //   highlight_recommended/off、auto_number_options/on、fallback_title/on）。──
 
-    // ── 行为（2026-11-04：从「默认模式」页迁来 —— 默认模式页只保留与
-    // 「会话模式」页一致的 5 项，多出的全局专属行为归到这里。）──
-    //
-    // 2026-11-14：布尔开关升级为「通知频道」单选 + 测试闸门。
-    // 用户裁定：q6 单选（一次只能选 1 个）；q4 所有频道必须先测试通过才
-    // 允许真正投递；q5 纯全局作用域（不允许会话级覆盖）；q2 不可用频道
-    // 置灰并显示原因。
-    // 双场景两行（2026-11-19 boss 需求：通知不再固定单选）：
-    //   PC 端打开时（可选浏览器/IM）+ 后台运行时（仅 IM）。
-    // 后端按页面心跳自动选场景；测试闸门与结果展示两行各自独立。
-    bodyKids.push(notifyChannelRow(R, scope, "pc", "PC 端打开时提醒频道"));
-    bodyKids.push(notifyChannelRow(R, scope, "bg", "后台运行时提醒频道"));
-
-    // ── 自定义 API 通知配置卡（US-008，纯 UI 占位）──
-    // demo v5 形态：白底卡 + 顶行（标题 +「新增渠道」徽标 + 启用开关）
-    // + URL / 请求方法 / Token 位置 / Token 密码框 / 发送测试按钮。
-    // 卡形态复用 US-007 时段卡的通用类（qm-set-schedcard/schedhead/
-    // schedgrid/schedfield，同出 demo v5 一种卡形态），窄屏单列规则
-    // （640px media 的 .qm-set-schedgrid）随之天然生效，无需另开断点。
-    // 纯占位：开关/输入/测试只改模块级 apiDemo 演示状态并重绘，不调用
-    // 后端、不写 prefs；上方 PC/后台两行的现有逻辑不受影响。
-    const API_METHOD_OPTS: Array<{ value: string; label: string }> = [
-      { value: "post-json", label: "POST（JSON）" },
-      { value: "get-query", label: "GET（query 传参）" },
-    ];
-    const API_TOKENPOS_OPTS: Array<{ value: string; label: string }> = [
-      { value: "bearer", label: "Authorization: Bearer 头" },
-      { value: "query", label: "query 参数 token=…" },
-      { value: "none", label: "不携带 token" },
-    ];
-    const apiField = (key: string, label: string, ctrl: any): any =>
-      R.createElement("div", { className: "qm-set-schedfield", key }, [
-        R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, label),
-        ctrl,
-      ]);
-    bodyKids.push(R.createElement("div", {
-      className: "qm-set-schedcard qm-set-apicard", key: "apicard",
-      "data-qm-api-card": "1",
-    }, [
-      // 顶行：标题 +「新增渠道」徽标 + 启用开关（demo 为开启态）
-      R.createElement("div", { className: "qm-set-schedhead", key: "h" }, [
-        R.createElement("span", { key: "t", className: "qm-set-apititle" },
-          "自定义 API 通知",
-          R.createElement("span", { key: "badge", className: "qm-set-apibadge" }, "新增渠道")),
-        R.createElement("button", {
-          type: "button", key: "sw", role: "switch",
-          className: "qm-set-apiswitch" + (apiDemo.enabled ? " on" : ""),
-          "data-qm-api-switch": "1",
-          "aria-checked": apiDemo.enabled ? "true" : "false",
-          title: apiDemo.enabled
-            ? "已启用（占位演示，本版不会保存）"
-            : "已停用（占位演示，本版不会保存）",
-          onClick: () => { apiDemo.enabled = !apiDemo.enabled; settingsRenderPanel(); },
-        }, R.createElement("span", { className: "qm-set-apiswitchdot", key: "dot" })),
-      ]),
-      // 占位口径说明（防误以为会保存——同 US-007 时段页说明的做法）
-      R.createElement("div", { key: "note", className: "qm-set-apinote" },
-        "自定义 API 渠道为界面预览（本版不接后端，修改不会保存）。"),
-      // URL（占满整行）
-      apiField("furl", "请求地址（URL）", R.createElement("input", {
-        key: "url", type: "text", className: "qm-set-input",
-        value: apiDemo.url, placeholder: "https://…",
-        "data-qm-api-url": "1",
-        onChange: (e: any) => {
-          apiDemo.url = e && e.target ? String(e.target.value) : "";
-          settingsRenderPanel();
-        },
-      })),
-      // 请求方法 + Token 位置（两列网格）
-      R.createElement("div", { className: "qm-set-schedgrid", key: "g" }, [
-        apiField("fmethod", "请求方法", R.createElement("select", {
-          key: "method", className: "qm-set-native", value: apiDemo.method,
-          "data-qm-api-method": "1",
-          onChange: (e: any) => {
-            apiDemo.method = e && e.target ? String(e.target.value) : "post-json";
-            settingsRenderPanel();
-          },
-        }, API_METHOD_OPTS.map((o, i) =>
-          R.createElement("option", { key: "o" + i, value: o.value }, o.label)))),
-        apiField("ftpos", "Token 位置（可选）", R.createElement("select", {
-          key: "tp", className: "qm-set-native", value: apiDemo.tokenPos,
-          "data-qm-api-tokenpos": "1",
-          onChange: (e: any) => {
-            apiDemo.tokenPos = e && e.target ? String(e.target.value) : "bearer";
-            settingsRenderPanel();
-          },
-        }, API_TOKENPOS_OPTS.map((o, i) =>
-          R.createElement("option", { key: "o" + i, value: o.value }, o.label)))),
-      ]),
-      // Token 密码框（type=password 回显打码形态）
-      apiField("ftoken", "Token（可选，保存后回显打码）", R.createElement("input", {
-        key: "tk", type: "password", className: "qm-set-input",
-        value: apiDemo.token, placeholder: "选填",
-        "data-qm-api-token": "1",
-        onChange: (e: any) => {
-          apiDemo.token = e && e.target ? String(e.target.value) : "";
-          settingsRenderPanel();
-        },
-      })),
-      // 发送测试（占位：仅本地 toast，不调用后端）
-      R.createElement("div", { key: "foot", className: "qm-set-apifoot" }, [
-        R.createElement("button", {
-          type: "button", key: "test", className: "qm-set-apitest",
-          "data-qm-api-test": "1",
-          title: "占位演示：本版未接发送逻辑",
-          onClick: () => toast("info", "占位：未接发送逻辑"),
-        }, "发送测试"),
-      ]),
-    ]));
-
-    bodyKids.push(setRow(R, "e6", "单题分析超时",
-      setSelect(R, "sel4", TO_LABEL[Number(cfgValue("model_timeout_sec", 120, "global"))] || "120 秒（默认）",
-        ["30 秒", "60 秒", "120 秒（默认）", "300 秒", "600 秒"],
-        (lb) => cfgEdit("model_timeout_sec", TO_BY_LABEL[lb] ?? 120), false),
-      "超时后该题按未给出推荐处理（后端保护下限 30 秒）", "global", scope));
-
-    // ── 杂项（行为类，归「全局配置」而非诊断：它们是可编辑的全局设置）──
-    bodyKids.push(setRow(R, "d4", "等待提示阈值",
-      setSelect(R, "sel5", WAIT_LABEL[Number(cfgValue("wait_hint_sec", 180, "global"))] || "180 秒（默认）",
-        ["30 秒", "60 秒", "120 秒", "180 秒（默认）", "300 秒", "600 秒"],
-        (lb) => cfgEdit("wait_hint_sec", WAIT_BY_LABEL[lb] ?? 180), false),
-      "超过后提示可释放（保护下限 30 秒）", "global", scope));
-    // d5 是可配置项（后端 gate_log_limit，0 = 不保留记录），此前误标成只读。
-    const LOG_OPTS = ["不保留", "最近 50 条", "最近 200 条（默认）", "最近 500 条", "最近 1000 条"];
-    const LOG_MAP: Record<string, number> = {
-      "不保留": 0, "最近 50 条": 50, "最近 200 条（默认）": 200,
-      "最近 500 条": 500, "最近 1000 条": 1000,
-    };
-    const LOG_LABEL: Record<number, string> = {
-      0: "不保留", 50: "最近 50 条", 200: "最近 200 条（默认）",
-      500: "最近 500 条", 1000: "最近 1000 条",
-    };
-    const lgv = Number(cfgValue("gate_log_limit", 200, "global"));
-    bodyKids.push(setRow(R, "d5", "拦截记录",
-      setSelect(R, "sel6", LOG_LABEL[lgv] || "最近 200 条（默认）", LOG_OPTS,
-        (lb) => cfgEdit("gate_log_limit", LOG_MAP[lb] ?? 200), false),
-      "用于排查卡住问题；“不保留”= 不记录", "global", scope));
+    // 2026-11-23 二次拆分（boss 反馈「模型页签混装」）：
+    // 通知渠道 / 自定义 API / 超时阈值拦截记录 已各自独立成分类
+    // （notify-profiles / custom-api / behavior），本分支不再渲染它们。
+    // 保留这个空壳是为了让旧 'global' 页签键仍然有地方落，而不是白屏。
     }   // ── end else（全局配置页内容）──
 
   // ═══════════════════ 提示词 ═══════════════════
@@ -9871,130 +12054,13 @@ function settingsTabBody(
       ]));
     }
 
-  } else if (tab === "schedule") {
-    // ═══════════════ 时段调度（US-007，纯 UI 占位）═══════════════
-    // 本版只做界面展示：说明文案 + 两组示例时段卡 + 「添加时段」入口。
-    // 修改/添加/删除仅作用于 schedDemoItems 本地演示状态，不写 prefs、
-    // 不调用后端、不影响任何现有配置项；「按配置顺序匹配 / 跨零点 /
-    // 未命中回落会话或默认模式」的生效逻辑属后续版本（读时计算）。
-    const SCHED_MODE_OPTS: Array<{ value: string; label: string }> = [
-      { value: "ai", label: "自动执行" },
-      { value: "recommend", label: "只用推荐" },
-      { value: "manual", label: "人工作答" },
-    ];
-    // 渠道选项与「通知方式」页同一来源（settingsState.notifyChannels），
-    // 首项固定「跟随全局」（value=""，仅作展示，本版不落盘）。
-    // bg 场景过滤 browser：页面不在时浏览器通知必然无效（与通知页同口径）。
-    const schedChanOptions = (scene: "pc" | "bg"): Array<{ value: string; label: string }> => {
-      const list = ((settingsState as any).notifyChannels || [])
-        .filter((c: any) => scene !== "bg" || String(c.channel) !== "browser")
-        .map((c: any) => ({
-          value: String(c.channel || ""),
-          label: String(c.label || c.channel || ""),
-        }));
-      return [{ value: "", label: "跟随全局" }].concat(list);
-    };
-    const schedSetField = (idx: number, field: string, v: string) => {
-      const it = schedDemoItems[idx];
-      if (!it) return;
-      (it as any)[field] = v;
-      settingsRenderPanel();
-    };
-    const renderSchedCard = (it: SchedDemoItem, idx: number): any => {
-      const timeInput = (field: "start" | "end", val: string, dataAttr: string): any => {
-        const p: any = {
-          type: "time", key: field, value: val,
-          style: { flex: "1 1 auto", minWidth: 0 },
-          onChange: (e: any) => schedSetField(idx, field,
-            e && e.target ? String(e.target.value) : ""),
-        };
-        p["data-qm-sched-" + dataAttr] = String(idx);
-        return R.createElement("input", p);
-      };
-      const schedSel = (field: string, val: string, dataAttr: string,
-                        opts: Array<{ value: string; label: string }>): any => {
-        const p: any = {
-          key: field, className: "qm-set-native", value: val,
-          onChange: (e: any) => schedSetField(idx, field,
-            e && e.target ? String(e.target.value) : ""),
-        };
-        p["data-qm-sched-" + dataAttr] = String(idx);
-        return R.createElement("select", p, opts.map((o, i) =>
-          R.createElement("option", { key: "o" + i, value: o.value }, o.label)));
-      };
-      return R.createElement("div", {
-        className: "qm-set-schedcard", key: "sc" + idx,
-        "data-qm-sched-card": String(idx),
-      }, [
-        // 顶行：名称 + 删除按钮
-        R.createElement("div", { className: "qm-set-schedhead", key: "h" }, [
-          R.createElement("input", {
-            key: "name", className: "qm-set-input qm-set-schedname",
-            value: it.name, placeholder: "时段名称（如：工作时段）",
-            "data-qm-sched-name": String(idx),
-            onChange: (e: any) => schedSetField(idx, "name",
-              e && e.target ? String(e.target.value) : ""),
-          }),
-          R.createElement("button", {
-            type: "button", key: "del", className: "qm-set-scheddel",
-            "data-qm-sched-del": String(idx),
-            title: "删除该时段（仅演示，不影响真实配置）",
-            onClick: () => { schedDemoItems.splice(idx, 1); settingsRenderPanel(); },
-          }, "删除"),
-        ]),
-        // 中部网格：起止时间 / 答题方式 / PC 端渠道 / 后台渠道
-        R.createElement("div", { className: "qm-set-schedgrid", key: "g" }, [
-          R.createElement("div", { className: "qm-set-schedfield", key: "ftime" }, [
-            R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, "生效时间"),
-            R.createElement("div", { className: "qm-set-schedtime", key: "t" }, [
-              timeInput("start", it.start, "start"),
-              R.createElement("span", { key: "sep", className: "qm-set-schedtimesep" }, "至"),
-              timeInput("end", it.end, "end"),
-            ]),
-          ]),
-          R.createElement("div", { className: "qm-set-schedfield", key: "fmode" }, [
-            R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, "答题方式"),
-            schedSel("mode", it.mode, "mode", SCHED_MODE_OPTS),
-          ]),
-          R.createElement("div", { className: "qm-set-schedfield", key: "fpc" }, [
-            R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, "PC 端通知渠道"),
-            schedSel("chPc", it.chPc, "pc", schedChanOptions("pc")),
-          ]),
-          R.createElement("div", { className: "qm-set-schedfield", key: "fbg" }, [
-            R.createElement("span", { className: "qm-set-schedfieldlabel", key: "l" }, "后台通知渠道"),
-            schedSel("chBg", it.chBg, "bg", schedChanOptions("bg")),
-          ]),
-        ]),
-      ]);
-    };
-    // 说明文案（AC：按配置顺序匹配、支持跨零点、未命中回落会话/默认模式）
-    bodyKids.push(R.createElement("div", {
-      className: "qm-set-schednote", key: "schednote", "data-qm-sched-note": "1",
-    }, [
-      R.createElement("div", { key: "t", className: "qm-set-schednotetitle" },
-        "按时段为问卷自动切换执行方式与通知渠道："),
-      R.createElement("div", { key: "d", className: "qm-set-schednotedesc" },
-        "多个时段按配置顺序匹配，命中第一个即生效；起止时间支持跨零点"
-        + "（如 22:00 → 次日 06:00）；没有任何时段命中时，回落到当前会话 / 默认模式的配置。"),
-      R.createElement("div", { key: "demo", className: "qm-set-schednotedemo" },
-        "以下为界面预览（示例数据，本版不接后端，修改不会保存）。"),
-    ]));
-    // 示例时段卡列表
-    bodyKids.push(R.createElement("div", {
-      className: "qm-set-schedlist", key: "schedlist", "data-qm-sched-list": "1",
-    }, schedDemoItems.map((it: SchedDemoItem, idx: number) => renderSchedCard(it, idx))));
-    // 「添加时段」：push 一条空白卡（仅演示状态）
-    bodyKids.push(R.createElement("button", {
-      type: "button", key: "schedadd",
-      className: "qm-set-btn qm-set-btnnew qm-set-schedadd",
-      "data-qm-sched-add": "1",
-      title: "添加一组时段（仅演示，不会保存）",
-      onClick: () => {
-        schedDemoItems.push({ name: "", start: "", end: "", mode: "ai", chPc: "", chBg: "" });
-        settingsRenderPanel();
-      },
-    }, "＋ 添加时段"));
-
+  // ── 旧「时段调度」演示分支已删除（2026-11-23）──
+  //
+  // US-007 的实现是**纯 UI 演示**（示例数据、不接后端、不落盘），
+  // 页面底部还明写「本版不接后端，修改不会保存」。时间策略上线后
+  // 它在前面就被新分支 return 掉了，永远走不到 —— 属死代码。
+  // 按「别留假代码」纪律整段删除，而不是留着装作还能用。
+  // 相关样式（.qm-set-sched*）保留：通知/API 分类仍在复用其中一部分。
   } else if (tab === "stale") {
     // ═══════════════ 挂起清理（2026-11-15 新增）═══════════════
     //
@@ -10484,27 +12550,39 @@ function SettingsPanel(props: {
   // 来显示，而它是跨会话共享的全局 localStorage 键 —— 在会话2 点「默认模式」
   // 就会让会话1 也显示默认模式（数据没错，标签骗人）。
   // 现在胶囊只回答一个问题：**这个会话实际按哪套配置在跑**。
-  const hasSess = !!(props.cfg && (props.cfg as any).has_session);
-  const currentScope = hasSess ? "session" : "default";
-  const runtimeLabel = hasSess ? "会话模式" : "默认模式";
-  // 「当前模式：」前缀放在胶囊**外面**（2026-11-13 用户裁定）：
-  // 胶囊内只保留「会话模式」/「默认模式」四个字，语义标签独立成一个
-  // 普通文本节点，避免把说明性文字也算进"状态值"里。
+  // ── 右上角状态胶囊（2026-11-23 架构重构后重定义）─────────────────
+  //
+  // ⚠️ 原实现显示旧的「当前模式」胶囊（会话模式/默认模式）——那是**会话层时代的产物**。
+  // 会话层已整体下线（boss 裁定「全部采用统一的配置」），此时再显示
+  // 「默认模式」会让用户以为还存在"默认 vs 会话"两套配置在切换，
+  // 而实际只有一套。属于**旧文案暗示已不存在的功能**，必须改掉。
+  //
+  // 新语义：胶囊只回答「此刻按哪条时间策略在跑」——
+  //   命中策略 → 显示策略名（如「夜间值守」）
+  //   未命中   → 显示「默认参数」
+  // 这与页面顶部的「此刻生效」横条同源（都用后端算好的 __schedule__），
+  // 不自己再匹配一遍时段。
+  const activeSched = (props.cfg && (props.cfg as any).schedule) || null;
+  const schedLabel = activeSched && activeSched.name
+    ? String(activeSched.name) : "默认参数";
+  const runtimeScope = activeSched ? "schedule" : "default";
   const runtimeWrap = R.createElement("div", {
     className: "qm-set-runtime-wrap", key: "rtw",
     "data-qm-runtime-wrap": "1",
-    title: "本会话实际生效的配置层（有会话覆盖→会话模式，无→默认模式）",
+    title: activeSched
+      ? ("当前命中时间策略：" + schedLabel)
+      : "当前未命中任何时间策略，使用默认参数",
   }, [
     R.createElement("span", {
       className: "qm-set-runtime-label", key: "rtl",
-    }, "当前模式："),
+    }, "当前生效："),
     // 纯展示元素（div 而非 button）：不可点、无 onClick、无 hover。
     // 用 div 而不是 disabled button，避免被当成"禁用控件"而显得可点。
     R.createElement("div", {
       className: "qm-set-runtime", key: "rt",
-      "data-qm-runtime": currentScope,
-      "data-qm-scope-badge": currentScope,
-    }, runtimeLabel),
+      "data-qm-runtime": runtimeScope,
+      "data-qm-scope-badge": runtimeScope,
+    }, schedLabel),
   ]);
   // ── 右上角关闭按钮（boss 2026-11-15 需求 2）──────────────────────
   // 头部行内独立按钮，点击走 onClose，未保存修改的确认逻辑保持不变。
@@ -10580,36 +12658,40 @@ function SettingsPanel(props: {
   // 布局：左侧 = 未保存提示 + 保存目标说明；右下角 = 取消 + 保存（高亮）。
   // 「还原」按钮移除（易误点）；「取消」= 丢弃本次未保存的修改（不关闭面板）。
   const dirty = props.dirtyCount || 0;
-  // ── 保存目标说明（2026-11-13 用户裁定：原文案有歧义）──────────────────
+  // ── 保存目标说明（2026-11-23 架构重构后重写）──────────────────────
   //
-  // 原文「保存到会话模式（覆盖全局默认，仅本会话）」有两处会被误读：
-  //   ① 「覆盖全局默认」→ 读成"把全局默认值改掉了"，实际全局一点没动
-  //   ② D1 之后会话层也不再"覆盖整份配置"，只覆盖**用户改过的那几项**，
-  //      其余仍跟随全局 —— 说"覆盖全局默认"与事实不符
+  // ⚠️ 原文案建立在**已下线的会话层模型**上：
+  //   · 「保存到本会话（只覆盖你改过的项，不改全局）」
+  //   · 「保存为全局默认（对未设会话的会话生效）」
+  //   · 「时段调度为界面预览（本版不保存）」← 这句最误导：时间策略
+  //      现在**是真的落盘生效**，还说"不保存"等于向用户提供错误信息。
   //
-  // 默认模式那句同理：D1 之后全局值只对**没有会话覆盖**的会话生效，
-  // 已经设过会话覆盖的会话不受影响，所以"对所有会话生效"也过头了。
+  // 重构后只有一套配置，保存目标按**页签性质**说事实即可：
+  //   · 时间策略 / 问卷参数组 / 通知配置 → 保存的是库条目，不是 prefs
+  //   · 默认参数 / 行为参数 → 保存到全局基础配置
+  //   · 提示词 → 保存模板库
   //
-  // 两句统一改成"说清作用范围 + 是否影响全局"的写法，与真实行为一致。
-  //
-  // 2026-11-14 追加：全局配置页 / 提示词页保存**不改运行模式**，原先这里
-  // 用 scope 二选一，会把这两页也标成「保存为全局默认」——容易被读成
-  // "保存就会切到默认模式"。按页签再分出一句只说事实的文案。
+  // 判据用「实际会写到哪」而不是「用户在哪个页签」，避免文案与行为脱节。
   const activeTabForFoot = String(props.tab || "");
-  const isModeTabFoot = activeTabForFoot === "session" || activeTabForFoot === "default";
+  const subForFoot = String(settingsState.runSub || "default");
   let targetLabel: string;
   if (activeTabForFoot === "schedule") {
-    // US-007：时段调度页为本版 UI 预览，时段数据不落盘；
-    // 底部保存按钮仍可用（只固化其它页签的全局草稿），但与本页无关。
-    targetLabel = "时段调度为界面预览（本版不保存，现有配置不受影响）";
-  } else if (!isModeTabFoot) {
-    targetLabel = activeTabForFoot === "prompt"
-      ? "保存提示词模板（对所有模式生效，不改运行模式）"
-      : "保存全局配置（对所有模式生效，不改运行模式）";
+    targetLabel = "时间策略与参数库是即时保存的（每次「完成」立即生效，无需点这里）";
+  } else if (activeTabForFoot === "run" && subForFoot === "param-sets") {
+    targetLabel = "问卷参数组即时保存；此按钮用于保存下方的全局基础配置改动";
+  } else if (activeTabForFoot === "run" && subForFoot === "notify-profiles") {
+    targetLabel = "通知配置即时保存；通知渠道改动需点此保存";
+  } else if (activeTabForFoot === "run" && subForFoot === "prompt") {
+    targetLabel = "保存提示词模板（模板库对全部会话共享，不改运行模式）";
+  } else if (activeTabForFoot === "run" && subForFoot === "custom-api") {
+    targetLabel = "自定义 API 配置属于全局基础配置，改动据此按钮保存后生效";
+  } else if (activeTabForFoot === "run" && subForFoot === "behavior") {
+    targetLabel = "这些行为参数属于全局基础配置，对全部会话统一生效";
+  } else if (activeTabForFoot === "run") {
+    targetLabel = "保存到全局基础配置（所有会话共用同一份，改动立即对全部会话生效）";
   } else {
-    targetLabel = scope === "session"
-      ? "保存到本会话（只覆盖你改过的项，不改全局）"
-      : "保存为全局默认（对未设会话的会话生效）";
+    // 兜底：未知页签也要给一句真实的说明，不能让用户看到错的话
+    targetLabel = "保存当前页签的改动";
   }
   const foot = R.createElement("div", { className: "qm-set-foot", key: "foot" }, [
     R.createElement("div", { className: "qm-set-footleft", key: "fl" }, [
@@ -10636,14 +12718,20 @@ function SettingsPanel(props: {
             onClick: () => { cfgDiscard(); settingsRenderPanel(); },
           }, "撤销")
         : null,
-      R.createElement("button", {
-        key: "save", type: "button",
-        className: "qm-set-btn qm-set-btnprimary", "data-qm-save": "1",
-        // 保存始终可点（用户裁定 2026-11-12）：即使无未保存修改，也允许
-        // 把当前值固化到目标作用域；只有请求进行中才禁用。
-        disabled: !!props.saving,
-        onClick: () => { void cfgSave(); },
-      }, props.saving ? "保存中…" : "保存"),
+      // 保存按钮在「时间策略」页隐藏（2026-11-23）：
+      // 该页所有写操作都是即时的（策略/参数组/通知配置各自走 CRUD 端点），
+      // 展示一个"保存"按钮却什么也不保存，属**假控件** —— 用户点了没反应
+      // 会以为坏了。只在可能有 prefs 草稿的页签显示。
+      (activeTabForFoot === "schedule")
+        ? null
+        : R.createElement("button", {
+            key: "save", type: "button",
+            className: "qm-set-btn qm-set-btnprimary", "data-qm-save": "1",
+            // 保存始终可点（用户裁定 2026-11-12）：即使无未保存修改，也允许
+            // 把当前值固化到目标作用域；只有请求进行中才禁用。
+            disabled: !!props.saving,
+            onClick: () => { void cfgSave(); },
+          }, props.saving ? "保存中…" : "保存"),
     ]),
   ]);
 
@@ -10663,8 +12751,34 @@ function SettingsPanel(props: {
   const scroll = R.createElement("div", { className: "qm-set-scroll", key: "scroll" }, [
     sessionNote, hint, tabBody, saveMsgLine, conflictLine,
   ]);
+  // 需求 1（2026-11-24）：删除二次确认气泡。挂在面板根内居中（qm-set-wrap
+  // 已设 position:relative）；删除不可逆，必须显式点「确定删除」才执行。
+  const dc = settingsState.delConfirm;
+  const delConfirmNode = dc
+    ? R.createElement("div", {
+        key: "delconfirm", className: "qm-set-delconfirm",
+        "data-qm-delconfirm": "1", role: "dialog", "aria-label": "确认删除",
+      }, [
+        R.createElement("div", { key: "t", className: "qm-set-dctitle" },
+          "确定删除「" + (dc.name || "该条目") + "」？"),
+        R.createElement("div", { key: "d", className: "qm-set-dcdesc" },
+          "删除后不可恢复。"),
+        R.createElement("div", { key: "b", className: "qm-set-dcbtns" }, [
+          R.createElement("button", {
+            key: "c", type: "button", className: "qm-set-btn",
+            "data-qm-delconfirm-cancel": "1",
+            onClick: () => { settingsState.delConfirm = null; settingsRenderPanel(); },
+          }, "取消"),
+          R.createElement("button", {
+            key: "ok", type: "button", className: "qm-set-btn qm-set-dcok",
+            "data-qm-delconfirm-ok": "1",
+            onClick: () => { void executeConfirmedDelete(); },
+          }, "确定删除"),
+        ]),
+      ])
+    : null;
   const body = R.createElement("div", { className: "qm-set-wrap" }, [
-    head, tabBar, scroll, foot,
+    head, tabBar, scroll, foot, delConfirmNode,
   ]);
 
   if (!Modal) {

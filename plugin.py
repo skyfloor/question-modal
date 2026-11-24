@@ -32,6 +32,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import threading
 import time
 import uuid
@@ -483,13 +484,67 @@ SETTINGS_SCHEMA: dict[str, dict] = {
     # 显式设置时从旧键推导；显式设置过（哪怕设成 off）一律尊重显式值。
     "notify_channel_pc": {
         "default": "off", "type": "enum", "scope": "global", "batch": 5,
-        "values": ["off", "browser", "wechat", "dingtalk", "feishu"],
+        "values": ["off", "browser", "wechat", "dingtalk", "feishu", "custom_api"],
         "label": "PC 端打开时提醒频道",
     },
     "notify_channel_bg": {
         "default": "off", "type": "enum", "scope": "global", "batch": 5,
-        "values": ["off", "wechat", "dingtalk", "feishu"],
+        "values": ["off", "wechat", "dingtalk", "feishu", "custom_api"],
         "label": "后台运行时提醒频道",
+    },
+    # ── 自定义 API 渠道（2026-11-23）────────────────────────────────
+    #
+    # 缺陷背景（boss 原话）：「当前的实现方式不满足……用户不知道哪些是属于
+    # 必传项，是否符合大部分的 API 请求以及参数要求」。原实现是纯 UI 占位卡，
+    # 固定 4 字段，无法补上对方 API 要求的必传参数。
+    #
+    # 定位：**简单消息推送**，只发标题 + 脱敏摘要，不做通用 Webhook 编排。
+    # 明确排除（boss 裁定）：嵌套对象自动构造、数组参数、条件映射、重试队列、
+    # 多套渠道并存。复杂需求走「高级模式」由用户自己写 body 模板。
+    #
+    # 双模式（boss 裁定 C）：
+    #   basic    参数行 [{key,value,required}] → 扁平平铺成 body
+    #   advanced 用户自写整段 body 模板 → 只做占位符插值
+    #
+    # 占位符（boss 裁定 4 个 + token）：{{title}} {{content}} {{count}}
+    # {{stamp}} {{token}}
+    "custom_api_enabled": {
+        "default": False, "type": "bool", "scope": "global", "batch": 5,
+        "label": "启用自定义 API 渠道",
+    },
+    "custom_api_url": {
+        "default": "", "type": "str", "scope": "global", "batch": 5,
+        "maxlen": 2048,
+        "label": "自定义 API 请求地址",
+    },
+    "custom_api_method": {
+        "default": "post_json", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["post_json", "get_query"],
+        "label": "自定义 API 请求方法",
+    },
+    "custom_api_mode": {
+        "default": "basic", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["basic", "advanced"],
+        "label": "自定义 API 参数模式",
+    },
+    "custom_api_params": {
+        "default": [], "type": "json", "scope": "global", "batch": 5,
+        "max_items": 20, "label": "自定义 API 参数行",
+    },
+    "custom_api_body": {
+        "default": "", "type": "str", "scope": "global", "batch": 5,
+        "maxlen": 8192,
+        "label": "自定义 API body 模板（高级模式）",
+    },
+    "custom_api_token": {
+        "default": "", "type": "str", "scope": "global", "batch": 5,
+        "maxlen": 4096, "secret": True,
+        "label": "自定义 API Token",
+    },
+    "custom_api_token_pos": {
+        "default": "none", "type": "enum", "scope": "global", "batch": 5,
+        "values": ["none", "bearer", "query"],
+        "label": "自定义 API Token 位置",
     },
     # 向后兼容：老配置里可能存着 notify_manual_mode=true。保留该键作为
     # **只读的迁移来源**（resolve 时若 notify_channel 仍为 off 且旧键为
@@ -657,7 +712,74 @@ def _coerce_setting(key: str, value: Any) -> tuple[bool, Any]:
         if isinstance(value, str) and value in allowed:
             return True, value
         return False, None
+    if kind == "json":
+        # ── `json` 类型（2026-11-23，为 custom_api_params 引入）──
+        #
+        # 为什么必须新增这一支：`sanitize_settings` 是白名单机制，
+        # 未在 SETTINGS_SCHEMA 声明的键一律**静默丢弃**（见其 docstring）。
+        # 若把参数行做成任意 dict 直接塞进 prefs，用户填的参数会在保存时
+        # 无声消失 —— 界面上「保存成功」，实际没存，正是本插件反复纠治
+        # 的「界面说谎」（参见 2026-11-17 的 release_after_sec 事故）。
+        #
+        # 这里做**结构白名单**深校验：只接受约定的字段，多余字段丢弃，
+        # 不合法的整行拒绝（由调用方回报 rejected），绝不静默改写用户数据。
+        #
+        # 注意：本支只有 custom_api_params 使用（数组型）。它与 int 分支
+        # 的 `choices`、enum 分支的 `values` 完全隔离，不影响既有类型校验。
+        return _coerce_json_list(value, spec)
     return False, None
+
+
+_PARAM_KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.\-]*$")
+
+
+def _coerce_json_list(value: Any, spec: dict) -> tuple[bool, Any]:
+    """校验 `custom_api_params` 这类「对象数组」配置项。
+
+    规则（与设计方案逐条对应）：
+      · 顶层必须是 list
+      · 行数 ≤ spec["max_items"]（默认 20）
+      · 每行是 dict，只保留 key / value / required 三个字段
+      · key 非空、≤64 字符、匹配 `^[A-Za-z_][A-Za-z0-9_.\\-]*$`
+      · value ≤512 字符（非字符串一律转 str 后截断——用户填数字/布尔很常见）
+      · required 强制转 bool
+      · **键名重复整行拒绝**（不静默覆盖，避免「我填了两行只发出去一行」）
+      · 整体序列化 ≤ 8KB（防单条配置撑爆 prefs 文件）
+
+    返回 ``(ok, cleaned)``：任一行不合法即整体 ok=False（调用方据此报
+    rejected），不做「部分行保留」——参数行之间可能互相依赖，静默丢一半
+    比整体报错更难排查。
+    """
+    if not isinstance(value, list):
+        return False, None
+    max_items = int(spec.get("max_items") or 20)
+    if len(value) > max_items:
+        return False, None
+    out: list = []
+    seen: set = set()
+    for row in value:
+        if not isinstance(row, dict):
+            return False, None
+        k = str(row.get("key") or "").strip()
+        if not k or len(k) > 64 or not _PARAM_KEY_RE.match(k):
+            return False, None
+        if k in seen:
+            return False, None          # 键名重复：整行拒绝
+        seen.add(k)
+        v = row.get("value")
+        if v is None:
+            v = ""
+        elif not isinstance(v, str):
+            v = str(v)
+        if len(v) > 512:
+            return False, None
+        out.append({"key": k, "value": v, "required": bool(row.get("required"))})
+    try:
+        if len(json.dumps(out, ensure_ascii=False).encode("utf-8")) > 8192:
+            return False, None
+    except (TypeError, ValueError):
+        return False, None
+    return True, out
 
 
 def sanitize_settings(patch: Any) -> tuple[dict, list[dict]]:
@@ -838,19 +960,38 @@ async def _fill_follow_active(
 
 
 def resolve_effective(chat_id: str = "") -> dict:
-    """Layer ③ → ② → ① merge.  THE ONLY entry point for reading settings.
+    """统一配置 ⊕ 命中的时间策略 —— 读设置**唯一**入口。
 
-    Nothing else in the plugin may splice these layers by hand: two independent
-    merge implementations is exactly how a setting silently stops working.
+    ## 2026-11-23 架构变更（boss 裁定）
+    旧实现是「内建默认 ⊕ 全局 ⊕ **会话覆盖**」两层作用域，对应界面上
+    「默认模式 / 会话模式」两个页签。boss 裁定取消会话级配置：
 
-    NOTE: this is the *merge* only (disk-backed layers).  The「跟随当前对话模型」
-    resolution needs the request to reach the host, so it lives in
-    :func:`_fill_follow_active` and is applied by the HTTP route.  Keeping them
-    apart means a sync caller still gets a pure merge.
+    > 「不再采用会话模式或者默认模式，全部采用统一的配置，所有的会话都生效
+    >  同一种配置…… 所有的设置参数，直接使用时间段这个策略来匹配」
+
+    新链路：
+
+        out  = schema_defaults()
+        out ⊕= prefs                      ← 唯一一份基础配置，所有会话共用
+        out ⊕= 命中时间策略引用的参数组    ← 时段覆盖（仅答题相关字段）
+        out ⊕= 命中时间策略引用的通知配置  ← 时段覆盖（仅通知渠道）
+
+    `chat_id` 参数**保留但不再参与配置合并**：调用方遍布全插件，全部改签名
+    风险大于收益；且保留它便于日志区分来源。它仍会影响「跟随当前对话模型」
+    的解析（那需要 chat_id 去宿主查当前模型），所以不能真的删掉。
+
+    ## 层叠优先级（boss 二.「时段优先」裁定）
+    时段命中时**盖过**基础配置——用户配了时段就是希望自动切换。没有「会话
+    显式覆盖」这一层与之竞争（那层已整体移除），所以不存在歧义。
+
+    ## NOTE
+    this is the *merge* only (disk-backed layers).  「跟随当前对话模型」的
+    解析需要请求到达宿主，所以它在 :func:`_fill_follow_active` 里、由 HTTP
+    路由应用。分开意味着同步调用方拿到的是纯 merge。
     """
     out = schema_defaults()
 
-    # ② global defaults (analysis_prefs.json)
+    # ① 基础配置（唯一一份，所有会话共用）
     try:
         out.update(sanitize_settings(_load_prefs())[0])
     except Exception:  # noqa: BLE001
@@ -858,55 +999,120 @@ def resolve_effective(chat_id: str = "") -> dict:
             "question_modal: could not merge global prefs", exc_info=True,
         )
 
-    # ① per-session override
+    # ② 命中的时间策略 → 参数组 + 通知配置
     #
-    # 2026-11-13 方案 D1：只有当本会话的 `__active_scope__` 不是 "default"
-    # 时才把会话层叠上去。切到默认模式后，覆盖数据仍留在磁盘（切回即恢复），
-    # 但**不参与生效值计算** —— 否则"切了默认模式却还在用会话值"，
-    # 用户看到的就是"切了没效果"。
-    if chat_id:
-        try:
-            overrides = _load_session_prefs()
-            sess = overrides.get(chat_id) if isinstance(overrides, dict) else None
-            if isinstance(sess, dict) and str(
-                sess.get("__active_scope__") or ""
-            ).strip() != "default":
-                out.update(sanitize_settings(sess)[0])
-        except Exception:  # noqa: BLE001
-            logger.warning(
-                "question_modal: could not merge session prefs", exc_info=True,
-            )
-
-    # Report which keys came from an override so the UI can badge them.
-    #
-    # 2026-11-13 方案 D1：标 session 的前提是"会话层**真的参与了**生效值计算"。
-    # 若本会话 active_scope=default（切到了默认模式），覆盖数据虽然还留在
-    # 磁盘上，却不生效 —— 此时若仍标 session，UI 会显示「此项已被会话覆盖」，
-    # 而实际用的是全局值，显示与事实不符（实测：切默认后 model_id 明明是
-    # 全局值，sources 却是 {'model_id': 'session'}）。
-    sources: dict = {}
+    # 用 try 包住：库文件损坏时宁可退回基础配置，也不能让整个读配置入口抛错
+    # （那样连卡片都渲染不出来）。但必须留 WARNING，不能静默降级。
+    matched: dict | None = None
+    # 策略层**显式**设置过的键。要让 _migrate_notify_channels 知道
+    # 哪些键是被策略覆盖的（否则旧键迁移会把它盖掉，实测过）。
+    sched_set: set = set()
     try:
-        overrides = _load_session_prefs() if chat_id else {}
-        sess = overrides.get(chat_id) if isinstance(overrides, dict) else None
-        if isinstance(sess, dict) and str(
-            sess.get("__active_scope__") or ""
-        ).strip() != "default":
-            for key in sanitize_settings(sess)[0]:
-                sources[key] = "session"
+        matched = match_schedule()
+        if matched:
+            ps_id = str(matched.get("param_set_id") or "")
+            if ps_id:
+                for ps in load_param_sets():
+                    if ps.get("id") != ps_id:
+                        continue
+                    params = ps.get("params") or {}
+                    # 只用白名单字段覆盖，绝不整块 update（参数组里混入的
+                    # 任何非答题字段都不该影响全局配置）
+                    for key in _PARAM_SET_KEYS:
+                        if key in params:
+                            out[key] = params[key]
+                            sched_set.add(key)
+                    break
+            np_id = str(matched.get("notify_profile_id") or "")
+            if np_id:
+                for prof in load_notify_profiles():
+                    if prof.get("id") != np_id:
+                        continue
+                    ch = prof.get("channels") or {}
+                    if ch.get("pc"):
+                        out["notify_channel_pc"] = ch["pc"]
+                        sched_set.add("notify_channel_pc")
+                    if ch.get("bg"):
+                        out["notify_channel_bg"] = ch["bg"]
+                        sched_set.add("notify_channel_bg")
+                    break
+            # 把命中信息一并回传：前端要显示「当前生效：第N条 夜间值守」，
+            # 后端日志也需要它来回答「为什么现在是这个行为」。
+            out["__schedule__"] = {
+                "id": str(matched.get("id") or ""),
+                "name": str(matched.get("name") or ""),
+            }
     except Exception:  # noqa: BLE001
-        pass
-    # 旧单选 notify_channel → 双场景（pc/bg）只读迁移（2026-11-19）。
-    # 必须在 merge 完成后做：只看磁盘全局 prefs 里「新键是否被显式设置过」，
-    # 显式值（哪怕 off）优先于迁移推导，绝不覆盖用户选择。
+        logger.warning(
+            "question_modal: could not apply schedule layer", exc_info=True,
+        )
+    if not matched:
+        out["__schedule__"] = None
+
+    # ③ 通知渠道旧单选 → 双场景只读迁移（2026-11-19）
+    # 必须在**所有**合并之后做：只看磁盘 prefs 里「新键是否被显式设置过」，
+    # 显式值（哪怕 off）优先，绝不覆盖用户选择或时段覆盖的结果。
     try:
-        _migrate_notify_channels(out)
+        _migrate_notify_channels(out, sched_set)
     except Exception:  # noqa: BLE001 — 迁移失败回落默认值，绝不阻断读配置
         logger.warning(
             "question_modal: notify channel migration failed", exc_info=True,
         )
 
+    # ④ 来源标注
+    #
+    # 2026-11-23：会话层已移除，sources 只可能来自「时间策略」。
+    # 保留这个键是因为前端仍用它渲染「本项由时段覆盖」的提示；键名沿用
+    # 历史值 "schedule"（不是 "session"），让 UI 与日志能一眼分清来源。
+    sources: dict = {}
+    if matched:
+        try:
+            ps_id = str(matched.get("param_set_id") or "")
+            for ps in load_param_sets():
+                if ps.get("id") == ps_id:
+                    for key in (ps.get("params") or {}):
+                        if key in _PARAM_SET_KEYS:
+                            sources[key] = "schedule"
+                    break
+            np_id = str(matched.get("notify_profile_id") or "")
+            for prof in load_notify_profiles():
+                if prof.get("id") == np_id:
+                    for key in (prof.get("channels") or {}):
+                        sources["notify_channel_" + key] = "schedule"
+                    break
+        except Exception:  # noqa: BLE001
+            pass
     out["__sources__"] = sources
+    # ── Token 打码（2026-11-23，custom_api_token）──────────────────
+    #
+    # SECRET 类配置一律**不把原文送进通用读路径**：resolve_effective 的结果
+    # 会经 /prefs 等接口整体回给前端，若原样下发就等于把凭据明文暴露在
+    # 浏览器与日志里（与 client_secret 的处理口径保持一致）。
+    #
+    # 约定：回给调用方的是 `custom_api_token_set`（布尔，供 UI 判断「已设置」）
+    # 加一个掩码串；真实值只在投递时由 :func:`_custom_api_token_value` 从
+    # 磁盘直读。空值时不下发掩码，避免 UI 显示「已设置」。
+    _tok = str(out.get("custom_api_token") or "")
+    out["custom_api_token_set"] = bool(_tok)
+    out["custom_api_token"] = ("*" * 8) if _tok else ""
     return out
+
+
+def _custom_api_token_value() -> str:
+    """从磁盘直读 custom_api_token 的真实值（不经 resolve_effective 打码）。
+
+    只供投递路径使用。故意不放进 resolve_effective：那条路径的结果会被
+    接口整体下发给前端，一旦混入真实凭据就等于永久泄密。
+    """
+    try:
+        raw = _load_prefs()
+        ok, val = _coerce_setting("custom_api_token", raw.get("custom_api_token"))
+        return val if ok else ""
+    except Exception:  # noqa: BLE001
+        logger.warning(
+            "question_modal: could not read custom api token", exc_info=True,
+        )
+        return ""
 
 
 def _config_version() -> int:
@@ -986,11 +1192,11 @@ def _frontend_recently_seen(session_id: str) -> bool:
     return bool(ts and (time.time() - ts) <= _PC_ALIVE_SEC)
 
 
-def _migrate_notify_channels(out: dict) -> None:
+def _migrate_notify_channels(out: dict, schedule_set: set | None = None) -> None:
     """旧单选 ``notify_channel`` → 双场景（pc/bg）的**只读**迁移。
 
-    仅当新键**从未被显式设置**（磁盘全局 prefs 里不存在该键）时才从旧键
-    推导；用户显式设置过（哪怕设成 off）一律尊重显式值，绝不覆盖。
+    仅当新键**从未被显式设置**时才从旧键推导；用户显式设置过（哪怕设成
+    off）一律尊重显式值，绝不覆盖。
 
     推导规则：
       旧 off / 缺失                    → pc=off, bg=off（与旧行为一致：不发）
@@ -999,6 +1205,17 @@ def _migrate_notify_channels(out: dict) -> None:
          失效，bg=off 是忠实迁移，不臆造渠道）
       旧 wechat / dingtalk / feishu    → pc=旧值, bg=旧值（两边都走该频道）
       仅有更老的 notify_manual_mode=true → 视同旧 browser（沿用原迁移链）
+
+    ## schedule_set（2026-11-23 新增）
+    由调用方传入「本次被时间策略显式设置的键集合」。
+
+    为什么需要这个额外参数：`out` 在调用本函数时已经过 `schema_defaults()`，
+    所以每个键**总是存在**（默认值 "off"）。因此「键在不在 out 里」根本
+    无法区分「默认值」与「策略设过的值」—— 端到端实测正是踩在这里：
+    策略设 pc=browser，迁移认为"用户没设过"，用旧键 off 盖掉，读回 off。
+
+    判据必须是「有没有被某层**显式**设置」，而策略层的显式性只有调用方
+    知道（它刚做过覆盖），所以在那里算好传进来，而不是在这函数里猜。
     """
     try:
         raw = _load_prefs()
@@ -1011,12 +1228,13 @@ def _migrate_notify_channels(out: dict) -> None:
         legacy = "browser"
     if not legacy:
         return
-    if "notify_channel_pc" not in raw:
+    from_sched = schedule_set or set()
+    if "notify_channel_pc" not in raw and "notify_channel_pc" not in from_sched:
         out["notify_channel_pc"] = (
             legacy if legacy in ("browser", "wechat", "dingtalk", "feishu")
             else "off"
         )
-    if "notify_channel_bg" not in raw:
+    if "notify_channel_bg" not in raw and "notify_channel_bg" not in from_sched:
         out["notify_channel_bg"] = (
             legacy if legacy in ("wechat", "dingtalk", "feishu") else "off"
         )
@@ -1031,6 +1249,11 @@ _NOTIFY_CHANNEL_LABELS = {
     "wechat": "微信",
     "dingtalk": "钉钉",
     "feishu": "飞书",
+    # 2026-11-23：用户自建 HTTP 端点。**不**在 _NOTIFY_REMOTE_CHANNELS 里——
+    # 那条集合是「走宿主 /api/messages/send 的 IM 渠道」，自定义 API 是插件
+    # 自己发 HTTP，判定与投递路径完全不同，混在一起会让 _host_channel_info
+    # 去宿主配置里找一个永远不存在的频道。
+    "custom_api": "自定义 API",
 }
 
 # 本插件「频道通知」路径覆盖的远程频道（browser 不是宿主频道）
@@ -1089,6 +1312,37 @@ def _notify_channel_state(channel: str, cfg: dict, agent_id: str = "") -> dict:
         return state
     if channel == "browser":
         # 浏览器通知不依赖宿主频道配置，但同样要过测试闸门（q4）。
+        state["ready"] = True
+        if not state["verified"]:
+            state["reason"] = "尚未通过测试发送"
+        return state
+
+    if channel == "custom_api":
+        # ── 自定义 API（2026-11-23）──
+        # 就绪条件 = 已启用 + URL 合法（含 SSRF 校验）+ 必传参数齐全。
+        # 与 _custom_api_required_missing / _custom_api_url_error 同源判定，
+        # 保证「面板说可用」与「后端真能发」不会各说各话。
+        if not bool(cfg.get("custom_api_enabled")):
+            state["reason_code"] = "channel_disabled"
+            state["reason"] = "自定义 API 渠道未启用"
+            return state
+        # 地址合法性：带 {{...}} 占位符的模板跳过这里（域名里不可能有花括号），
+        # 由 builder 在插值后再校验；不带占位符的照常校验。
+        # 跳过不等于放行——真发送时 builder 一定会验一次，这里只避免
+        # 「面板只因用了占位符就显示地址非法」这种假告警。
+        _raw_u = str(cfg.get("custom_api_url") or "")
+        if "{{" not in _raw_u:
+            url_err = _custom_api_url_error(_raw_u)
+            if url_err:
+                state["reason_code"] = "invalid_url"
+                state["reason"] = url_err
+                return state
+        missing = _custom_api_required_missing(cfg)
+        if missing:
+            state["reason_code"] = "missing_required_params"
+            state["reason"] = "缺少必传参数：" + "、".join(missing)
+            state["missing"] = missing
+            return state
         state["ready"] = True
         if not state["verified"]:
             state["reason"] = "尚未通过测试发送"
@@ -1550,6 +1804,23 @@ async def _do_notify_test(channel: str, text: str, agent_id: str) -> dict:
                 "reason_code": state.get("reason_code") or "",
                 "error": state["reason"] or "频道不可用"}
 
+    # ── 自定义 API：测试走真实 HTTP（2026-11-23）──
+    # 与线上投递共用 _send_via_custom_api，区别只在文案与 title/count 取值：
+    # 测试时没有真实问卷，title 用「测试」、count 用 0，让用户能立刻看到
+    # 对方 API 收到什么形态。
+    if channel == "custom_api":
+        _cfg = dict(cfg)
+        _cfg["__notify_title__"] = "自定义 API 测试"
+        _cfg["__notify_count__"] = "0"
+        msg = text or (
+            f"【QwenPaw 通知测试】{_NOTIFY_CHANNEL_LABELS.get(channel, channel)}"
+            "频道连通性验证，收到即表示配置正确。"
+        )
+        result = await _send_via_custom_api(msg, _cfg, agent_id)
+        if result.get("delivered"):
+            _mark_notify_verified("custom_api", True)
+        return {"ok": bool(result.get("ok")), "channel": channel, **result}
+
     info = _host_channel_info(channel, agent_id)
     msg = text or f"【QwenPaw 通知测试】{_NOTIFY_CHANNEL_LABELS.get(channel, channel)}频道连通性验证，收到即表示配置正确。"
     result = await _send_via_channel(channel, msg, info, agent_id)
@@ -1650,6 +1921,330 @@ def _agent_display_name(agent_id: str = "") -> str:
     return str(agent_id or "").strip()
 
 
+# ══════════════════════════════════════════════════════════════════════
+# 自定义 API 渠道（2026-11-23）
+# ══════════════════════════════════════════════════════════════════════
+#
+# 缺陷背景（boss 原话）：「当前的实现方式不满足……用户不知道哪些是属于必传
+# 项，是否符合大部分的 API 请求以及参数要求」。原实现是纯 UI 占位卡。
+#
+# 定位（boss 明确收窄）：**简单消息推送**，只发标题 + 脱敏摘要。
+# 不做嵌套对象自动构造、数组参数、条件映射、重试队列、多套渠道并存。
+# 复杂需求走「高级模式」由用户自己写整段 body 模板。
+
+# 内置占位符（boss 裁定：4 个系统占位符 + token）。
+# 语法刻意用 `{{name}}` 单层花括号对，不做嵌套表达式——插值就是纯字符串替换，
+# 用户写什么就是什么，不引入模板引擎（避免"看起来能写表达式"的假能力）。
+_CUSTOM_API_PLACEHOLDERS = ("title", "content", "count", "stamp", "token")
+
+# 内网/回环地址判定用的保留网段（SSRF 防护，2026-11-23 boss 裁定要做）。
+# 只按解析后的 IP 判定——域名可以通过 DNS 指向内网，只查字符串必然漏。
+_CUSTOM_API_BLOCKED_V4 = (
+    "0.0.0.0/8",        # "本网络"
+    "10.0.0.0/8",       # 私有
+    "100.64.0.0/10",    # 运营商级 NAT
+    "127.0.0.0/8",      # 回环
+    "169.254.0.0/16",   # 链路本地（含云元数据 169.254.169.254）
+    "172.16.0.0/12",    # 私有
+    "192.168.0.0/16",   # 私有
+)
+
+
+def _custom_api_url_error(url: str) -> str:
+    """校验自定义 API 请求地址。返回空串 = 合法，否则返回人不友好的原因。
+
+    SSRF 防护（boss 2026-11-23 裁定「要：禁止内网/回环地址」）：
+      1. scheme 只允许 http/https
+      2. host 必须存在、不能是空串或纯端口
+      3. **逐个解析 IP**（含所有 A/AAAA 记录）并落到保留网段即拒绝 ——
+         只看 hostname 字符串会被「127.0.0.1.nip.io」这类解析型域名绕过
+      4. 解析失败按「不可用」拒绝（宁可拦错，不可放行到未知目标）
+
+    注意：本函数在**发送前与保存时各调一次**，两处判定必须同源，
+    否则会出现「保存时拦住了但发送时没拦」的缺口。
+    """
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    if not url or not url.strip():
+        return "请求地址不能为空"
+    try:
+        parsed = urlparse(url.strip())
+    except ValueError:
+        return "请求地址格式无法解析"
+    if parsed.scheme not in ("http", "https"):
+        return "请求地址必须以 http:// 或 https:// 开头"
+    host = parsed.hostname or ""
+    if not host:
+        return "请求地址缺少主机名"
+
+    # 先排除字面量回环/私有 IP（无需 DNS）
+    try:
+        direct = ipaddress.ip_address(host)
+        if direct.is_private or direct.is_loopback or direct.is_link_local \
+                or direct.is_multicast or direct.is_unspecified:
+            return "不允许请求内网/回环地址"
+        if direct.version == 4 and host.startswith("0."):
+            return "不允许请求内网/回环地址"
+        return ""
+    except ValueError:
+        pass  # 不是字面 IP，按域名继续解析
+
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return "域名无法解析：" + host
+    except Exception:  # noqa: BLE001
+        return "域名解析失败：" + host
+    blocked = [ipaddress.ip_network(n) for n in _CUSTOM_API_BLOCKED_V4]
+    for info in infos:
+        addr = info[4][0]
+        try:
+            ip = ipaddress.ip_address(addr)
+        except ValueError:
+            return "域名解析结果异常：" + host
+        if ip.version == 6:
+            if ip.is_private or ip.is_loopback or ip.is_link_local \
+                    or ip.is_unspecified or ip.is_multicast:
+                return "不允许请求内网/回环地址"
+            continue
+        for net in blocked:
+            if ip in net:
+                return "不允许请求内网/回环地址"
+    return ""
+
+
+def _custom_api_required_missing(cfg: dict) -> list:
+    """列出还缺的必传项（供 UI 置灰「发送测试」与投递前闸门共用）。
+
+    两处调用同一函数，避免「界面说可以发、后端却拒绝」的口径分叉。
+    URL 永远是必传；参数行里 `required=true` 且值为空的行也算缺。
+    """
+    missing: list = []
+    if not str(cfg.get("custom_api_url") or "").strip():
+        missing.append("请求地址")
+    params = cfg.get("custom_api_params")
+    if isinstance(params, list):
+        for row in params:
+            if not isinstance(row, dict):
+                continue
+            if row.get("required") and not str(row.get("value") or "").strip():
+                missing.append(str(row.get("key") or "未命名参数"))
+    return missing
+
+
+def _custom_api_fill(text: str, values: dict) -> str:
+    """把 `{{name}}` 占位符替换成对应值。未识别的占位符原样保留。
+
+    为什么保留未识别的：用户可能就是要发给对方 API 一个字面量 `{{x}}`
+    （例如对方自己也会做模板替换）。静默删掉比留着更糟——留着他能一眼
+    看出「这里没替换成功」。
+    """
+    out = str(text or "")
+    for name in _CUSTOM_API_PLACEHOLDERS:
+        out = out.replace("{{" + name + "}}", str(values.get(name) or ""))
+    return out
+
+
+def _custom_api_build_request(cfg: dict, values: dict) -> tuple[str, dict, bytes | None, str]:
+    """按配置拼出最终请求。返回 ``(url, headers, body_bytes, error)``。
+
+    两种模式（boss 裁定 C：基础 + 高级都要）：
+      basic     参数行扁平平铺成 JSON：{"key": "插值后的值", ...}
+      advanced  用户写的整段 body 模板 → 只做占位符插值 → 原样发送
+
+    两种模式都叠加「系统字段」：title / content 始终写入，即便用户没在
+    参数行里列——它们是这条通知的语义本体，缺了对方 API 也读不懂。
+    用户显式写了同名参数行时以用户的为准（允许覆盖，不静默改写）。
+    """
+    from urllib.parse import quote, urlencode, urlparse, urlunparse, parse_qsl
+
+    # ── URL 占位符插值（2026-11-23 boss 需求 2）──────────────────
+    #
+    # 需求原文：「对于 get 接口，api 地址可以使用类似
+    # https://api.example.com/push/{{title}}/{{content}}，这种自动插值的
+    # 方式，而对于 post，除了地址外，data 参数也可以这种方式插值」。
+    #
+    # 所以**两种方法都先对 URL 做插值**，不只是 GET。典型用途是 Bark/Server酱
+    # 这类「消息内容直接拼在路径里」的服务。
+    #
+    # 🔴 关键：插值进 URL **路径**时必须 percent-encode，不能直接字符串塞入：
+    #   问卷标题/正文常含空格、斜杠、中文、`?`、`#`，直接拼会破坏 URL 结构
+    #   （`#` 之后整段变成 fragment，对方收不到；空格会让请求行非法）。
+    #   但整条 URL 不能整体 encode（会把 `://` 也编码掉），所以只对**替换值**
+    #   编码，模板骨架保持原样。这是本函数最容易写错的一点。
+    #
+    # 先做占位符替换，再做 URL 合法性校验——否则含未填占位符的地址会被
+    # 误判为非法。
+    raw_url = str(cfg.get("custom_api_url") or "").strip()
+    encoded_values = {
+        k: quote(str(v or ""), safe="") for k, v in values.items()
+    }
+    url = _custom_api_fill(raw_url, encoded_values)
+
+    error = _custom_api_url_error(url)
+    if error:
+        return "", {}, None, error
+
+    method = str(cfg.get("custom_api_method") or "post_json")
+    mode = str(cfg.get("custom_api_mode") or "basic")
+    headers: dict = {"User-Agent": "question-modal/notify"}
+
+    # ── body ──
+    payload: dict = {}
+    # 系统字段先落，保证一定存在
+    payload["title"] = values.get("title") or ""
+    payload["content"] = values.get("content") or ""
+
+    if mode == "advanced":
+        raw = _custom_api_fill(str(cfg.get("custom_api_body") or ""), values)
+        if not raw.strip():
+            return "", {}, None, "高级模式未填写 body 模板"
+        body_bytes = raw.encode("utf-8")
+        headers["Content-Type"] = "application/json; charset=utf-8"
+    else:
+        params = cfg.get("custom_api_params")
+        if isinstance(params, list):
+            for row in params:
+                if not isinstance(row, dict):
+                    continue
+                key = str(row.get("key") or "").strip()
+                if not key:
+                    continue          # 空参数名：不校验、不发送（用户可能正删到一半）
+                payload[key] = _custom_api_fill(row.get("value") or "", values)
+        body_bytes = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        headers["Content-Type"] = "application/json; charset=utf-8"
+
+    # ── token ──
+    token = str(values.get("token") or "")
+    token_pos = str(cfg.get("custom_api_token_pos") or "none")
+    if token:
+        if token_pos == "bearer":
+            headers["Authorization"] = "Bearer " + token
+        elif token_pos == "query":
+            parsed = urlparse(url)
+            q = parse_qsl(parsed.query, keep_blank_values=True)
+            q.append(("token", token))
+            url = urlunparse(parsed._replace(query=urlencode(q)))
+
+    # ── GET：参数全部进 query，不带 body ──
+    if method == "get_query":
+        merged: list = []
+        if mode == "basic":
+            merged = [(k, str(v)) for k, v in payload.items()]
+        else:
+            # 高级模式配 GET 没有 body 可发，参数行仍按基础口径带上
+            params = cfg.get("custom_api_params") or []
+            for row in params:
+                if isinstance(row, dict) and str(row.get("key") or "").strip():
+                    merged.append((
+                        str(row["key"]), _custom_api_fill(row.get("value") or "", values),
+                    ))
+        if merged:
+            parsed = urlparse(url)
+            q = parse_qsl(parsed.query, keep_blank_values=True)
+            q.extend(merged)
+            url = urlunparse(parsed._replace(query=urlencode(q)))
+        return url, headers, None, ""
+
+    return url, headers, body_bytes, ""
+
+
+async def _send_via_custom_api(
+    text: str, cfg: dict, agent_id: str = "", *,
+    values_override: dict | None = None,
+) -> dict:
+    """向用户自定义的 API 地址投递一条简单消息。
+
+    策略（boss 2026-11-23 裁定）：**超时 10s、失败不重试、仅记日志**。
+    通知类消息过期即失去意义，堆积重试只会让用户收到一堆迟到提醒。
+    """
+    import urllib.error
+    import urllib.request
+
+    url_err = _custom_api_url_error(str(cfg.get("custom_api_url") or ""))
+    if url_err:
+        # 含 {{...}} 占位符的地址在这里会被判非法（域名里不可能有花括号）。
+        # 这是**预期行为**而非缺陷：占位符只在真正发送时才有值可填，
+        # 此处的校验只负责「未插值形态下能不能连通」这一层；带占位符的地址
+        # 改由 :func:`_custom_api_build_request` 在插值后再校验一次。
+        # 若整条地址就是带占位符的模板，跳过这里的预检，交给 builder。
+        if "{{" not in str(cfg.get("custom_api_url") or ""):
+            return {"ok": False, "delivered": False, "channel": "custom_api",
+                    "reason": url_err, "reason_code": "invalid_url"}
+
+    missing = _custom_api_required_missing(cfg)
+    if missing:
+        return {"ok": False, "delivered": False, "channel": "custom_api",
+                "reason": "缺少必传参数：" + "、".join(missing),
+                "reason_code": "missing_required_params", "missing": missing}
+
+    if not bool(cfg.get("custom_api_enabled")):
+        return {"ok": False, "delivered": False, "channel": "custom_api",
+                "reason": "自定义 API 渠道未启用", "reason_code": "disabled"}
+
+    # 占位符取值：text 是已拼好的提醒正文（标题 + 摘要 + 时间戳）
+    values = {
+        "title": str((cfg.get("__notify_title__") or "")),
+        "content": text,
+        "count": str(cfg.get("__notify_count__") or ""),
+        "stamp": _notify_stamp(agent_id),
+        "token": _custom_api_token_value(),
+    }
+    if values_override:
+        values.update(values_override)
+    # title 缺省时从 text 首行推断，避免 body.title 为空
+    if not values["title"]:
+        values["title"] = str(text).split("\n", 1)[0]
+
+    url, headers, body_bytes, build_err = _custom_api_build_request(cfg, values)
+    if build_err:
+        return {"ok": False, "delivered": False, "channel": "custom_api",
+                "reason": build_err, "reason_code": "build_failed"}
+
+    method = "GET" if str(cfg.get("custom_api_method")) == "get_query" else "POST"
+    started = time.time()
+
+    def _do() -> tuple[int, str]:
+        req = urllib.request.Request(url, data=body_bytes, headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req, timeout=10.0) as resp:
+                return int(resp.status), resp.read(2000).decode("utf-8", "replace")
+        except urllib.error.HTTPError as exc:
+            try:
+                detail = exc.read(2000).decode("utf-8", "replace")
+            except Exception:  # noqa: BLE001
+                detail = ""
+            return int(exc.code), detail
+        except urllib.error.URLError as exc:
+            return 0, "连接失败：" + str(getattr(exc, "reason", exc))
+        except Exception as exc:  # noqa: BLE001
+            return 0, type(exc).__name__ + "：" + str(exc)
+
+    try:
+        status, detail = await asyncio.to_thread(_do)
+    except Exception as exc:  # noqa: BLE001
+        status, detail = 0, type(exc).__name__ + "：" + str(exc)
+    elapsed_ms = int((time.time() - started) * 1000)
+
+    if 200 <= status < 300:
+        return {"ok": True, "delivered": True, "channel": "custom_api",
+                "http": status, "elapsed_ms": elapsed_ms, "body": detail[:300],
+                "url": url}
+    if status == 0:
+        reason = "请求超时（10 秒）" if "timeout" in detail.lower() else detail
+    else:
+        reason = "对方返回 HTTP %d：%s" % (status, detail[:200])
+    logger.warning(
+        "question_modal: custom api notify failed status=%s url=%s detail=%s",
+        status, url, str(detail)[:200],
+    )
+    return {"ok": False, "delivered": False, "channel": "custom_api",
+            "http": status, "elapsed_ms": elapsed_ms,
+            "reason": reason, "reason_code": "http_failed", "url": url}
+
+
 def _notify_stamp(agent_id: str = "") -> str:
     """通知尾部的时间戳行：「来自后端开发智能体-2026-11-14 12:40:33」。
 
@@ -1723,6 +2318,19 @@ async def notify_survey_pending(
         # （只有 pc 场景可能选到 browser：bg 枚举本就不含 browser。）
         return {"ok": True, "delivered": False, "channel": "browser",
                 "scene": scene, "delegated": True, "text": body}
+
+    if channel == "custom_api":
+        # ── 自定义 API（2026-11-23）──
+        # 不走宿主 /api/messages/send，插件自己发 HTTP。
+        # title/count 通过 __notify_* 临时键带进 builder：那里要拼 body 的
+        # title 字段与 {{count}} 占位符，但 cfg 本身不含这两个运行时值。
+        _cfg = dict(cfg)
+        _cfg["__notify_title__"] = str(title)
+        _cfg["__notify_count__"] = str(count)
+        out = await _send_via_custom_api(body, _cfg, agent_id)
+        if isinstance(out, dict):
+            out.setdefault("scene", scene)
+        return out
 
     info = _host_channel_info(channel, agent_id)
     out = await _send_via_channel(channel, body, info, agent_id)
@@ -1892,6 +2500,273 @@ def _iter_agent_chats() -> list[dict]:
 # ``templates.json`` and merged on top, so the library is GLOBAL (one shared
 # store across every card — REQ-005); only the *selection* of which template a
 # card uses is per-card (REQ-002, stored in the card state on the client).
+# ══════════════════════════════════════════════════════════════════════
+# 策略库（US-024，2026-11-23 架构重构）
+# ══════════════════════════════════════════════════════════════════════
+#
+# ## 这次重构推翻了什么
+#
+# 旧架构是「两层作用域」：
+#
+#     生效值 = 内建默认 ⊕ 全局(analysis_prefs.json) ⊕ 会话覆盖(session_prefs.json)
+#
+# 界面上对应「默认模式」页签和「会话模式」页签——同一批设置画两遍。
+#
+# boss 2026-11-23 裁定改为「统一配置 + 时间策略」：
+#
+#     生效值 = 基础配置(prefs) ⊕ 命中的时间策略所引用的参数组
+#
+# - **没有会话级覆盖**：所有会话共用一份配置（`/session-prefs` 三个接口下线）
+# - **时间策略**：按时间段匹配，命中则用其引用的参数组 + 通知配置覆盖基础配置
+# - **参数组 / 通知配置**：独立命名库，被策略「引用」而不是复制
+#
+# ## 为什么用独立 json 文件而不是塞进 prefs
+#
+# 仿 `templates.json` 先例：库级数据（可增删的命名条目）与单值配置是两种
+# 不同性质的数据。prefs 的 `sanitize_settings` 是「键→值」白名单，塞数组进去
+# 要开 json 类型特例；而库需要自己的 schema 版本与条目级校验。分开存更清晰，
+# 也避免 prefs 备份/会话覆盖那套机制误伤库数据。
+#
+# 三个库：
+#   parameter_sets.json    问卷参数组（模式/模型/提示词/上下文/并行）
+#   notify_profiles.json   命名通知配置（pc + bg 两个渠道）
+#   schedules.json         时间策略（时段 + 引用参数组 + 引用通知配置）
+
+_PARAM_SETS_FILE = _PLUGIN_DIR / "parameter_sets.json"
+_NOTIFY_PROFILES_FILE = _PLUGIN_DIR / "notify_profiles.json"
+_SCHEDULES_FILE = _PLUGIN_DIR / "schedules.json"
+
+# 参数组允许承载的字段（白名单）。刻意**不含**任何库级/全局类配置：
+# 参数组是「一套答题参数」，不是「另一份完整设置的副本」，否则策略就变成
+# 第二份全局配置，又回到重复配置的老问题。
+_PARAM_SET_KEYS = ("mode", "model_id", "template_id", "with_context", "parallel")
+
+
+def _read_lib(path) -> list[dict]:
+    """读一个库文件，返回条目列表。文件损坏按空库处理并留 WARNING。
+
+    不抛异常：库文件坏掉不该让整个设置面板打不开（与 templates.json 同口径）。
+    但必须留日志——静默读成空库会让用户以为「我的配置全没了」却查不到原因。
+    """
+    try:
+        if path.is_file():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(data, dict) and isinstance(data.get("items"), list):
+                return [x for x in data["items"] if isinstance(x, dict)]
+            logger.warning("question_modal: lib %s has unexpected shape", path.name)
+    except Exception:  # noqa: BLE001
+        logger.warning("question_modal: could not read lib %s", path.name, exc_info=True)
+    return []
+
+
+def _write_lib(path, items: list[dict]) -> None:
+    """原子写库文件（tmp + replace），避免半截文件。"""
+    payload = {"schema_version": 1, "updated_at": time.time(), "items": items}
+    try:
+        tmp = path.parent / f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(path)
+    except Exception:  # noqa: BLE001
+        logger.warning("question_modal: could not persist lib %s", path.name, exc_info=True)
+
+
+def _new_lib_id(prefix: str) -> str:
+    """库条目 id：前缀 + 短随机串。前缀让日志/引用一眼能看出是哪类库。"""
+    return f"{prefix}-{uuid.uuid4().hex[:8]}"
+
+
+# ── 问卷参数组 ───────────────────────────────────────────────────────
+
+def _sanitize_param_set(raw: dict, *, keep_id: bool = True) -> dict:
+    """校验一个参数组条目。非法字段丢弃、越界值拒绝（不静默改写）。
+
+    与 `sanitize_settings` 的关键差别：这里是**条目级**校验，返回的 dict 直接
+    作为策略引用的实体；而 sanitize_settings 是「键→值」白名单，两者职责不同，
+    所以不复用（复用会让参数组的字段集合被全局 schema 绑死）。
+    """
+    out: dict = {}
+    # keep_id=False 表示「这是一次新建」：忽略调用方传入的 id，**但仍然要生成
+    # 一个**。早期版本把整段 if 跳过，导致新建条目没有 id —— 实测立刻暴露：
+    # 这样的条目既不能被时间策略引用，也没法再被更新/删除（找不到主键）。
+    pid = str(raw.get("id") or "").strip() if keep_id else ""
+    out["id"] = pid if pid else _new_lib_id("ps")
+    name = str(raw.get("name") or "").strip()
+    out["name"] = name[:60] if name else "未命名参数组"
+    params = raw.get("params")
+    params = params if isinstance(params, dict) else {}
+    cleaned: dict = {}
+    for key in _PARAM_SET_KEYS:
+        if key not in params:
+            continue
+        v = params[key]
+        if key in ("with_context", "parallel"):
+            cleaned[key] = bool(v)
+        else:
+            cleaned[key] = str(v or "")[:200]
+    out["params"] = cleaned
+    return out
+
+
+def load_param_sets() -> list[dict]:
+    items = [_sanitize_param_set(x) for x in _read_lib(_PARAM_SETS_FILE)]
+    seen: set = set()
+    out: list[dict] = []
+    for it in items:
+        if it["id"] in seen:
+            continue          # 重复 id 只保留第一条，避免引用指向歧义
+        seen.add(it["id"])
+        out.append(it)
+    return out
+
+
+def save_param_sets(items: list[dict]) -> None:
+    _write_lib(_PARAM_SETS_FILE, [_sanitize_param_set(x) for x in items])
+
+
+# ── 命名通知配置 ─────────────────────────────────────────────────────
+
+# 通知配置只承载「渠道选择」，不承载渠道凭据（Token/Webhook 仍归各渠道
+# 自身的设置项）。这样一条通知配置可以安全地被多条策略引用，而改凭据
+# 只需改一处。
+_NOTIFY_PROFILE_KEYS = ("pc", "bg")
+
+
+def _sanitize_notify_profile(raw: dict, *, keep_id: bool = True) -> dict:
+    out: dict = {}
+    # 同 _sanitize_param_set：新建时必须生成 id，否则条目无主键、不可引用。
+    pid = str(raw.get("id") or "").strip() if keep_id else ""
+    out["id"] = pid if pid else _new_lib_id("np")
+    name = str(raw.get("name") or "").strip()
+    out["name"] = name[:60] if name else "未命名通知配置"
+    ch = raw.get("channels")
+    ch = ch if isinstance(ch, dict) else {}
+    channels: dict = {}
+    for key in _NOTIFY_PROFILE_KEYS:
+        v = str(ch.get(key) or "off").strip()
+        allowed = SETTINGS_SCHEMA.get(
+            "notify_channel_pc" if key == "pc" else "notify_channel_bg", {},
+        ).get("values") or []
+        channels[key] = v if v in allowed else "off"
+    out["channels"] = channels
+    return out
+
+
+def load_notify_profiles() -> list[dict]:
+    items = [_sanitize_notify_profile(x) for x in _read_lib(_NOTIFY_PROFILES_FILE)]
+    seen: set = set()
+    out: list[dict] = []
+    for it in items:
+        if it["id"] in seen:
+            continue
+        seen.add(it["id"])
+        out.append(it)
+    return out
+
+
+def save_notify_profiles(items: list[dict]) -> None:
+    _write_lib(_NOTIFY_PROFILES_FILE, [_sanitize_notify_profile(x) for x in items])
+
+
+# ── 时间策略 ─────────────────────────────────────────────────────────
+
+# 2026-11-24 boss 需求 4：时间策略加秒 —— 秒为可选段（HH:mm[:ss]）。
+# 旧 HH:mm 值完全兼容（秒按 0）；结束时间默认 23:59:59，消除 23:59:01~23:59:59
+# 这一段的空缺。
+_TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$")
+
+
+def _valid_hhmm(v: str) -> bool:
+    return bool(_TIME_RE.match(str(v or "").strip()))
+
+
+def _sanitize_schedule(raw: dict, *, keep_id: bool = True) -> dict:
+    """校验一条时间策略。
+
+    字段：name / start / end / param_set_id / notify_profile_id
+    时段语义：左闭右开 [start, end)；start > end 视为**跨零点**（如 22:00→08:00）。
+    """
+    out: dict = {}
+    # 同 _sanitize_param_set：新建时必须生成 id，否则条目无主键、不可引用。
+    sid = str(raw.get("id") or "").strip() if keep_id else ""
+    out["id"] = sid if sid else _new_lib_id("sc")
+    name = str(raw.get("name") or "").strip()
+    out["name"] = name[:60] if name else "未命名策略"
+    start = str(raw.get("start") or "").strip()
+    end = str(raw.get("end") or "").strip()
+    out["start"] = start if _valid_hhmm(start) else "00:00"
+    out["end"] = end if _valid_hhmm(end) else "24:00" if end == "24:00" else (
+        end if _valid_hhmm(end) else "23:59")
+    out["param_set_id"] = str(raw.get("param_set_id") or "").strip()[:64]
+    out["notify_profile_id"] = str(raw.get("notify_profile_id") or "").strip()[:64]
+    return out
+
+
+def load_schedules() -> list[dict]:
+    items = [_sanitize_schedule(x) for x in _read_lib(_SCHEDULES_FILE)]
+    seen: set = set()
+    out: list[dict] = []
+    for it in items:
+        if it["id"] in seen:
+            continue
+        seen.add(it["id"])
+        out.append(it)
+    return out
+
+
+def save_schedules(items: list[dict]) -> None:
+    _write_lib(_SCHEDULES_FILE, [_sanitize_schedule(x) for x in items])
+
+
+def _seconds_of(hhmm: str) -> int:
+    """'HH:MM[:SS]' → 当天秒数。'24:00' 特殊处理为 86400（表示到当天结束）。
+
+    2026-11-24 粒度从分钟升级为秒（时间策略加秒，开始默认 :00、结束默认 :59）；
+    旧 HH:mm 值秒按 0 计，匹配结果与原先一致。
+    """
+    s = str(hhmm or "").strip()
+    if s == "24:00":
+        return 86400
+    m = _TIME_RE.match(s)
+    if not m:
+        return -1
+    sec = int(m.group(3)) if m.group(3) else 0
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + sec
+
+
+def match_schedule(now_seconds: int | None = None) -> dict | None:
+    """返回当前命中的时间策略（按列表顺序，命中第一条即返回）。
+
+    匹配规则（与 UI 说明一致）：
+      · 左闭右开 [start, end)，避免相邻时段在边界上双重命中
+      · start < end  普通时段，如 08:00→18:00
+      · start > end  跨零点，如 22:00→08:00 ⇒ [22:00,24:00) ∪ [00:00,08:00)
+      · start == end 视为「全天」（用户把两端填成一样时的合理语义）
+
+    都不命中返回 None，调用方据此回落到基础配置。
+
+    2026-11-24：比较粒度从分钟改为秒（时间策略加秒，开始默认 :00、结束默认
+    :59，23:59:59 完整覆盖到当天最后一秒）。旧 HH:mm 值秒按 0 处理，行为不变。
+    """
+    if now_seconds is None:
+        lt = time.localtime()
+        now_seconds = lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec
+    for sched in load_schedules():
+        s = _seconds_of(sched.get("start"))
+        e = _seconds_of(sched.get("end"))
+        if s < 0 or e < 0:
+            continue
+        if s == e:
+            return sched                      # 全天
+        if s < e:
+            if s <= now_seconds < e:
+                return sched
+        else:
+            # 跨零点：先看今天尾部，再看今天开头
+            if now_seconds >= s or now_seconds < e:
+                return sched
+    return None
+
+
 _TEMPLATES_FILE = _PLUGIN_DIR / "templates.json"
 
 
@@ -3456,126 +4331,71 @@ def build_router() -> APIRouter:
         request: Request,
         chat_id: str = "", session_id: str = "", agent_id: str = "",
     ) -> dict:
-        """Return the merged settings for one chat.
+        """返回当前生效的设置。
 
-        Layers: ③ built-in defaults → ② global defaults → ① session override,
-        then :func:`_fill_follow_active` resolves「跟随当前对话模型」and the
-        template-library default.  This endpoint is THE ONLY read path: the card
-        and the settings panel both render exactly what it returns, with no
-        fallbacks of their own (用户裁定 2026-11-04).
-        ``__sources__`` tells the UI which keys came from an override, so it can
-        badge them without re-implementing the merge.
+        ## 2026-11-23 架构变更（boss 裁定：「全部采用统一的配置」）
+        旧实现返回三层数据（server / session_config / global_config）并带
+        `active_scope`，因为界面上有「会话模式 / 默认模式」两个页签。boss 裁定
+        取消会话级配置后：
+
+          · 生效值 = 基础配置 ⊕ 命中的时间策略（见 resolve_effective）
+          · `config`      —— 生效值（前端基础配置页读它）
+          · `base_config` —— 基础配置原始值（不含时段覆盖，用于「还原」与
+                             「时段未命中时用哪份」的展示）
+          · `schedule`    —— 当前命中的时间策略（null = 未命中，回落基础配置）
+          · `libraries`   —— 策略库快照（参数组 / 通知配置 / 时间策略）
+
+        为兼容仍然读旧键的调用方，`global_config` 保留为 `base_config` 的别名；
+        `session_config` 恒为空 dict、`active_scope` 恒为 "global"、`has_session`
+        恒 False —— 它们已无实际语义，但保留可避免旧前端崩在 undefined 上。
         """
         # Accept session_id+agent_id too: the host never hands the front end a
-        # chat UUID, so the caller cannot always supply one.
+        # chat UUID, so the caller cannot always supply one.（保留：chat_id 仍
+        # 参与「跟随当前对话模型」的解析，只是不再参与配置合并）
         chat_id = _resolve_chat_id(chat_id, session_id, agent_id)
         cfg = resolve_effective(chat_id)
-        # agent_id may be supplied explicitly; otherwise fall back to the
-        # request's own agent so「跟随当前对话模型」reads the right one.  An empty
-        # id still works (the host resolver defaults to the request agent).
         cfg = await _fill_follow_active(cfg, request, agent_id, chat_id)
 
-        # Which keys the global layer actually holds (vs pure defaults) — lets
-        # the UI show "继承自全局" vs "内建默认".
+        # 基础配置原始值（不含时段覆盖）
+        base_config: dict = {}
         global_keys: list[str] = []
         try:
-            global_keys = list(sanitize_settings(_load_prefs())[0].keys())
+            base_config = sanitize_settings(_load_prefs())[0]
+            global_keys = list(base_config.keys())
         except Exception:  # noqa: BLE001
-            pass
+            logger.warning(
+                "question_modal: could not read base config", exc_info=True,
+            )
 
-        # ── 「会话模式 vs 默认模式」的判据（2026-11-13 方案 D1 改造）──────
-        #
-        # 用户裁定：来回切换**不能丢数据**。
-        #   切到默认模式 = 只把「本会话当前用哪套」标成 default，
-        #   会话里自定义过的那几项**原样保留**；切回会话模式立刻恢复。
-        #
-        # 所以判据不能再是「有没有覆盖条目」——旧实现里"删掉条目"既是切模式
-        # 又是丢数据，两件事被绑死。改为读显式标记 `__active_scope__`：
-        #   · "session" → 会话模式
-        #   · "default" → 默认模式（覆盖数据仍在磁盘上，随时可切回）
-        #   · 无标记（历史数据）→ 有覆盖即视为 session，兼容旧数据
-        has_session = False
-        active_scope = "default"
+        # 策略库快照：前端渲染「参数库」「时间策略」两个页签需要它
+        libraries: dict = {"param_sets": [], "notify_profiles": [], "schedules": []}
         try:
-            ov = _load_session_prefs()
-            sess = ov.get(chat_id) if (chat_id and isinstance(ov, dict)) else None
-            if isinstance(sess, dict):
-                mark = str(sess.get("__active_scope__") or "").strip()
-                # 2026-11-13 用户裁定（严格判定）：历史数据没有标记时，
-                # **必须真的存在至少一个用户值项**才算会话模式。
-                # 否则一条只含内部字段（__keyts__ 等）的记录会被误判成
-                # 会话模式 —— 那种记录不含任何用户选择，语义上是"没设过"。
-                _has_real_value = bool(sanitize_settings(sess)[0])
-                if mark in ("session", "default"):
-                    active_scope = mark
-                    has_session = (mark == "session")
-                elif _has_real_value:
-                    has_session = True
-                    active_scope = "session"
-                else:
-                    has_session = False
-                    active_scope = "default"
+            libraries = {
+                "param_sets": load_param_sets(),
+                "notify_profiles": load_notify_profiles(),
+                "schedules": load_schedules(),
+            }
         except Exception:  # noqa: BLE001
-            pass
-
-        # 分层原始数据（见下方 return 里的说明）。
-        #   session_config = 该会话**显式覆盖过**的键（不掺全局、不受
-        #                    active_scope 影响 —— 即使现在不是会话模式，
-        #                    磁盘上留着的这些值也要能如实显示）
-        #   global_config  = 全局层的原始值（磁盘上的 analysis_prefs）
-        session_config: dict = {}
-        global_config: dict = {}
-        try:
-            _all = _load_session_prefs() if chat_id else {}
-            _sess = _all.get(chat_id) if isinstance(_all, dict) else None
-            if isinstance(_sess, dict):
-                session_config = sanitize_settings(_sess)[0]
-        except Exception:  # noqa: BLE001
-            session_config = {}
-        try:
-            global_config = sanitize_settings(_load_prefs())[0]
-        except Exception:  # noqa: BLE001
-            global_config = {}
-
-        # 本会话各键的最后写入时间（并发冲突检测用，2026-11-13 需求 2）。
-        # 前端打开面板时记下它，保存时作为 `seen` 发回；后端据此判断
-        # 「这个键在我看过之后是否被别处改过」，从而给出
-        # 「设置已于 xx 时间被其它位置修改」的标注。
-        key_ts: dict = {}
-        try:
-            if chat_id:
-                _all = _load_session_prefs()
-                _sess = _all.get(chat_id) if isinstance(_all, dict) else None
-                if isinstance(_sess, dict) and isinstance(_sess.get("__keyts__"), dict):
-                    key_ts = {
-                        str(k): float(v)
-                        for k, v in _sess["__keyts__"].items()
-                        if isinstance(v, (int, float))
-                    }
-        except Exception:  # noqa: BLE001 — 提示数据缺失绝不能影响读配置
-            key_ts = {}
+            logger.warning(
+                "question_modal: could not read libraries", exc_info=True,
+            )
 
         return {
             "ok": True,
             "chat_id": chat_id,
             "config": cfg,
-            "has_session": has_session,
-            # 显式标记，供前端判断"当前用哪套"（与 has_session 同义但更明确）
-            "active_scope": active_scope,
-            # ── 分层原始数据（2026-11-13 用户报「页签数据显示错层」）───────
-            #
-            # 问题：切到默认模式后 active_scope=default，生效值 config 就等于
-            # 全局值。前端会话页签原本读的是 `config`（生效值），于是显示成
-            # 全局数据；点保存时 set_scope 一改，生效值立刻切成会话覆盖，
-            # 页签内容"突然刷新"。
-            #
-            # 修法：把两层原始数据分别返回，前端各页签读自己那层，与"当前
-            # 生效哪套"彻底解耦 —— 会话页签永远显示会话层，默认页签永远
-            # 显示全局层，不管现在 active_scope 是什么。
-            "session_config": session_config,
-            "global_config": global_config,
+            "base_config": base_config,
+            # 兼容别名（旧字段，语义 = base_config）
+            "global_config": base_config,
             "global_keys": global_keys,
-            "key_ts": key_ts,
+            # 已废弃字段：保留空值避免旧前端崩在 undefined 上
+            "session_config": {},
+            "active_scope": "global",
+            "has_session": False,
+            "key_ts": {},
+            # 当前命中的时间策略（null = 未命中）
+            "schedule": cfg.get("__schedule__"),
+            "libraries": libraries,
             "version": _config_version(),
             "schema": [
                 {
@@ -3617,7 +4437,11 @@ def build_router() -> APIRouter:
         cfg = resolve_effective("")
         current = str(cfg.get("notify_channel") or "off")
         channels = []
-        for key in ("off",) + tuple(_NOTIFY_REMOTE_CHANNELS) + ("browser",):
+        # 2026-11-24 boss 需求 2：custom_api 加入可选渠道列表（它是一种
+        # 自定义通知方式，不是独立页签之外的第三形态）。仍**不**进
+        # _NOTIFY_REMOTE_CHANNELS——那条集合专指「走宿主 /api/messages/send
+        # 的 IM 渠道」，custom_api 的状态判定与投递都走自己的分支。
+        for key in ("off",) + tuple(_NOTIFY_REMOTE_CHANNELS) + ("custom_api", "browser"):
             if key == "off":
                 channels.append({
                     "channel": "off", "label": "关闭", "ready": True,
@@ -3691,280 +4515,294 @@ def build_router() -> APIRouter:
                     "limit": _TEST_LOG_MAX}
         return {"ok": True, "log": log, "limit": _TEST_LOG_MAX}
 
-    # ── Per-session overrides (global default + session override) ────────
+    # ── 会话级覆盖：已下线（2026-11-23 架构重构，boss 裁定）──────────────
+    #
+    # boss 原话：「不再采用会话模式或者默认模式，全部采用统一的配置，所有的
+    # 会话都生效同一种配置」。
+    #
+    # 因此「会话覆盖」这个数据源不再参与任何生效值计算（见 resolve_effective）。
+    # 三个旧端点保留为**显式 410**，而不是直接删掉：
+    #
+    #   · 直接 404：旧版前端/脚本会得到一个"路由不存在"的含糊错误，看不出是
+    #     "功能已下线"还是"插件装坏了"，排查方向会跑偏。
+    #   · 410 + 迁移说明：明确告诉调用方"这个能力被移除了，该改用哪个"，
+    #     与 MEMORY 里「写入静默丢弃/退化猜错」两条铁律同向 —— 宁可显式拒绝，
+    #     也不要让调用方以为操作成功了。
+    #
+    # **磁盘上的 session_prefs.json 不删除**：里面是用户历史配置，属不可再生
+    # 数据。保留原文件，万一 boss 将来要回看/导出仍有据可查。
+    _DEPRECATED_SESSION_MSG = (
+        "会话级配置已于 2026-11-23 移除：所有会话统一使用「基础配置」，"
+        "按时段生效请改用「时间策略」（/schedules）。"
+        "磁盘上的历史 session_prefs.json 已保留但不再参与生效值计算。"
+    )
+
     @router.get("/session-prefs")
     async def list_session_prefs() -> dict:
-        """List only the chats that actually carry a session-level override.
-
-        Two columns as requested: the conversation id and the owning agent.
-        The chat UUID is included because ``session_id`` is not unique across
-        agents (``cron-proxy-check`` exists under both ``default`` and
-        another agent workspace).
-        """
-        overrides = _load_session_prefs()
-        if not overrides:
-            return {"sessions": [], "count": 0}
-
-        lookup = {row["chat_id"]: row for row in _iter_agent_chats()}
-        out: list[dict] = []
-        for chat_id, values in overrides.items():
-            info = lookup.get(chat_id)
-            if not info:
-                # The chat was deleted but its override survived.  List it so
-                # the stale record stays visible instead of rotting silently.
-                out.append({
-                    "chat_id": chat_id,
-                    "session_id": "",
-                    "agent_id": "",
-                    "agent_name": "",
-                    "updated_at": (values or {}).get("updated_at", 0),
-                    "missing": True,
-                    "active_scope": str(
-                        (values or {}).get("__active_scope__") or ""
-                    ).strip() or ("session" if sanitize_settings(values or {})[0]
-                                  else "default"),
-                })
-                continue
-            # 2026-11-13：带上作用域标记。切到默认模式的会话虽然仍有一条
-            # 记录（保留数据用），但它**不在会话模式下运行** —— 不带标记的话
-            # 这个列表会把它列成"有会话覆盖"，误导排查。
-            _mark = str((values or {}).get("__active_scope__") or "").strip()
-            if _mark not in ("session", "default"):
-                _mark = "session" if sanitize_settings(values or {})[0] else "default"
-            out.append({
-                "chat_id": chat_id,
-                "session_id": info["session_id"],
-                "agent_id": info["agent_id"],
-                "agent_name": info["agent_name"],
-                "updated_at": (values or {}).get("updated_at", 0),
-                "missing": False,
-                "active_scope": _mark,
-                "active": (_mark == "session"),
-            })
-        out.sort(key=lambda r: r.get("updated_at") or 0, reverse=True)
-        return {"sessions": out, "count": len(out)}
+        """已下线：会话级覆盖不再参与生效值计算。"""
+        raise HTTPException(status_code=410, detail=_DEPRECATED_SESSION_MSG)
 
     @router.post("/session-prefs")
-    async def write_session_prefs(body: dict) -> dict:
-        """Merge one chat's session-level override (never replaces it).
+    async def post_session_prefs(body: dict) -> dict:
+        """已下线：会话级覆盖不再参与生效值计算。
 
-        Semantics (2026-11-04, after the「保存后被强制成默认值」bug):
-          • 非空 ``settings`` → **合并**进现存覆盖；未提交的键保持不变。
-          • ``{"key": null}`` → 删掉该键的覆盖（回到全局默认）。
-          • **空** ``settings`` → 保留旧语义：清空整条覆盖（UI 显式意图）。
-
-        合并语义是根修：旧实现 `sessions[chat_id] = clean` 会抹掉请求里没带的
-        键，而前端只提交「改动项」，于是改一项丢一片。
+        保留这个签名（而不是删掉路由）是为了让旧调用方拿到明确的 410，
+        而不是「404 路由不存在」这种会误导排查的响应。
         """
-        chat_id = (body or {}).get("chat_id")
-        if not chat_id:
-            chat_id = _resolve_chat_id(
-                "", str((body or {}).get("session_id") or ""),
-                str((body or {}).get("agent_id") or ""),
-            )
-        if not isinstance(chat_id, str) or not chat_id:
-            raise HTTPException(
-                status_code=400,
-                detail="chat_id (or resolvable session_id) is required",
-            )
-
-        settings = (body or {}).get("settings")
-        if settings is None:
-            settings = {}
-        if not isinstance(settings, dict):
-            raise HTTPException(
-                status_code=400, detail="settings must be an object",
-            )
-
-        # 「空对象」= 显式清空整条覆盖（旧的、也是 UI 依赖的语义）。
-        # 与「合并」并存：有键就合并，没键才清空。
-        # ── 模式切换（2026-11-13 方案 D1：切默认模式**不删数据**）──────
-        #
-        # 请求体可带 `set_scope: "session" | "default"`：
-        #   · "default" → 只打标记，会话自定义项原样保留；切回即恢复
-        #   · "session" → 打标记，会话覆盖继续生效
-        #
-        # 不能沿用「空 settings = 清空」来做切换：实测会把会话里设过的
-        # 模型/模板/上下文一起删掉，切回来只拿到全局值的副本。
-        _set_scope = str((body or {}).get("set_scope") or "").strip()
-        if _set_scope not in ("session", "default"):
-            _set_scope = ""
-
-        # 只带 set_scope 而 settings 为空 = 单纯切模式，**不能**当成清空，
-        # 否则 D1 的核心（切默认模式保留数据）立刻失效。
-        clear_all = (not settings) and (not _set_scope)
-
-        # 整个「读 → 合并 → 写」在同一把锁内完成。
-        #
-        # 2026-11-13（用户需求 2）：此前无锁，两个标签页同时保存时各自基于
-        # 自己读到的旧快照写回，后写者会**抹掉**先写者的改动（丢失更新），
-        # 与「后写为准」正好相反。加锁后每次写入都建立在最新磁盘状态上，
-        # 「最后一次为准」才成立。
-        with _PREFS_LOCK:
-            sessions = _load_session_prefs()
-
-            # ── 显式删除的键要**先**捞出来 ────────────────────────────
-            #
-            # `sanitize_settings` 把 None 视为非法值直接丢弃（它只认 schema
-            # 声明的类型），所以「传 null 表示删掉这一项」必须在 sanitize
-            # 之前识别，否则永远传不进来。这里只接受 scope=both 的键，
-            # 避免借删除通道动全局专属键。
-            explicit_del: set = set()
-            try:
-                for key, value in (settings or {}).items():
-                    if value is None:
-                        spec = SETTINGS_SCHEMA.get(key) or {}
-                        if spec.get("scope", "both") == "both":
-                            explicit_del.add(key)
-            except Exception:  # noqa: BLE001
-                explicit_del = set()
-
-            # ``_session_writable`` also re-checks scope at the storage layer.
-            clean: dict = _session_writable({
-                k: v for k, v in (settings or {}).items() if v is not None
-            })
-
-            # ── MERGE, never replace ──────────────────────────────────────
-            #
-            # 曾经写成 `sessions[chat_id] = clean`，即**整体替换**：请求里没带
-            # 的键会被直接抹掉，然后回落到全局默认值。用户报的「保存后被强制
-            # 设置成某个默认值」就是这条 —— 实测：有 5 项覆盖，只改
-            # wait_hint_sec 保存后，记录只剩 {"wait_hint_sec": 200}，
-            # mode 回落到全局 recommend。
-            #
-            # 现在改为与现存值合并。显式删除某个键请用空值（见下）；
-            # 清空整条覆盖请调 POST /session-prefs/clear。
-            existing = sessions.get(chat_id)
-            merged: dict = dict(existing) if isinstance(existing, dict) else {}
-            merged.pop("updated_at", None)
-
-            # ── 逐键写入时间戳（并发冲突检测，2026-11-13 需求 2）──────────
-            #
-            # 用户裁定：「同一会话多处写入，以最后一次为准，并提示
-            # 「设置已于 xx 时间被其它位置修改」」。
-            #
-            # 判定依据是**逐键**时间戳 `__keyts__`，而不是文件 mtime：
-            # mtime 粒度太粗（同一秒内多次写入无法区分），也无法回答
-            # 「具体哪几个键被别处改了」，前端就无从给出有用提示。
-            keyts: dict = {}
-            if isinstance(existing, dict) and isinstance(
-                existing.get("__keyts__"), dict
-            ):
-                keyts = dict(existing["__keyts__"])
-            merged.pop("__keyts__", None)
-
-            # 客户端「看过」的键时间戳（可选）。有它才能断定「这次覆盖了别处
-            # 的改动」而不是「用户自己刚改的」。没带 seen 的调用方（卡片上的
-            # 即时切换、脚本）不做判定 —— 它们本来就不展示提示。
-            seen = (body or {}).get("seen")
-            if not isinstance(seen, dict):
-                seen = {}
-
-            _now = time.time()
-            conflicts: list[dict] = []
-
-            # 显式删除：回到全局默认，并清掉时间戳，避免「已删的键还留着
-            # 旧时间」被误判成冲突。
-            for key in explicit_del:
-                merged.pop(key, None)
-                keyts.pop(key, None)
-
-            # 其余键合并写入（不触碰未提交的键）。
-            #
-            # 空串**不**落成覆盖：字符串类设置的空值只表示「没有偏好」，
-            # 等同于删掉该键。否则一个空 model_id 会被 __sources__ 标成
-            # session，UI 便永远认为「用户显式设过」，跟随/回落逻辑被永久冻死。
-            for key, value in clean.items():
-                prev_ts = keyts.get(key, 0)
-                seen_ts = seen.get(key)
-                if (
-                    isinstance(seen_ts, (int, float))
-                    and prev_ts
-                    and float(prev_ts) > float(seen_ts) + 1e-6
-                ):
-                    conflicts.append({
-                        "key": key,
-                        "previous": merged.get(key),
-                        "at": float(prev_ts),
-                    })
-                if isinstance(value, str) and value.strip() == "":
-                    merged.pop(key, None)
-                    keyts.pop(key, None)
-                else:
-                    merged[key] = value
-                    keyts[key] = _now
-
-            # 施加作用域标记（D1）。只切模式时除标记外不写任何值，
-            # 未设置的键天然继续跟随全局。
-            if _set_scope:
-                merged["__active_scope__"] = _set_scope
-
-            if clear_all:
-                sessions.pop(chat_id, None)
-                merged = {}
-                keyts = {}
-            elif merged:
-                merged["updated_at"] = _now
-                merged["__keyts__"] = keyts
-                sessions[chat_id] = merged
-            else:
-                # 合并后没剩任何键 → 这条覆盖已无意义，整条移除。
-                sessions.pop(chat_id, None)
-
-            _save_session_prefs(sessions)
-
-        return {
-            "ok": True, "chat_id": chat_id, "stored": bool(merged),
-            "values": merged,
-            "key_ts": keyts if not clear_all else {},
-            # 前端据此标注「设置已于 <at> 被其它位置修改」，不阻断保存
-            # （用户裁定 q1：不弹窗、只标注；q0：后写为准）。
-            "conflicts": conflicts,
-        }
+        raise HTTPException(status_code=410, detail=_DEPRECATED_SESSION_MSG)
 
     @router.post("/session-prefs/clear")
     async def clear_session_prefs(body: dict) -> dict:
-        """Drop one chat's ENTIRE session override (UI「清空本会话覆盖」).
+        """已下线：会话级覆盖不再参与生效值计算。"""
+        raise HTTPException(status_code=410, detail=_DEPRECATED_SESSION_MSG)
 
-        独立端点而不是靠「POST 空 settings」：合并语义上线后，空对象容易被
-        误当成「什么都没改」，一个显式动词端点让意图无歧义，也让设置页的按钮
-        有明确的后端对应物（而不是隐式依赖空 body 的巧合）。
+    # ══ 策略库 CRUD（US-024，2026-11-23）══════════════════════════════
+    #
+    # 三个库：参数组 / 通知配置 / 时间策略。接口形态统一为
+    #     GET    /<lib>           列表（含引用检查信息）
+    #     POST   /<lib>           新建或更新（带 id = 更新，无 id = 新建）
+    #     DELETE /<lib>           删除（被引用时拒绝，除非 force=true）
+    #
+    # 为什么删除要检查引用：时间策略按 id 引用参数组/通知配置。「删了还在被
+    # 引用的参数组」会让那条策略静默退化成"什么都不覆盖" —— 用户以为策略还在
+    # 生效，实际已经空了。这是典型的静默降级，必须拦下来（AGENTS.md §4.1）。
+    # 确实要删时 force=true 会**同时清空引用它的策略的对应字段**，并回报改了
+    # 哪些策略，而不是让策略坏在半路。
+
+    def _param_set_refs(ps_id: str) -> list[dict]:
+        return [
+            {"id": s["id"], "name": s["name"]}
+            for s in load_schedules() if s.get("param_set_id") == ps_id
+        ]
+
+    def _notify_profile_refs(np_id: str) -> list[dict]:
+        return [
+            {"id": s["id"], "name": s["name"]}
+            for s in load_schedules() if s.get("notify_profile_id") == np_id
+        ]
+
+    @router.get("/libs")
+    async def get_libs() -> dict:
+        """一次取回三个策略库 + 当前命中的策略 id。
+
+        为什么单独开这个端点（而非只靠 /effective-config）：前端写库成功后
+        只需要刷新库列表，/effective-config 会连带把整份生效配置重算一遍，
+        在编辑态里重拉会把用户正在填的草稿冲掉。窄口径刷新避免这类误伤。
+
+        返回结构与 /effective-config 的 `libraries` 保持一致（外加 active_id），
+        前端两条路径可以共用一个解析函数。
         """
-        chat_id = (body or {}).get("chat_id")
-        if not chat_id:
-            chat_id = _resolve_chat_id(
-                "", str((body or {}).get("session_id") or ""),
-                str((body or {}).get("agent_id") or ""),
-            )
-        if not isinstance(chat_id, str) or not chat_id:
-            raise HTTPException(
-                status_code=400,
-                detail="chat_id (or resolvable session_id) is required",
-            )
+        active = match_schedule()
+        return {
+            "ok": True,
+            "libraries": {
+                "param_sets": load_param_sets(),
+                "notify_profiles": load_notify_profiles(),
+                "schedules": load_schedules(),
+            },
+            "active_id": (active or {}).get("id") if active else None,
+        }
 
-        # ── 破坏性操作必须显式确认（2026-11-13 用户裁定 q2）──────────────
-        #
-        # 这个端点会**真的删掉**用户在该会话里的全部自定义设置，且无法撤销。
-        # 而 D1 上线后「切到默认模式」已改为只打标记、保留数据 —— 两者语义
-        # 相邻，很容易被误用（例如把"切模式"写成调这里，静默丢数据）。
-        # 因此要求调用方显式传 ``confirm: true``，让"删数据"永远是一个
-        # 有意识的动作，而不是顺手调错。
-        if not bool((body or {}).get("confirm")):
+    @router.get("/param-sets")
+    async def get_param_sets() -> dict:
+        """列出全部问卷参数组，附带每条被哪些时间策略引用。"""
+        items = load_param_sets()
+        for it in items:
+            it["used_by"] = _param_set_refs(it["id"])
+        return {"ok": True, "items": items}
+
+    @router.post("/param-sets")
+    async def post_param_set(body: dict) -> dict:
+        """新建（无 id）或更新（有 id）一个参数组。
+
+        更新时只覆盖请求里带了的字段，没有 id 就新建。返回落库后的整条记录，
+        调用方据此刷新列表（不猜后端做了什么）。
+        """
+        body = body or {}
+        items = load_param_sets()
+        pid = str(body.get("id") or "").strip()
+        if pid:
+            for i, it in enumerate(items):
+                if it["id"] == pid:
+                    merged = dict(it)
+                    if "name" in body:
+                        merged["name"] = body.get("name")
+                    if "params" in body:
+                        merged["params"] = body.get("params")
+                    items[i] = _sanitize_param_set(merged)
+                    save_param_sets(items)
+                    return {"ok": True, "item": items[i]}
+            raise HTTPException(status_code=404, detail=f"参数组不存在: {pid}")
+        item = _sanitize_param_set(body, keep_id=False)
+        items.append(item)
+        save_param_sets(items)
+        return {"ok": True, "item": item}
+
+    @router.delete("/param-sets")
+    async def delete_param_set(id: str = "", force: bool = False) -> dict:
+        """删除参数组。被时间策略引用时默认拒绝，force=true 连带清空引用。"""
+        if not id:
+            raise HTTPException(status_code=400, detail="id is required")
+        items = load_param_sets()
+        target = next((x for x in items if x["id"] == id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail=f"参数组不存在: {id}")
+        refs = _param_set_refs(id)
+        if refs and not force:
+            names = "、".join(r["name"] or r["id"] for r in refs)
             raise HTTPException(
-                status_code=400,
+                status_code=409,
                 detail=(
-                    "clearing a session override is destructive; pass "
-                    '{"confirm": true} to proceed. To just switch to the '
-                    "default mode, use POST /session-prefs with "
-                    '{"set_scope": "default"} instead - it keeps the data.'
+                    f"该参数组正被 {len(refs)} 条时间策略引用（{names}）。"
+                    "请先解除引用，或传 force=true 让这些策略的参数组被清空。"
                 ),
             )
+        touched: list[str] = []
+        if refs:
+            scheds = load_schedules()
+            for s in scheds:
+                if s.get("param_set_id") == id:
+                    s["param_set_id"] = ""
+                    touched.append(s.get("name") or s.get("id") or "")
+            save_schedules(scheds)
+        save_param_sets([x for x in items if x["id"] != id])
+        return {"ok": True, "deleted": id, "cleared_in": touched}
 
-        sessions = _load_session_prefs()
-        existed = chat_id in sessions
-        sessions.pop(chat_id, None)
-        _save_session_prefs(sessions)
-        return {"ok": True, "chat_id": chat_id, "cleared": existed}
+    @router.get("/notify-profiles")
+    async def get_notify_profiles() -> dict:
+        """列出全部命名通知配置，附带被引用情况。"""
+        items = load_notify_profiles()
+        for it in items:
+            it["used_by"] = _notify_profile_refs(it["id"])
+        return {"ok": True, "items": items}
+
+    @router.post("/notify-profiles")
+    async def post_notify_profile(body: dict) -> dict:
+        """新建或更新一条命名通知配置（pc / bg 两个渠道）。"""
+        body = body or {}
+        items = load_notify_profiles()
+        pid = str(body.get("id") or "").strip()
+        if pid:
+            for i, it in enumerate(items):
+                if it["id"] == pid:
+                    merged = dict(it)
+                    if "name" in body:
+                        merged["name"] = body.get("name")
+                    if "channels" in body:
+                        merged["channels"] = body.get("channels")
+                    items[i] = _sanitize_notify_profile(merged)
+                    save_notify_profiles(items)
+                    return {"ok": True, "item": items[i]}
+            raise HTTPException(status_code=404, detail=f"通知配置不存在: {pid}")
+        item = _sanitize_notify_profile(body, keep_id=False)
+        items.append(item)
+        save_notify_profiles(items)
+        return {"ok": True, "item": item}
+
+    @router.delete("/notify-profiles")
+    async def delete_notify_profile(id: str = "", force: bool = False) -> dict:
+        """删除通知配置。被时间策略引用时默认拒绝，force=true 连带清空引用。"""
+        if not id:
+            raise HTTPException(status_code=400, detail="id is required")
+        items = load_notify_profiles()
+        target = next((x for x in items if x["id"] == id), None)
+        if not target:
+            raise HTTPException(status_code=404, detail=f"通知配置不存在: {id}")
+        refs = _notify_profile_refs(id)
+        if refs and not force:
+            names = "、".join(r["name"] or r["id"] for r in refs)
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"该通知配置正被 {len(refs)} 条时间策略引用（{names}）。"
+                    "请先解除引用，或传 force=true 让这些策略的通知配置被清空。"
+                ),
+            )
+        touched: list[str] = []
+        if refs:
+            scheds = load_schedules()
+            for s in scheds:
+                if s.get("notify_profile_id") == id:
+                    s["notify_profile_id"] = ""
+                    touched.append(s.get("name") or s.get("id") or "")
+            save_schedules(scheds)
+        save_notify_profiles([x for x in items if x["id"] != id])
+        return {"ok": True, "deleted": id, "cleared_in": touched}
+
+    @router.get("/schedules")
+    async def get_schedules() -> dict:
+        """列出全部时间策略，并标出「此刻命中的是哪一条」。
+
+        `active_id` 让前端能直接高亮当前生效项，而不必自己再算一遍时段匹配
+        （两处各算一份必然漂移 —— 见 resolve_effective 的同类注释）。
+        """
+        items = load_schedules()
+        active = match_schedule()
+        return {
+            "ok": True,
+            "items": items,
+            "active_id": (active or {}).get("id") if active else None,
+        }
+
+    @router.post("/schedules")
+    async def post_schedule(body: dict) -> dict:
+        """新建或更新一条时间策略。
+
+        引用校验：`param_set_id` / `notify_profile_id` 若给了值，必须指向真实
+        存在的库条目 —— 否则这条策略从建立那一刻起就是坏的（命中后什么都
+        覆盖不到），而用户从界面上看不出区别。
+        """
+        body = body or {}
+        items = load_schedules()
+        sid = str(body.get("id") or "").strip()
+
+        ps_id = str(body.get("param_set_id") or "").strip()
+        if ps_id and not any(x["id"] == ps_id for x in load_param_sets()):
+            raise HTTPException(
+                status_code=400, detail=f"引用的参数组不存在: {ps_id}",
+            )
+        np_id = str(body.get("notify_profile_id") or "").strip()
+        if np_id and not any(x["id"] == np_id for x in load_notify_profiles()):
+            raise HTTPException(
+                status_code=400, detail=f"引用的通知配置不存在: {np_id}",
+            )
+
+        if sid:
+            for i, it in enumerate(items):
+                if it["id"] == sid:
+                    merged = dict(it)
+                    for key in ("name", "start", "end",
+                                "param_set_id", "notify_profile_id"):
+                        if key in body:
+                            merged[key] = body.get(key)
+                    items[i] = _sanitize_schedule(merged)
+                    save_schedules(items)
+                    return {"ok": True, "item": items[i]}
+            raise HTTPException(status_code=404, detail=f"时间策略不存在: {sid}")
+        item = _sanitize_schedule(body, keep_id=False)
+        items.append(item)
+        save_schedules(items)
+        return {"ok": True, "item": item}
+
+    @router.delete("/schedules")
+    async def delete_schedule(id: str = "") -> dict:
+        """删除一条时间策略。
+
+        策略是引用方、不是被引用方，删它不会破坏别处，因此无需强制确认 ——
+        但会回报「删除后当前是否还有策略命中」，让前端立刻知道生效值变了。
+        """
+        if not id:
+            raise HTTPException(status_code=400, detail="id is required")
+        items = load_schedules()
+        if not any(x["id"] == id for x in items):
+            raise HTTPException(status_code=404, detail=f"时间策略不存在: {id}")
+        save_schedules([x for x in items if x["id"] != id])
+        active = match_schedule()
+        return {
+            "ok": True,
+            "deleted": id,
+            "active_id": (active or {}).get("id") if active else None,
+        }
 
     # ── Prompt templates (REQ-001/003/005/006) ──────────────────────────
     @router.get("/templates")
@@ -4476,15 +5314,11 @@ class QuestionModalMiddleware(_MiddlewareBase):
         _chat_id = ""
         try:
             _chat_id = _resolve_chat_id("", session_id, agent_id)
+            # 2026-11-23：会话层已整体移除，mode 只可能来自「基础配置 ⊕ 时段」。
+            # 原先这里还有一段「resolve_effective 拿不到就回读会话覆盖」的兜底，
+            # 现在那个数据源不存在了，兜底会永远拿到空字典 —— 属于死代码，
+            # 留着会让后来者以为还有会话层。直接删掉。
             _eff = resolve_effective(_chat_id).get("mode") if _chat_id else None
-            if not _eff:
-                _ov = _load_session_prefs()
-                if isinstance(_ov, dict):
-                    for _k in (session_id, f"{session_id}:{agent_id}"):
-                        _s = _ov.get(_k)
-                        if isinstance(_s, dict) and _s.get("mode"):
-                            _eff = _s["mode"]
-                            break
             _mode = str(_eff or "manual")
             # 诊断（2026-11-13）：mode 解析结果必须可见，否则"问卷秒被自动答完"
             # 无法区分是「配置读错」还是「配置本身如此」。
