@@ -2669,7 +2669,10 @@ def save_notify_profiles(items: list[dict]) -> None:
 
 # ── 时间策略 ─────────────────────────────────────────────────────────
 
-_TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)$")
+# 2026-11-24 boss 需求 4：时间策略加秒 —— 秒为可选段（HH:mm[:ss]）。
+# 旧 HH:mm 值完全兼容（秒按 0）；结束时间默认 23:59:59，消除 23:59:01~23:59:59
+# 这一段的空缺。
+_TIME_RE = re.compile(r"^([01]\d|2[0-3]):([0-5]\d)(?::([0-5]\d))?$")
 
 
 def _valid_hhmm(v: str) -> bool:
@@ -2714,18 +2717,23 @@ def save_schedules(items: list[dict]) -> None:
     _write_lib(_SCHEDULES_FILE, [_sanitize_schedule(x) for x in items])
 
 
-def _minutes_of(hhmm: str) -> int:
-    """'HH:MM' → 当天分钟数。'24:00' 特殊处理为 1440（表示到当天结束）。"""
+def _seconds_of(hhmm: str) -> int:
+    """'HH:MM[:SS]' → 当天秒数。'24:00' 特殊处理为 86400（表示到当天结束）。
+
+    2026-11-24 粒度从分钟升级为秒（时间策略加秒，开始默认 :00、结束默认 :59）；
+    旧 HH:mm 值秒按 0 计，匹配结果与原先一致。
+    """
     s = str(hhmm or "").strip()
     if s == "24:00":
-        return 1440
+        return 86400
     m = _TIME_RE.match(s)
     if not m:
         return -1
-    return int(m.group(1)) * 60 + int(m.group(2))
+    sec = int(m.group(3)) if m.group(3) else 0
+    return int(m.group(1)) * 3600 + int(m.group(2)) * 60 + sec
 
 
-def match_schedule(now_minutes: int | None = None) -> dict | None:
+def match_schedule(now_seconds: int | None = None) -> dict | None:
     """返回当前命中的时间策略（按列表顺序，命中第一条即返回）。
 
     匹配规则（与 UI 说明一致）：
@@ -2735,23 +2743,26 @@ def match_schedule(now_minutes: int | None = None) -> dict | None:
       · start == end 视为「全天」（用户把两端填成一样时的合理语义）
 
     都不命中返回 None，调用方据此回落到基础配置。
+
+    2026-11-24：比较粒度从分钟改为秒（时间策略加秒，开始默认 :00、结束默认
+    :59，23:59:59 完整覆盖到当天最后一秒）。旧 HH:mm 值秒按 0 处理，行为不变。
     """
-    if now_minutes is None:
+    if now_seconds is None:
         lt = time.localtime()
-        now_minutes = lt.tm_hour * 60 + lt.tm_min
+        now_seconds = lt.tm_hour * 3600 + lt.tm_min * 60 + lt.tm_sec
     for sched in load_schedules():
-        s = _minutes_of(sched.get("start"))
-        e = _minutes_of(sched.get("end"))
+        s = _seconds_of(sched.get("start"))
+        e = _seconds_of(sched.get("end"))
         if s < 0 or e < 0:
             continue
         if s == e:
             return sched                      # 全天
         if s < e:
-            if s <= now_minutes < e:
+            if s <= now_seconds < e:
                 return sched
         else:
             # 跨零点：先看今天尾部，再看今天开头
-            if now_minutes >= s or now_minutes < e:
+            if now_seconds >= s or now_seconds < e:
                 return sched
     return None
 
@@ -4426,7 +4437,11 @@ def build_router() -> APIRouter:
         cfg = resolve_effective("")
         current = str(cfg.get("notify_channel") or "off")
         channels = []
-        for key in ("off",) + tuple(_NOTIFY_REMOTE_CHANNELS) + ("browser",):
+        # 2026-11-24 boss 需求 2：custom_api 加入可选渠道列表（它是一种
+        # 自定义通知方式，不是独立页签之外的第三形态）。仍**不**进
+        # _NOTIFY_REMOTE_CHANNELS——那条集合专指「走宿主 /api/messages/send
+        # 的 IM 渠道」，custom_api 的状态判定与投递都走自己的分支。
+        for key in ("off",) + tuple(_NOTIFY_REMOTE_CHANNELS) + ("custom_api", "browser"):
             if key == "off":
                 channels.append({
                     "channel": "off", "label": "关闭", "ready": True,

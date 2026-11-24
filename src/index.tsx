@@ -196,7 +196,23 @@ function injectStyles(): void {
       // 2026-11-23：本块所有颜色已全部改为 CSS 变量，不再硬编码蓝色 ——
       // 否则宿主切主题时面板不跟随（实测过：面板蓝、卡片橙两张皮）。
       ".qm-set-wrap{font-size:13px;color:var(--app-text-primary,#1e293b);",
-      "max-height:90vh;display:flex;flex-direction:column;overflow:hidden}",
+      "max-height:90vh;display:flex;flex-direction:column;overflow:hidden;",
+      // 需求 1（2026-11-24）：删除确认气泡的定位基准
+      "position:relative}",
+      // 删除二次确认气泡（形态对齐问卷卡「释放确认」气泡：白底、细边、红确定键）
+      ".qm-set-delconfirm{position:absolute;left:50%;top:34%;",
+      "transform:translate(-50%,-50%);z-index:1300;width:300px;max-width:86%;",
+      "padding:14px 16px;border-radius:10px;",
+      "background:var(--app-bg-elevated,#fff);",
+      "border:1px solid var(--app-border-strong,rgba(127,127,127,0.45));",
+      "box-shadow:0 8px 24px rgba(0,0,0,0.18)}",
+      ".qm-set-dctitle{font-size:13px;font-weight:600;margin-bottom:6px;",
+      "overflow-wrap:anywhere}",
+      ".qm-set-dcdesc{font-size:12px;line-height:1.6;",
+      "color:var(--app-text-secondary,inherit)}",
+      ".qm-set-dcbtns{display:flex;justify-content:flex-end;gap:8px;margin-top:12px}",
+      ".qm-set-dcok{background:#d92d20;color:#fff;border:none;font-weight:500}",
+      ".qm-set-dcok:hover{background:#b42318}",
       // 中间内容区滚动（参考稿 .tab-content：flex:1 + 自身滚动），footer 不随内容滚走
       ".qm-set-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;scrollbar-width:none}",
       ".qm-set-scroll::-webkit-scrollbar{width:0;height:0;display:none}",
@@ -286,8 +302,14 @@ function injectStyles(): void {
       // 文字不折行 + 按钮组允许换行排列。
       ".qm-set-stalebtns{flex-wrap:wrap}",
       ".qm-set-stalebtns .qm-set-btn{white-space:nowrap}",
-      // US-007：时段卡字段网格窄屏单列；名称不再限宽
-      ".qm-set-schedgrid{grid-template-columns:1fr}",
+      // US-007：时段卡字段网格窄屏单列；名称不再限宽。
+      // 需求 3（2026-11-24 真机截图）：必须带 .qm-set-wrap 前缀提高特异性——
+      // 基础规则 .qm-set-schedgrid{...1fr 1fr} 声明在本 media 块**之后**，
+      // 同特异性时后者胜出，导致手机上仍是两列、下拉文字被截断。
+      ".qm-set-wrap .qm-set-schedgrid{grid-template-columns:1fr}",
+      ".qm-set-wrap .qm-set-schedgrid .qm-set-native{width:100%;min-width:0}",
+      // 需求 5：两列开关行窄屏回落单列（同样带前缀防被后声明的基础规则覆盖）
+      ".qm-set-wrap .qm-set-rowpair{grid-template-columns:1fr;column-gap:0}",
       ".qm-set-schedname{max-width:none}",
       ".qm-set-foot{margin:8px 16px 0;padding:14px 0 16px}",
       "}",
@@ -591,6 +613,10 @@ function injectStyles(): void {
       "background:rgba(217,48,37,.06)}",
       // 卡内字段网格：两列；窄屏（640px media 块）改单列
       ".qm-set-schedgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}",
+      // 需求 5（2026-11-24）：默认参数页「携带上下文 / 并行分析各题」一行两列。
+      // 子行仍用 .qm-set-row 结构（scope 标记/锁定态不丢），外层只负责分栏。
+      ".qm-set-rowpair{display:grid;grid-template-columns:1fr 1fr;column-gap:18px;",
+      "align-items:start}",
       ".qm-set-schedfield{display:flex;flex-direction:column;gap:4px;min-width:0}",
       ".qm-set-schedfieldlabel{font-size:13px;color:var(--app-text-tertiary,#94a3b8)}",
       ".qm-set-schedfield .qm-set-native,.qm-set-schedfield .qm-set-input{",
@@ -8068,6 +8094,10 @@ const settingsState: {
     id: string; name: string; start: string; end: string;
     param_set_id: string; notify_profile_id: string;
   } | null;
+  /** 删除二次确认（2026-11-24 boss 需求 1）：非空 = 面板内展示确认气泡，
+   *  点「确定」才真正执行删除。kind：ts=时间策略 / ps=参数组 / np=通知配置 /
+   *  tpl=提示词模板。避免误删（✕ 按钮很小、卡片密集，极易点错）。 */
+  delConfirm: { kind: string; id: string; name: string } | null;
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
   sessData: null, cfg: null, cfgError: "", chatId: "",
@@ -8087,6 +8117,7 @@ const settingsState: {
   runSub: "default",
   schedEdit: "",
   schedDraft: null,
+  delConfirm: null,
 };
 let settingsPanelRoot: any = null;
 
@@ -8246,6 +8277,51 @@ async function deleteSchedule(id: string): Promise<boolean> {
   if (!d) return false;
   await loadLibraries();
   return true;
+}
+
+// ── 删除二次确认（2026-11-24 boss 需求 1）────────────────────────────
+// 所有删除类操作不再直接执行：先弹面板内确认气泡，点「确定」才走到这里。
+// 误删风险来自 ✕ 按钮小 + 卡片密集；二次确认把「点击」与「执行」拆开。
+function requestDeleteConfirm(kind: string, id: string, name: string): void {
+  settingsState.delConfirm = { kind, id, name };
+  settingsRenderPanel();
+}
+
+async function executeConfirmedDelete(): Promise<void> {
+  const dc = settingsState.delConfirm;
+  settingsState.delConfirm = null;   // 无论成功失败都先收起气泡
+  if (!dc) { settingsRenderPanel(); return; }
+  const id = dc.id;
+  if (dc.kind === "ts") {
+    await deleteSchedule(id);
+  } else if (dc.kind === "ps") {
+    const ps = settingsState.libs.paramSets
+      .filter((x: any) => String(x.id) === id)[0];
+    const usedBy = ((ps && ps.used_by) || []).length;
+    const ok = await deleteParamSet(id, false);
+    if (!ok && usedBy) {
+      // 409：引用冲突。这里**不自动 force** —— 强制删除会清空策略的引用，
+      // 属于有副作用的动作，必须让用户明确选择（与原实现同一口径）。
+      settingsState.libs.msg += "（如需强制删除，请先在时间策略里解除引用）";
+    }
+  } else if (dc.kind === "np") {
+    const np = settingsState.libs.notifyProfiles
+      .filter((x: any) => String(x.id) === id)[0];
+    const usedBy = ((np && np.used_by) || []).length;
+    const ok = await deleteNotifyProfile(id, false);
+    if (!ok && usedBy) {
+      settingsState.libs.msg += "（如需强制删除，请先在时间策略里解除引用）";
+    }
+  } else if (dc.kind === "tpl") {
+    const res = await deleteTemplate(id);
+    if (res && res.ok === false) {
+      settingsState.saveMsg = String(res.error || res.detail || "删除失败（内置模板不可删除）");
+    } else {
+      settingsState.saveMsg = "模板已删除";
+      reloadTemplates();
+    }
+  }
+  settingsRenderPanel();
 }
 
 
@@ -8756,21 +8832,12 @@ async function tplSave(): Promise<void> {
   settingsRenderPanel();
 }
 
-async function tplDelete(id: string): Promise<void> {
+/** 需求 1（2026-11-24）：删除入口只弹面板内确认气泡（原生 window.confirm
+ *  不是气泡形态，且阻塞宿主渲染）；真正删除在 executeConfirmedDelete 的
+ *  tpl 分支（含失败提示与 reloadTemplates）。 */
+function tplDelete(id: string): void {
   const t = settingsState.templates.filter((x: any) => x.id === id)[0];
-  const ok = typeof window !== "undefined" && typeof window.confirm === "function"
-    ? window.confirm("确定删除模板「" + ((t && t.name) || id) + "」？")
-    : false;
-  if (!ok) return;
-  const res = await deleteTemplate(id);
-  if (res && res.ok === false) {
-    settingsState.saveMsg = String(res.error || res.detail || "删除失败（内置模板不可删除）");
-    settingsRenderPanel();
-    return;
-  }
-  settingsState.saveMsg = "模板已删除";
-  reloadTemplates();
-  settingsRenderPanel();
+  requestDeleteConfirm("tpl", id, String((t && t.name) || id));
 }
 
 /** Resolve the chat this panel should target, then PULL the lock.
@@ -10078,6 +10145,10 @@ type SettingRowDef = {
   hideWhenRecommend?: boolean;
   /** seg 选项标签（映射到存储值由调用方提供的表完成） */
   segItems?: string[];
+  /** 与下一行合并成一行两列（2026-11-24 boss 需求 5：默认参数页的
+   *  「携带上下文 / 并行分析各题」两个开关并排，压低面板高度）。
+   *  仅当**相邻两行都为 true** 时生效；移动端 640px 以下自动回落单列。 */
+  pair?: boolean;
 };
 
 /**
@@ -10094,6 +10165,8 @@ function buildModeRows(opts: {
   modelNote: string;
   switchKeys: { ctx: string; parallel: string };
   modelWide?: boolean;
+  /** true = 「携带上下文」「并行分析各题」两个开关合并为一行两列（需求 5） */
+  pairSwitches?: boolean;
 }): SettingRowDef[] {
   return [
     {
@@ -10137,6 +10210,7 @@ function buildModeRows(opts: {
       note: "附带上次决策与会话历史",
       switchKey: opts.switchKeys.ctx,
       hideWhenRecommend: true,
+      pair: !!opts.pairSwitches,
     },
     {
       id: opts.ids.parallel,
@@ -10148,6 +10222,7 @@ function buildModeRows(opts: {
       note: "逐题并发调用模型，更快，但更耗额度。",
       switchKey: opts.switchKeys.parallel,
       hideWhenRecommend: true,
+      pair: !!opts.pairSwitches,
     },
   ];
 }
@@ -10172,6 +10247,7 @@ const MODE_ROWS_DEFAULT = buildModeRows({
   modelNote: "自动读取当前对话模型；改动即自动切换",
   switchKeys: { ctx: "s3", parallel: "s4" },
   modelWide: true,
+  pairSwitches: true,
 });
 
 /** 一行设置值的读取（供渲染器使用）。 */
@@ -10246,9 +10322,30 @@ function renderSettingRows(
     currentMode: string;
   },
 ): any[] {
-  return defs
-    .filter((d) => !d.hideWhenRecommend || ctx.currentMode !== "recommend")
-    .map((d) => renderSettingRow(R, d, ctx));
+  // 需求 5（2026-11-24）：相邻两个 pair 行合并进一行两列容器。
+  // 先过滤可见性再配对，避免「只用推荐」下出现孤儿 pair（两行都 hideWhenRecommend，
+  // 要么一起出现要么一起消失，正常不会孤儿；防御式处理：落单按普通行渲染）。
+  const visible = defs
+    .filter((d) => !d.hideWhenRecommend || ctx.currentMode !== "recommend");
+  const out: any[] = [];
+  for (let i = 0; i < visible.length; i++) {
+    const d = visible[i];
+    const nxt = visible[i + 1];
+    if (d.pair && nxt && nxt.pair) {
+      out.push(R.createElement("div", {
+        key: "pair-" + d.id + "+" + nxt.id,
+        className: "qm-set-rowpair",
+        "data-qm-rowpair": "1",
+      }, [
+        renderSettingRow(R, d, ctx),
+        renderSettingRow(R, nxt, ctx),
+      ]));
+      i++;
+    } else {
+      out.push(renderSettingRow(R, d, ctx));
+    }
+  }
+  return out;
 }
 
 /** ══════════════════════════════════════════════════════════════════════
@@ -10362,7 +10459,10 @@ function renderScheduleCard(
     // （esbuild 直接报 Expected ":" but found "+"）。
     const timeInput = (field: "start" | "end") => {
       const props: any = {
-        key: field, type: "time", value: String(d[field] || ""),
+        key: field, type: "time",
+        // 需求 4（2026-11-24）：显示秒（HH:mm:ss）。开始默认 :00、结束默认 :59，
+        // 消除 23:59:01~23:59:59 的空缺；step=1 是原生 time 输入显示秒的开关。
+        step: 1, value: String(d[field] || ""),
         onChange: (e: any) => setD(field, e && e.target ? String(e.target.value) : ""),
       };
       props["data-qm-ts-" + field] = id;
@@ -10505,9 +10605,8 @@ function renderScheduleCard(
           "data-qm-ts-del": id, title: "删除这条策略",
           disabled: !!ctx.busy,
           onClick: () => {
-            settingsState.libs.busy = true;
-            settingsRenderPanel();
-            void deleteSchedule(id);
+            // 需求 1（2026-11-24）：二次确认气泡，避免误删。
+            requestDeleteConfirm("ts", id, String(item.name || "未命名策略"));
           },
         }, "✕"),
       ]),
@@ -10626,7 +10725,9 @@ function tsTabBody(R: any): any[] {
       onClick: () => {
         settingsState.schedEdit = "__new__";
         settingsState.schedDraft = {
-          id: "", name: "", start: "08:00", end: "18:00",
+          // 需求 4（2026-11-24）：开始秒默认 :00、结束秒默认 :59，
+          // 消除「结束分钟最后一秒」的空缺（如 23:59:59）。
+          id: "", name: "", start: "08:00:00", end: "18:00:59",
           param_set_id: "", notify_profile_id: "",
         };
         settingsRenderPanel();
@@ -10849,19 +10950,9 @@ function paramSetsBody(
             ? "被策略引用，需先解除引用（或确认后强制删除）"
             : "删除该参数组",
           onClick: () => {
-            void (async () => {
-              settingsState.libs.busy = true;
-              settingsRenderPanel();
-              const ok = await deleteParamSet(id, false);
-              settingsState.libs.busy = false;
-              settingsRenderPanel();
-              if (!ok && usedBy.length) {
-                // 409：引用冲突。这里**不自动 force** —— 强制删除会清空
-                // 策略的引用，属于有副作用的动作，必须让用户明确选择。
-                settingsState.libs.msg += "（如需强制删除，请先在时间策略里解除引用）";
-                settingsRenderPanel();
-              }
-            })();
+            // 需求 1（2026-11-24）：二次确认气泡；409 引用冲突提示移到
+            // executeConfirmedDelete 的 ps 分支统一处理。
+            requestDeleteConfirm("ps", id, String(ps.name || "未命名参数组"));
           },
         }, "✕"),
       ]),
@@ -11051,17 +11142,8 @@ function notifyProfilesBody(R: any): any[] {
           key: "d", type: "button", className: "qm-set-tsbtn qm-set-tsdel",
           "data-qm-np-del": id, disabled: !!lib.busy,
           onClick: () => {
-            void (async () => {
-              settingsState.libs.busy = true;
-              settingsRenderPanel();
-              const ok = await deleteNotifyProfile(id, false);
-              settingsState.libs.busy = false;
-              settingsRenderPanel();
-              if (!ok && usedBy.length) {
-                settingsState.libs.msg += "（如需强制删除，请先在时间策略里解除引用）";
-                settingsRenderPanel();
-              }
-            })();
+            // 需求 1（2026-11-24）：二次确认气泡；409 提示移到确认执行器。
+            requestDeleteConfirm("np", id, String(np.name || "未命名通知配置"));
           },
         }, "✕"),
       ]),
@@ -12669,8 +12751,34 @@ function SettingsPanel(props: {
   const scroll = R.createElement("div", { className: "qm-set-scroll", key: "scroll" }, [
     sessionNote, hint, tabBody, saveMsgLine, conflictLine,
   ]);
+  // 需求 1（2026-11-24）：删除二次确认气泡。挂在面板根内居中（qm-set-wrap
+  // 已设 position:relative）；删除不可逆，必须显式点「确定删除」才执行。
+  const dc = settingsState.delConfirm;
+  const delConfirmNode = dc
+    ? R.createElement("div", {
+        key: "delconfirm", className: "qm-set-delconfirm",
+        "data-qm-delconfirm": "1", role: "dialog", "aria-label": "确认删除",
+      }, [
+        R.createElement("div", { key: "t", className: "qm-set-dctitle" },
+          "确定删除「" + (dc.name || "该条目") + "」？"),
+        R.createElement("div", { key: "d", className: "qm-set-dcdesc" },
+          "删除后不可恢复。"),
+        R.createElement("div", { key: "b", className: "qm-set-dcbtns" }, [
+          R.createElement("button", {
+            key: "c", type: "button", className: "qm-set-btn",
+            "data-qm-delconfirm-cancel": "1",
+            onClick: () => { settingsState.delConfirm = null; settingsRenderPanel(); },
+          }, "取消"),
+          R.createElement("button", {
+            key: "ok", type: "button", className: "qm-set-btn qm-set-dcok",
+            "data-qm-delconfirm-ok": "1",
+            onClick: () => { void executeConfirmedDelete(); },
+          }, "确定删除"),
+        ]),
+      ])
+    : null;
   const body = R.createElement("div", { className: "qm-set-wrap" }, [
-    head, tabBar, scroll, foot,
+    head, tabBar, scroll, foot, delConfirmNode,
   ]);
 
   if (!Modal) {
