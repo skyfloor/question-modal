@@ -1993,12 +1993,43 @@ function tl() {
       "transition:all .15s}",
       ".qm-set-scheddel:hover{color:#d93025;border-color:#f3c2bd;",
       "background:rgba(217,48,37,.06)}",
+      // 备份卡（2026-11-25 boss 反馈「备份内容太丑」）：对齐时间策略卡的
+      // 视觉语言——白底细边圆角 + 左侧色条 + hover 阴影，标题/元信息/操作
+      // 三层分区，不再用裸 .qm-set-libcard 的朴素列表样式。
+      ".qm-set-baklist{display:flex;flex-direction:column;gap:10px;margin-top:10px}",
+      ".qm-set-bakcard{position:relative;background:var(--app-bg-elevated,#fff);",
+      "border:1px solid var(--app-border,#e5e7eb);border-radius:10px;",
+      "padding:11px 13px 11px 15px;transition:border-color .15s,box-shadow .15s}",
+      ".qm-set-bakcard::before{content:'';position:absolute;left:0;top:10px;bottom:10px;",
+      "width:3px;border-radius:0 2px 2px 0;background:var(--app-accent,#ff7f16)}",
+      ".qm-set-bakcard:hover{border-color:var(--app-border-strong,#cbd5e1);",
+      "box-shadow:0 2px 8px rgba(0,0,0,.06)}",
+      ".qm-set-baktop{display:flex;align-items:center;gap:8px;min-width:0}",
+      ".qm-set-bakicon{flex:none;width:20px;height:20px;border-radius:6px;",
+      "background:var(--app-accent-soft,rgba(255,127,22,.12));",
+      "color:var(--app-accent,#ff7f16);display:flex;align-items:center;",
+      "justify-content:center;font-size:12px}",
+      ".qm-set-bakname{flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;",
+      "color:var(--app-text-primary,#1e293b);overflow:hidden;text-overflow:ellipsis;",
+      "white-space:nowrap}",
+      ".qm-set-bakmeta{font-size:12px;color:var(--app-text-tertiary,#94a3b8);",
+      "line-height:1.5;margin:5px 0 0 28px}",
+      ".qm-set-bakacts{display:flex;justify-content:flex-end;gap:8px;",
+      "align-items:center;flex-wrap:wrap;margin-top:8px}",
       // 卡内字段网格：两列；窄屏（640px media 块）改单列
       ".qm-set-schedgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}",
       // 需求 5（2026-11-24）：默认参数页「携带上下文 / 并行分析各题」一行两列。
       // 子行仍用 .qm-set-row 结构（scope 标记/锁定态不丢），外层只负责分栏。
       ".qm-set-rowpair{display:grid;grid-template-columns:1fr 1fr;column-gap:18px;",
       "align-items:start}",
+      // 2026-11-25 boss 反馈：pair 内两个开关行的说明文字空间明明够，却被
+      // 强制折行。根因 = 通用 .qm-set-rowctl 的 min-width:180px（为右对齐
+      // 下拉/输入留位），开关根本用不到这么宽，把 label 列挤到约 100px。
+      // 这里在 pair 作用域内取消该下限、让控件列按内容收缩（开关 ~40px），
+      // label 列随之变宽，说明文字即可单行显示。
+      ".qm-set-rowpair .qm-set-rowctl{min-width:0;flex-shrink:0}",
+      ".qm-set-rowpair .qm-set-rowlabel{flex:1 1 auto}",
+      ".qm-set-rowpair .qm-set-rownote{white-space:nowrap}",
       ".qm-set-schedfield{display:flex;flex-direction:column;gap:4px;min-width:0}",
       ".qm-set-schedfieldlabel{font-size:13px;color:var(--app-text-tertiary,#94a3b8)}",
       ".qm-set-schedfield .qm-set-native,.qm-set-schedfield .qm-set-input{",
@@ -6969,25 +7000,27 @@ function lc(t) {
     const r = String(a.name || "");
     n.push(t.createElement("div", {
       key: r,
-      className: "qm-set-libcard",
-      "data-qm-backup-item": r,
-      style: { marginBottom: "8px" }
+      className: "qm-set-baklist",
+      "data-qm-backup-list": "1"
+    }, [t.createElement("div", {
+      key: r,
+      className: "qm-set-bakcard",
+      "data-qm-backup-item": r
     }, [
+      t.createElement("div", { key: "top", className: "qm-set-baktop" }, [
+        t.createElement("span", { key: "ic", className: "qm-set-bakicon" }, "▣"),
+        t.createElement("span", {
+          key: "n",
+          className: "qm-set-bakname",
+          title: a.label || r
+        }, a.label || r)
+      ]),
       t.createElement(
         "div",
-        { key: "n", className: "qm-set-schednotetitle" },
-        a.label || r
+        { key: "m", className: "qm-set-bakmeta" },
+        String(a.created_at || "") + " · " + (a.files || []).length + " 个配置文件 · " + r
       ),
-      t.createElement(
-        "div",
-        { key: "m", className: "qm-set-dcdesc" },
-        String(a.created_at || "") + " · " + (a.files || []).length + " 个文件"
-      ),
-      t.createElement("div", {
-        key: "b",
-        className: "qm-set-dcbtns",
-        style: { justifyContent: "flex-end" }
-      }, [
+      t.createElement("div", { key: "b", className: "qm-set-bakacts" }, [
         e.confirmName === r ? t.createElement("span", { key: "cf", style: { fontSize: "12px" } }, [
           "确定恢复？当前配置会先自动备份。 ",
           t.createElement("button", {
@@ -7023,7 +7056,7 @@ function lc(t) {
           }
         }, "恢复此备份")
       ])
-    ]));
+    ])]));
   }
   return e.msg && n.push(t.createElement("div", {
     key: "msg",
