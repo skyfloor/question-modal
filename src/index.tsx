@@ -8101,7 +8101,7 @@ const settingsState: {
   /** 配置备份/恢复（2026-11-25）：备份列表 + 操作反馈 + 恢复确认目标 */
   cfgBackup: {
     items: any[]; dataDir: string; busy: boolean; msg: string; msgKind: string;
-    confirmName: string;
+    confirmName: string; loaded: boolean;
   };
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
@@ -8123,7 +8123,7 @@ const settingsState: {
   schedEdit: "",
   schedDraft: null,
   delConfirm: null,
-  cfgBackup: { items: [], dataDir: "", busy: false, msg: "", msgKind: "info", confirmName: "" },
+  cfgBackup: { items: [], dataDir: "", busy: false, msg: "", msgKind: "info", confirmName: "", loaded: false },
 };
 let settingsPanelRoot: any = null;
 
@@ -8185,7 +8185,9 @@ async function cfgBackupRequest(
   path: string, method: string, body?: any,
 ): Promise<any | null> {
   const B = settingsState.cfgBackup;
-  B.busy = true; settingsRenderPanel();
+  // 不在请求函数内同步 render —— 无论是渲染期还是事件期，render 只由
+  // 调用方在数据落地后触发一次，避免任何递归渲染路径。
+  B.busy = true;
   try {
     const opts: any = { method, headers: authHeaders() };
     if (body !== undefined) opts.body = JSON.stringify(body);
@@ -8202,16 +8204,43 @@ async function cfgBackupRequest(
     B.msg = "请求失败：" + (e && e.message ? e.message : String(e));
     B.msgKind = "error";
     return null;
+  // 🔴 2026-11-25 浏览器死机根因：请求函数内**同步**调用 settingsRenderPanel()
+  // （=同步 ReactDOM.render）。备份页在渲染期触发 cfgBackupRefresh()，而这里
+  // 同步重渲染 → 备份页再次渲染 → 再次触发刷新 → 无限递归，主线程卡死。
+  // 修法：请求函数一律**不**自己重渲染；由调用方在数据落地后单独触发一次，
+  // 且渲染期的自动加载走 setTimeout 脱离当前渲染调用栈。
   } finally {
-    B.busy = false; settingsRenderPanel();
+    B.busy = false;
+    // 不再在这里 settingsRenderPanel() —— 交给调用方/定时器。
   }
 }
 
-async function cfgBackupRefresh(): Promise<void> {
-  const d = await cfgBackupRequest("/backups", "GET");
-  if (d) {
-    settingsState.cfgBackup.items = d.items || [];
-    settingsState.cfgBackup.dataDir = d.data_dir || "";
+async function cfgBackupRefresh(force?: boolean): Promise<void> {
+  // 防重入：已加载过或正在加载就跳过，避免渲染期重复触发。
+  if ((!force && settingsState.cfgBackup.loaded) || settingsState.cfgBackup.busy) return;
+  settingsState.cfgBackup.busy = true;
+  try {
+    const resp = await fetch(apiUrl("/question-modal/config/backups"), {
+      method: "GET", headers: authHeaders(),
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (resp.ok) {
+      settingsState.cfgBackup.items = d.items || [];
+      settingsState.cfgBackup.dataDir = d.data_dir || "";
+      settingsState.cfgBackup.loaded = true;
+    } else {
+      settingsState.cfgBackup.msg = String(d.detail || ("HTTP " + resp.status));
+      settingsState.cfgBackup.msgKind = "error";
+      settingsState.cfgBackup.loaded = true;   // 失败也标记，避免无限重试卡死
+    }
+  } catch (e: any) {
+    settingsState.cfgBackup.msg = "加载备份列表失败：" + (e && e.message ? e.message : String(e));
+    settingsState.cfgBackup.msgKind = "error";
+    settingsState.cfgBackup.loaded = true;
+  } finally {
+    settingsState.cfgBackup.busy = false;
+    // 数据已落地，此刻重渲染一次是安全的：loaded=true 使渲染期不再触发刷新。
+    settingsRenderPanel();
   }
 }
 
@@ -8237,7 +8266,7 @@ function cfgBackupBody(R: any): any[] {
           const label = "手动备份 " + new Date().toLocaleString();
           const d = await cfgBackupRequest("/backup", "POST", { label });
           if (d) { B.msg = "备份已创建：" + d.name; B.msgKind = "ok"; }
-          await cfgBackupRefresh();
+          await cfgBackupRefresh(true);
         })(); },
       }, "立即备份"),
       R.createElement("button", {
@@ -8277,7 +8306,7 @@ function cfgBackupBody(R: any): any[] {
             const d = await cfgBackupRequest("/import", "POST", { payload });
             if (d) { B.msg = "导入成功，已恢复 " + (d.restored || []).length
                 + " 个配置文件"; B.msgKind = "ok"; }
-            await cfgBackupRefresh();
+            await cfgBackupRefresh(true);
           })(); },
         }),
       ]),
@@ -8311,7 +8340,7 @@ function cfgBackupBody(R: any): any[] {
                   if (d) { B.msg = "已恢复 " + (d.restored || []).length + " 个配置文件";
                     B.msgKind = "ok"; }
                   B.confirmName = "";
-                  await cfgBackupRefresh();
+                  await cfgBackupRefresh(true);
                 })(); },
               }, "确认恢复"),
               " ",
@@ -12018,8 +12047,10 @@ function settingsTabBody(
   }
   // ═══════════════════ 运行参数 › 备份恢复（2026-11-25）═══════════════════
   if (tab === "run" && subKey === "backup") {
-    if (!settingsState.cfgBackup.items.length && !settingsState.cfgBackup.dataDir) {
-      void cfgBackupRefresh();
+    // setTimeout 脱离当前 React 渲染调用栈 —— 绝不能在 render 期同步发请求
+    // 又同步 render（那会造成无限递归 → 浏览器卡死）。loaded/busy 双重防重入。
+    if (!settingsState.cfgBackup.loaded && !settingsState.cfgBackup.busy) {
+      setTimeout(() => { void cfgBackupRefresh(); }, 0);
     }
     bodyKids.push(...cfgBackupBody(R));
     return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
