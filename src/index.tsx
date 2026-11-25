@@ -8098,6 +8098,11 @@ const settingsState: {
    *  点「确定」才真正执行删除。kind：ts=时间策略 / ps=参数组 / np=通知配置 /
    *  tpl=提示词模板。避免误删（✕ 按钮很小、卡片密集，极易点错）。 */
   delConfirm: { kind: string; id: string; name: string } | null;
+  /** 配置备份/恢复（2026-11-25）：备份列表 + 操作反馈 + 恢复确认目标 */
+  cfgBackup: {
+    items: any[]; dataDir: string; busy: boolean; msg: string; msgKind: string;
+    confirmName: string;
+  };
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
   sessData: null, cfg: null, cfgError: "", chatId: "",
@@ -8118,6 +8123,7 @@ const settingsState: {
   schedEdit: "",
   schedDraft: null,
   delConfirm: null,
+  cfgBackup: { items: [], dataDir: "", busy: false, msg: "", msgKind: "info", confirmName: "" },
 };
 let settingsPanelRoot: any = null;
 
@@ -8171,10 +8177,167 @@ async function libRequest(
 
 /** 只拉策略库三件套（写操作后刷新用）。
  *
- *  为什么不复用 loadEffectiveConfigIntoSettings：那会把整份 config 重拉一遍，
- *  连带重置 draft 之外的一堆状态（keyTs/conflictNote 等），而这里只想刷新
+ *  为什么不复用 loadEffectiveConfigIntoSettings：那会把整份 config 重拉一遍， *  连带重置 draft 之外的一堆状态（keyTs/conflictNote 等），而这里只想刷新
  *  库列表。窄口径刷新不会误伤编辑中的草稿。
  */
+// ═══════════════════ 配置备份 / 恢复（2026-11-25）═══════════════════
+async function cfgBackupRequest(
+  path: string, method: string, body?: any,
+): Promise<any | null> {
+  const B = settingsState.cfgBackup;
+  B.busy = true; settingsRenderPanel();
+  try {
+    const opts: any = { method, headers: authHeaders() };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    const resp = await fetch(apiUrl("/question-modal/config" + path), opts);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok || (data && data.ok === false)) {
+      B.msg = String((data && (data.error || data.detail)) || ("HTTP " + resp.status));
+      B.msgKind = "error";
+      return null;
+    }
+    B.msg = ""; B.msgKind = "info";
+    return data;
+  } catch (e: any) {
+    B.msg = "请求失败：" + (e && e.message ? e.message : String(e));
+    B.msgKind = "error";
+    return null;
+  } finally {
+    B.busy = false; settingsRenderPanel();
+  }
+}
+
+async function cfgBackupRefresh(): Promise<void> {
+  const d = await cfgBackupRequest("/backups", "GET");
+  if (d) {
+    settingsState.cfgBackup.items = d.items || [];
+    settingsState.cfgBackup.dataDir = d.data_dir || "";
+  }
+}
+
+/** 备份恢复子页 UI。恢复是破坏性操作：先点「恢复」弹二次确认，再确认才执行。 */
+function cfgBackupBody(R: any): any[] {
+  const B = settingsState.cfgBackup;
+  const kids: any[] = [
+    R.createElement("div", {
+      key: "note", className: "qm-set-schednote", "data-qm-backup-note": "1",
+    }, [
+      R.createElement("div", { key: "t", className: "qm-set-schednotetitle" },
+        "配置存储位置"),
+      R.createElement("div", { key: "d", className: "qm-set-schednotedesc" },
+        "配置保存在插件安装目录之外：" + (B.dataDir || "读取中…")
+        + "。商店更新插件不会清除这里的配置。"),
+    ]),
+    R.createElement("div", { key: "acts", className: "qm-set-dcbtns",
+      style: { justifyContent: "flex-start", margin: "10px 0", flexWrap: "wrap" } }, [
+      R.createElement("button", {
+        key: "bak", type: "button", className: "qm-set-btn",
+        "data-qm-backup-create": "1", disabled: B.busy,
+        onClick: () => { void (async () => {
+          const label = "手动备份 " + new Date().toLocaleString();
+          const d = await cfgBackupRequest("/backup", "POST", { label });
+          if (d) { B.msg = "备份已创建：" + d.name; B.msgKind = "ok"; }
+          await cfgBackupRefresh();
+        })(); },
+      }, "立即备份"),
+      R.createElement("button", {
+        key: "exp", type: "button", className: "qm-set-btn",
+        "data-qm-backup-export": "1", disabled: B.busy,
+        onClick: () => { void (async () => {
+          const d = await cfgBackupRequest("/export", "GET");
+          if (!d) return;
+          const blob = new Blob([JSON.stringify(d.payload, null, 2)],
+            { type: "application/json" });
+          const a = document.createElement("a");
+          a.href = URL.createObjectURL(blob);
+          a.download = "question-modal-config-"
+            + new Date().toISOString().slice(0, 10) + ".json";
+          a.click();
+          try { URL.revokeObjectURL(a.href); } catch (_) { /* ignore */ }
+          B.msg = "配置已导出到本地文件"; B.msgKind = "ok";
+          settingsRenderPanel();
+        })(); },
+      }, "导出到文件"),
+      R.createElement("label", {
+        key: "implabel", className: "qm-set-btn",
+        style: { display: "inline-block" },
+      }, [
+        "从文件导入",
+        R.createElement("input", {
+          key: "imp", type: "file", accept: ".json,application/json",
+          "data-qm-backup-import": "1", disabled: B.busy,
+          style: { display: "none" },
+          onChange: (e: any) => { void (async () => {
+            const f = e && e.target && e.target.files && e.target.files[0];
+            if (!f) return;
+            let payload: any;
+            try { payload = JSON.parse(await f.text()); }
+            catch (_) { B.msg = "文件不是合法 JSON"; B.msgKind = "error";
+              settingsRenderPanel(); return; }
+            const d = await cfgBackupRequest("/import", "POST", { payload });
+            if (d) { B.msg = "导入成功，已恢复 " + (d.restored || []).length
+                + " 个配置文件"; B.msgKind = "ok"; }
+            await cfgBackupRefresh();
+          })(); },
+        }),
+      ]),
+    ]),
+  ];
+  if (!B.items.length) {
+    kids.push(R.createElement("div", {
+      key: "empty", className: "qm-set-dcdesc", "data-qm-backup-empty": "1",
+    }, "暂无备份。点「立即备份」创建第一份。"));
+  }
+  for (const it of B.items) {
+    const nm = String(it.name || "");
+    kids.push(R.createElement("div", {
+      key: nm, className: "qm-set-libcard", "data-qm-backup-item": nm,
+      style: { marginBottom: "8px" },
+    }, [
+      R.createElement("div", { key: "n", className: "qm-set-schednotetitle" },
+        (it.label || nm)),
+      R.createElement("div", { key: "m", className: "qm-set-dcdesc" },
+        String(it.created_at || "") + " · " + (it.files || []).length + " 个文件"),
+      R.createElement("div", { key: "b", className: "qm-set-dcbtns",
+        style: { justifyContent: "flex-end" } }, [
+        B.confirmName === nm
+          ? R.createElement("span", { key: "cf", style: { fontSize: "12px" } }, [
+              "确定恢复？当前配置会先自动备份。 ",
+              R.createElement("button", {
+                key: "y", type: "button", className: "qm-set-btn qm-set-dcok",
+                "data-qm-backup-confirm": nm, disabled: B.busy,
+                onClick: () => { void (async () => {
+                  const d = await cfgBackupRequest("/restore", "POST", { name: nm });
+                  if (d) { B.msg = "已恢复 " + (d.restored || []).length + " 个配置文件";
+                    B.msgKind = "ok"; }
+                  B.confirmName = "";
+                  await cfgBackupRefresh();
+                })(); },
+              }, "确认恢复"),
+              " ",
+              R.createElement("button", {
+                key: "c", type: "button", className: "qm-set-btn",
+                onClick: () => { B.confirmName = ""; settingsRenderPanel(); },
+              }, "取消"),
+            ])
+          : R.createElement("button", {
+              key: "r", type: "button", className: "qm-set-btn",
+              "data-qm-backup-restore": nm, disabled: B.busy,
+              onClick: () => { B.confirmName = nm; settingsRenderPanel(); },
+            }, "恢复此备份"),
+      ]),
+    ]));
+  }
+  if (B.msg) {
+    kids.push(R.createElement("div", {
+      key: "msg", className: "qm-set-saveMsg"
+        + (B.msgKind === "error" ? " qm-set-saveMsgErr" : ""),
+      "data-qm-backup-msg": "1",
+    }, B.msg));
+  }
+  return kids;
+}
+
 async function loadLibraries(): Promise<boolean> {
   const d = await libRequest("/question-modal/libs");
   if (!d) return false;
@@ -9370,6 +9533,8 @@ const RUN_SUBTABS: Array<{ key: string; label: string }> = [
   { key: "custom-api", label: "自定义 API" },
   { key: "behavior", label: "行为参数" },
   { key: "prompt", label: "提示词" },
+  // 2026-11-25 boss 需求 2：配置备份/恢复入口（外置目录，更新不丢）
+  { key: "backup", label: "备份恢复" },
 ];
 
 /** 已废弃的内嵌分类 key → 新 key。
@@ -11849,6 +12014,14 @@ function settingsTabBody(
       explicitEmptyModel: cfgExplicitEmpty("model_id"),
       edit: cfgEdit,
     }));
+    return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
+  }
+  // ═══════════════════ 运行参数 › 备份恢复（2026-11-25）═══════════════════
+  if (tab === "run" && subKey === "backup") {
+    if (!settingsState.cfgBackup.items.length && !settingsState.cfgBackup.dataDir) {
+      void cfgBackupRefresh();
+    }
+    bodyKids.push(...cfgBackupBody(R));
     return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
   }
   // ═══════════════════ 运行参数 › 自定义 API（新，2026-11-23 拆分）═══════════════════

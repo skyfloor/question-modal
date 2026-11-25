@@ -50,6 +50,14 @@ from .question_service import get_question_service
 from . import analysis as _analysis
 from . import question_service as _qs_mod
 
+# ── 外置持久化层（2026-11-25 配置丢失修复）──────────────────────────
+# 兼容两种加载方式：生产走包内相对导入；验证脚本以顶层模块加载时裸导入兜底
+# （与 recommend/analysis 的既有口径一致）。
+try:
+    from . import qm_storage as _store
+except ImportError:  # pragma: no cover — 顶层加载（验证脚本）
+    import qm_storage as _store  # type: ignore[no-redef]
+
 logger = logging.getLogger(__name__)
 
 
@@ -172,7 +180,7 @@ _ANALYSIS_TASKS: dict[str, asyncio.Task] = {}
 # the gate fires, carrying its OWN bundle tag: that lets us tell apart
 #   (a) the gate logic not running  vs
 #   (b) the browser executing a stale bundle (a reload that didn't take).
-_GATE_FILE = _PLUGIN_DIR / "gate_blocks.json"
+_GATE_FILE = _store.MigrationPath("gate_blocks.json")
 
 
 def _remember_gate_block(payload: dict) -> None:
@@ -254,7 +262,7 @@ def _cancel_analysis(key: str) -> bool:
 # and is written atomically (tmp + replace).
 _RESULTS: dict[str, dict] = {}
 _RESULTS_MAX = 300
-_RESULTS_FILE = _PLUGIN_DIR / "answered_results.json"
+_RESULTS_FILE = _store.MigrationPath("answered_results.json")
 # Serialises background writers so two submissions cannot interleave their
 # tmp-file write + replace (each already uses a unique tmp name; this just
 # keeps the number of concurrent open writes at one).
@@ -279,7 +287,7 @@ _PREFS_LOCK = threading.RLock()
 #
 # Only whitelisted keys are persisted, so the file cannot grow unbounded nor
 # be used to stash arbitrary payloads.
-_PREFS_FILE = _PLUGIN_DIR / "analysis_prefs.json"
+_PREFS_FILE = _store.MigrationPath("analysis_prefs.json")
 _PREFS_DEFAULTS: dict[str, Any] = {
     "mode": "manual",
     "model_id": "",
@@ -1832,7 +1840,7 @@ async def _do_notify_test(channel: str, text: str, agent_id: str) -> dict:
 # 每个频道保留最近 N 次测试记录（磁盘）。上限存在的理由：无上限会让
 # notify_test_log.json 无限增长，且用户实际只会看最近几条。
 _TEST_LOG_MAX = 20
-_TEST_LOG_FILE = _PLUGIN_DIR / "notify_test_log.json"
+_TEST_LOG_FILE = _store.MigrationPath("notify_test_log.json")
 
 
 def _load_test_log() -> dict:
@@ -2354,7 +2362,7 @@ async def notify_survey_pending(
 #
 # These helpers only persist and list overrides; reading them into the
 # effective config is a later step.
-_SESSION_PREFS_FILE = _PLUGIN_DIR / "session_prefs.json"
+_SESSION_PREFS_FILE = _store.MigrationPath("session_prefs.json")
 
 
 def _load_session_prefs() -> dict:
@@ -2533,9 +2541,9 @@ def _iter_agent_chats() -> list[dict]:
 #   notify_profiles.json   命名通知配置（pc + bg 两个渠道）
 #   schedules.json         时间策略（时段 + 引用参数组 + 引用通知配置）
 
-_PARAM_SETS_FILE = _PLUGIN_DIR / "parameter_sets.json"
-_NOTIFY_PROFILES_FILE = _PLUGIN_DIR / "notify_profiles.json"
-_SCHEDULES_FILE = _PLUGIN_DIR / "schedules.json"
+_PARAM_SETS_FILE = _store.MigrationPath("parameter_sets.json")
+_NOTIFY_PROFILES_FILE = _store.MigrationPath("notify_profiles.json")
+_SCHEDULES_FILE = _store.MigrationPath("schedules.json")
 
 # 参数组允许承载的字段（白名单）。刻意**不含**任何库级/全局类配置：
 # 参数组是「一套答题参数」，不是「另一份完整设置的副本」，否则策略就变成
@@ -2768,7 +2776,7 @@ def match_schedule(now_seconds: int | None = None) -> dict | None:
     return None
 
 
-_TEMPLATES_FILE = _PLUGIN_DIR / "templates.json"
+_TEMPLATES_FILE = _store.MigrationPath("templates.json")
 
 
 def _load_custom_templates() -> list[dict]:
@@ -3060,6 +3068,21 @@ class AnalyzeRequest(BaseModel):
     # Which prompt template to analyse with (REQ-001/002).  Empty → built-in
     # default, so an older card keeps its exact previous behaviour.
     template_id: str = Field("", description="Prompt template id")
+
+
+class ConfigBackupBody(BaseModel):
+    """创建一个配置备份（label 仅作人读备注）。"""
+    label: str = Field("", description="备份备注")
+
+
+class ConfigRestoreBody(BaseModel):
+    """按备份文件名恢复；导入走 config/import 端点。"""
+    name: str = Field("", description="backups/ 目录下的备份文件名")
+
+
+class ConfigImportBody(BaseModel):
+    """从本地文件导入的完整配置对象（qm-config-backup 格式）。"""
+    payload: dict = Field(default_factory=dict, description="导出的配置对象")
 
 
 class TemplateBody(BaseModel):
@@ -4862,6 +4885,38 @@ def build_router() -> APIRouter:
                                 content={"ok": False, "error": "模板不存在"})
         _save_custom_templates(remaining)
         return {"ok": True, "items": _all_templates()}
+
+    # ── 配置备份 / 恢复（2026-11-25 boss 需求 2）─────────────────────
+    # 背景：商店更新整目录替换曾清空全部配置。备份落在**外置**目录，
+    # 与代码安装解耦，更新后仍可列出并恢复。
+    @router.get("/config/backups")
+    async def get_config_backups():
+        return {"ok": True, "items": _store.list_backups(),
+                "data_dir": str(_store.data_dir())}
+
+    @router.post("/config/backup")
+    async def post_config_backup(body: ConfigBackupBody):
+        return _store.create_backup(body.label)
+
+    @router.post("/config/restore")
+    async def post_config_restore(body: ConfigRestoreBody):
+        # 恢复是破坏性操作：存储层强制「恢复前自动快照」，这里不额外放手。
+        return _store.restore_backup(body.name)
+
+    @router.get("/config/export")
+    async def get_config_export():
+        return {"ok": True, "payload": _store.export_config()}
+
+    @router.post("/config/import")
+    async def post_config_import(body: ConfigImportBody):
+        return _store.import_config(body.payload)
+
+    @router.get("/config/status")
+    async def get_config_status():
+        """诊断：配置根目录 + 迁移状态 + 各数据文件是否就位。"""
+        files = {name: _store.resolve(name).is_file() for name in _store.DATA_FILES}
+        return {"ok": True, "data_dir": str(_store.data_dir()),
+                "files": files, "migrated": _store._migrated}
 
     return router
 
