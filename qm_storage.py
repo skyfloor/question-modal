@@ -14,7 +14,7 @@
 4. 读取失败绝不写回空默认值 —— 由各 load 层保证，本模块只提供路径与迁移。
 
 外置目录优先级（按真实环境解析，不硬编码猜测）：
-  QM_DATA_DIR 环境变量 > /app/working/plugin_data/question-modal > 安装目录兜底
+  QM_DATA_DIR 环境变量 > <工作区根>/plugin_data/question-modal > 安装目录兜底
 """
 from __future__ import annotations
 
@@ -58,15 +58,17 @@ _migrated = False
 def data_dir() -> Path:
     """返回外置数据根目录（不创建、不迁移，纯解析）。
 
-    优先环境变量（供测试与部署自定义），其次与同机 prompt-optimizer-plus
-    一致的 /app/working/plugin_data/<plugin_id>，最后回退安装目录（极端兜底，
+    优先环境变量（供测试与部署自定义），其次按安装目录相对定位到工作区
+    plugin_data/<plugin_id>（与同机其它插件一致的数据目录范式，不硬编码
+    宿主绝对路径，便于跨环境部署），最后回退安装目录（极端兜底，
     保证在只读外置目录的环境里插件仍可用，仅失去「更新不丢配置」的保护）。
     """
     override = os.environ.get("QM_DATA_DIR", "").strip()
     if override:
         return Path(override)
-    # 确认候选根可写；不可写则回退安装目录（不静默假定成功）。
-    base = Path("/app/working/plugin_data")
+    # 工作区根 = 安装目录的上两级（<root>/plugins/<plugin_id>/ → <root>）。
+    # 用相对定位而非硬编码宿主绝对路径，避免发布包命中路径敏感串。
+    base = _PLUGIN_DIR.parent.parent / "plugin_data"
     try:
         base.mkdir(parents=True, exist_ok=True)
         probe = base / ".qm-probe"
