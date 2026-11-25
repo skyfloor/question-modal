@@ -4903,6 +4903,11 @@ def build_router() -> APIRouter:
         # 恢复是破坏性操作：存储层强制「恢复前自动快照」，这里不额外放手。
         return _store.restore_backup(body.name)
 
+    @router.delete("/config/backup")
+    async def delete_config_backup(body: ConfigRestoreBody):
+        # 删除备份不可逆：前端必须先弹二次确认；后端再做路径越界校验。
+        return _store.delete_backup(body.name)
+
     @router.get("/config/export")
     async def get_config_export():
         return {"ok": True, "payload": _store.export_config()}

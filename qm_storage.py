@@ -256,6 +256,34 @@ def list_backups() -> list[dict]:
     return out
 
 
+def delete_backup(name: str) -> dict:
+    """删除指定备份快照。不可逆操作：调用方须先做二次确认。
+
+    路径安全：只接受纯文件名，解析后必须仍落在 backups/ 目录内；
+    拒绝绝对路径、'..'、子目录、符号链接（防越界删除任意文件）。
+    """
+    ensure_migrated()
+    if not name or "/" in name or "\\" in name or ".." in name:
+        return {"ok": False, "error": "非法备份名"}
+    d = backup_dir()
+    p = d / name
+    # 解析后必须仍在 backups 目录内（挡住符号链接等越界）
+    try:
+        # 符号链接一律拒绝（即使指向目录内文件）：删除 symlink 虽不伤目标，
+        # 但会留下「备份名可指向任意路径」的口子，统一不认。
+        if p.is_symlink():
+            return {"ok": False, "error": "备份名不可为符号链接"}
+        if p.resolve().parent != d.resolve() or not p.is_file():
+            return {"ok": False, "error": "备份不存在或路径越界"}
+    except OSError:
+        return {"ok": False, "error": "备份路径不可解析"}
+    try:
+        p.unlink()
+    except OSError as e:
+        return {"ok": False, "error": "删除失败: " + str(e)}
+    return {"ok": True, "deleted": name}
+
+
 def validate_backup(obj: Any) -> tuple[bool, str]:
     """恢复前的格式校验。返回 (是否合法, 原因)。"""
     if not isinstance(obj, dict):

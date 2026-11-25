@@ -611,29 +611,20 @@ function injectStyles(): void {
       "transition:all .15s}",
       ".qm-set-scheddel:hover{color:#d93025;border-color:#f3c2bd;",
       "background:rgba(217,48,37,.06)}",
-      // 备份卡（2026-11-25 boss 反馈「备份内容太丑」）：对齐时间策略卡的
-      // 视觉语言——白底细边圆角 + 左侧色条 + hover 阴影，标题/元信息/操作
-      // 三层分区，不再用裸 .qm-set-libcard 的朴素列表样式。
-      ".qm-set-baklist{display:flex;flex-direction:column;gap:10px;margin-top:10px}",
-      ".qm-set-bakcard{position:relative;background:var(--app-bg-elevated,#fff);",
-      "border:1px solid var(--app-border,#e5e7eb);border-radius:10px;",
-      "padding:11px 13px 11px 15px;transition:border-color .15s,box-shadow .15s}",
-      ".qm-set-bakcard::before{content:'';position:absolute;left:0;top:10px;bottom:10px;",
-      "width:3px;border-radius:0 2px 2px 0;background:var(--app-accent,#ff7f16)}",
-      ".qm-set-bakcard:hover{border-color:var(--app-border-strong,#cbd5e1);",
-      "box-shadow:0 2px 8px rgba(0,0,0,.06)}",
-      ".qm-set-baktop{display:flex;align-items:center;gap:8px;min-width:0}",
-      ".qm-set-bakicon{flex:none;width:20px;height:20px;border-radius:6px;",
-      "background:var(--app-accent-soft,rgba(255,127,22,.12));",
-      "color:var(--app-accent,#ff7f16);display:flex;align-items:center;",
-      "justify-content:center;font-size:12px}",
-      ".qm-set-bakname{flex:1 1 auto;min-width:0;font-size:13px;font-weight:600;",
-      "color:var(--app-text-primary,#1e293b);overflow:hidden;text-overflow:ellipsis;",
-      "white-space:nowrap}",
+      // 备份页（2026-11-25 boss 反馈）：提示压一行；备份卡直接复用
+      // 时间策略的 .qm-set-tscard/.qm-set-tsbtn 样式（不再另造一套）；
+      // 三个操作按钮放到列表底部，复用虚线 .qm-set-btnnew 省空间。
+      ".qm-set-baknote{display:flex;align-items:baseline;gap:8px;",
+      "min-width:0;margin-bottom:10px}",
+      ".qm-set-baknotetitle{flex:none;font-size:12px;font-weight:600;",
+      "color:var(--app-text-primary,#1e293b)}",
+      ".qm-set-baknotedesc{flex:1 1 auto;min-width:0;font-size:12px;",
+      "color:var(--app-text-tertiary,#94a3b8);line-height:1.6;",
+      "white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
       ".qm-set-bakmeta{font-size:12px;color:var(--app-text-tertiary,#94a3b8);",
-      "line-height:1.5;margin:5px 0 0 28px}",
-      ".qm-set-bakacts{display:flex;justify-content:flex-end;gap:8px;",
-      "align-items:center;flex-wrap:wrap;margin-top:8px}",
+      "line-height:1.5;margin:5px 0 0 26px}",
+      ".qm-set-bakacts{display:flex;align-items:center;gap:8px;",
+      "flex-wrap:wrap;margin-top:10px}",
       // 卡内字段网格：两列；窄屏（640px media 块）改单列
       ".qm-set-schedgrid{display:grid;grid-template-columns:1fr 1fr;gap:10px 14px}",
       // 需求 5（2026-11-24）：默认参数页「携带上下文 / 并行分析各题」一行两列。
@@ -8132,7 +8123,7 @@ const settingsState: {
   /** 配置备份/恢复（2026-11-25）：备份列表 + 操作反馈 + 恢复确认目标 */
   cfgBackup: {
     items: any[]; dataDir: string; busy: boolean; msg: string; msgKind: string;
-    confirmName: string; loaded: boolean;
+    confirmName: string; loaded: boolean; confirmKind: string;
   };
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
@@ -8154,7 +8145,8 @@ const settingsState: {
   schedEdit: "",
   schedDraft: null,
   delConfirm: null,
-  cfgBackup: { items: [], dataDir: "", busy: false, msg: "", msgKind: "info", confirmName: "", loaded: false },
+  cfgBackup: { items: [], dataDir: "", busy: false, msg: "", msgKind: "info",
+    confirmName: "", loaded: false, confirmKind: "" },
 };
 let settingsPanelRoot: any = null;
 
@@ -8275,123 +8267,150 @@ async function cfgBackupRefresh(force?: boolean): Promise<void> {
   }
 }
 
-/** 备份恢复子页 UI。恢复是破坏性操作：先点「恢复」弹二次确认，再确认才执行。 */
+/** 备份恢复子页 UI。恢复 / 删除都是破坏性操作：先弹二次确认再执行。 */
 function cfgBackupBody(R: any): any[] {
   const B = settingsState.cfgBackup;
-  const kids: any[] = [
-    R.createElement("div", {
-      key: "note", className: "qm-set-schednote", "data-qm-backup-note": "1",
-    }, [
-      R.createElement("div", { key: "t", className: "qm-set-schednotetitle" },
-        "配置存储位置"),
-      R.createElement("div", { key: "d", className: "qm-set-schednotedesc" },
-        "配置保存在插件安装目录之外：" + (B.dataDir || "读取中…")
-        + "。商店更新插件不会清除这里的配置。"),
-    ]),
-    R.createElement("div", { key: "acts", className: "qm-set-dcbtns",
-      style: { justifyContent: "flex-start", margin: "10px 0", flexWrap: "wrap" } }, [
-      R.createElement("button", {
-        key: "bak", type: "button", className: "qm-set-btn",
-        "data-qm-backup-create": "1", disabled: B.busy,
-        onClick: () => { void (async () => {
-          const label = "手动备份 " + new Date().toLocaleString();
-          const d = await cfgBackupRequest("/backup", "POST", { label });
-          if (d) { B.msg = "备份已创建：" + d.name; B.msgKind = "ok"; }
-          await cfgBackupRefresh(true);
-        })(); },
-      }, "立即备份"),
-      R.createElement("button", {
-        key: "exp", type: "button", className: "qm-set-btn",
-        "data-qm-backup-export": "1", disabled: B.busy,
-        onClick: () => { void (async () => {
-          const d = await cfgBackupRequest("/export", "GET");
-          if (!d) return;
-          const blob = new Blob([JSON.stringify(d.payload, null, 2)],
-            { type: "application/json" });
-          const a = document.createElement("a");
-          a.href = URL.createObjectURL(blob);
-          a.download = "question-modal-config-"
-            + new Date().toISOString().slice(0, 10) + ".json";
-          a.click();
-          try { URL.revokeObjectURL(a.href); } catch (_) { /* ignore */ }
-          B.msg = "配置已导出到本地文件"; B.msgKind = "ok";
-          settingsRenderPanel();
-        })(); },
-      }, "导出到文件"),
-      R.createElement("label", {
-        key: "implabel", className: "qm-set-btn",
-        style: { display: "inline-block" },
-      }, [
-        "从文件导入",
-        R.createElement("input", {
-          key: "imp", type: "file", accept: ".json,application/json",
-          "data-qm-backup-import": "1", disabled: B.busy,
-          style: { display: "none" },
-          onChange: (e: any) => { void (async () => {
-            const f = e && e.target && e.target.files && e.target.files[0];
-            if (!f) return;
-            let payload: any;
-            try { payload = JSON.parse(await f.text()); }
-            catch (_) { B.msg = "文件不是合法 JSON"; B.msgKind = "error";
-              settingsRenderPanel(); return; }
-            const d = await cfgBackupRequest("/import", "POST", { payload });
-            if (d) { B.msg = "导入成功，已恢复 " + (d.restored || []).length
-                + " 个配置文件"; B.msgKind = "ok"; }
-            await cfgBackupRefresh(true);
-          })(); },
-        }),
-      ]),
-    ]),
-  ];
+  const kids: any[] = [];
+  // 存储位置提示压到一行（boss 反馈过长）——标题 + 单行路径说明，
+  // 过长省略但 title 保留全文，鼠标可看完整路径。
+  const dirText = "配置保存在插件安装目录之外：" + (B.dataDir || "读取中…")
+    + "。商店更新插件不会清除这里的配置。";
+  kids.push(R.createElement("div", {
+    key: "note", className: "qm-set-baknote", "data-qm-backup-note": "1",
+    title: dirText,
+  }, [
+    R.createElement("span", { key: "t", className: "qm-set-baknotetitle" },
+      "配置存储位置"),
+    R.createElement("span", { key: "d", className: "qm-set-baknotedesc" }, dirText),
+  ]));
+
+  // 备份列表：复刻时间策略卡的 ts-list / ts-card 结构与样式。
   if (!B.items.length) {
     kids.push(R.createElement("div", {
-      key: "empty", className: "qm-set-dcdesc", "data-qm-backup-empty": "1",
-    }, "暂无备份。点「立即备份」创建第一份。"));
-  }
-  for (const it of B.items) {
-    const nm = String(it.name || "");
-    kids.push(R.createElement("div", {
-      key: nm, className: "qm-set-baklist", "data-qm-backup-list": "1",
-    }, [R.createElement("div", {
-      key: nm, className: "qm-set-bakcard", "data-qm-backup-item": nm,
-    }, [
-      R.createElement("div", { key: "top", className: "qm-set-baktop" }, [
-        R.createElement("span", { key: "ic", className: "qm-set-bakicon" }, "▣"),
-        R.createElement("span", { key: "n", className: "qm-set-bakname",
-          title: it.label || nm }, (it.label || nm)),
-      ]),
-      R.createElement("div", { key: "m", className: "qm-set-bakmeta" },
-        String(it.created_at || "") + " · " + (it.files || []).length + " 个配置文件"
-        + " · " + nm),
-      R.createElement("div", { key: "b", className: "qm-set-bakacts" }, [
+      key: "empty", className: "qm-set-tsempty", "data-qm-backup-empty": "1",
+    }, [R.createElement("b", { key: "b" }, "还没有备份"),
+        "点下方「＋ 立即备份」创建第一份，配置可随时从这里恢复。"]));
+  } else {
+    kids.push(R.createElement("div", { key: "list", className: "qm-set-tslist",
+      "data-qm-backup-list": "1" }, B.items.map((it: any, idx: number) => {
+      const nm = String(it.name || "");
+      return R.createElement("div", {
+        key: nm, className: "qm-set-tscard", "data-qm-backup-item": nm,
+      }, [
+        R.createElement("div", { className: "qm-set-tstop", key: "top" }, [
+          R.createElement("span", { key: "i", className: "qm-set-tsidx" }, String(idx + 1)),
+          R.createElement("span", { key: "n", className: "qm-set-tsname",
+            title: it.label || nm }, (it.label || nm)),
+          R.createElement("span", { key: "s", className: "qm-set-tssp" }),
+          R.createElement("div", { key: "a", className: "qm-set-tsacts" }, [
+            R.createElement("button", {
+              key: "r", type: "button", className: "qm-set-tsbtn",
+              "data-qm-backup-restore": nm, disabled: B.busy,
+              title: "从这份备份恢复配置",
+              onClick: () => { B.confirmName = nm; B.confirmKind = "restore";
+                settingsRenderPanel(); },
+            }, "↺ 恢复"),
+            R.createElement("button", {
+              key: "d", type: "button", className: "qm-set-tsbtn qm-set-tsdel",
+              "data-qm-backup-del": nm, disabled: B.busy,
+              title: "删除这份备份",
+              onClick: () => { B.confirmName = nm; B.confirmKind = "delete";
+                settingsRenderPanel(); },
+            }, "✕"),
+          ]),
+        ]),
+        R.createElement("div", { className: "qm-set-bakmeta", key: "m" },
+          String(it.created_at || "") + " · " + (it.files || []).length
+          + " 个配置文件 · " + nm),
+        // 二次确认行（确认/取消），仅在点过恢复或删除后出现
         B.confirmName === nm
-          ? R.createElement("span", { key: "cf", style: { fontSize: "12px" } }, [
-              "确定恢复？当前配置会先自动备份。 ",
+          ? R.createElement("div", { className: "qm-set-tsfoot", key: "cf" }, [
+              R.createElement("span", { key: "q", className: "note" },
+                B.confirmKind === "delete"
+                  ? "确定删除这份备份？删除后不可恢复。"
+                  : "确定恢复？当前配置会先自动备份。"),
               R.createElement("button", {
                 key: "y", type: "button", className: "qm-set-btn qm-set-dcok",
                 "data-qm-backup-confirm": nm, disabled: B.busy,
                 onClick: () => { void (async () => {
-                  const d = await cfgBackupRequest("/restore", "POST", { name: nm });
-                  if (d) { B.msg = "已恢复 " + (d.restored || []).length + " 个配置文件";
+                  const isDel = B.confirmKind === "delete";
+                  const d = await cfgBackupRequest(
+                    isDel ? "/backup" : "/restore",
+                    isDel ? "DELETE" : "POST",
+                    { name: nm });
+                  if (d) { B.msg = isDel ? ("已删除备份：" + nm)
+                      : ("已恢复 " + (d.restored || []).length + " 个配置文件");
                     B.msgKind = "ok"; }
-                  B.confirmName = "";
+                  B.confirmName = ""; B.confirmKind = "";
                   await cfgBackupRefresh(true);
                 })(); },
-              }, "确认恢复"),
-              " ",
+              }, B.confirmKind === "delete" ? "确认删除" : "确认恢复"),
               R.createElement("button", {
                 key: "c", type: "button", className: "qm-set-btn",
-                onClick: () => { B.confirmName = ""; settingsRenderPanel(); },
+                onClick: () => { B.confirmName = ""; B.confirmKind = "";
+                  settingsRenderPanel(); },
               }, "取消"),
             ])
-          : R.createElement("button", {
-              key: "r", type: "button", className: "qm-set-btn",
-              "data-qm-backup-restore": nm, disabled: B.busy,
-              onClick: () => { B.confirmName = nm; settingsRenderPanel(); },
-            }, "恢复此备份"),
-      ]),
-    ])]));
+          : null,
+      ]);
+    })));
   }
+
+  // 三个操作按钮移到列表底部，样式复用时间策略的虚线新建按钮（省空间）
+  kids.push(R.createElement("div", { key: "acts", className: "qm-set-bakacts" }, [
+    R.createElement("button", {
+      key: "bak", type: "button", className: "qm-set-btn qm-set-btnnew",
+      "data-qm-backup-create": "1", disabled: B.busy,
+      onClick: () => { void (async () => {
+        const label = "手动备份 " + new Date().toLocaleString();
+        const d = await cfgBackupRequest("/backup", "POST", { label });
+        if (d) { B.msg = "备份已创建：" + d.name; B.msgKind = "ok"; }
+        await cfgBackupRefresh(true);
+      })(); },
+    }, "＋ 立即备份"),
+    R.createElement("button", {
+      key: "exp", type: "button", className: "qm-set-btn",
+      "data-qm-backup-export": "1", disabled: B.busy,
+      onClick: () => { void (async () => {
+        const d = await cfgBackupRequest("/export", "GET");
+        if (!d) return;
+        const blob = new Blob([JSON.stringify(d.payload, null, 2)],
+          { type: "application/json" });
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = "question-modal-config-"
+          + new Date().toISOString().slice(0, 10) + ".json";
+        a.click();
+        try { URL.revokeObjectURL(a.href); } catch (_) { /* ignore */ }
+        B.msg = "配置已导出到本地文件"; B.msgKind = "ok";
+        settingsRenderPanel();
+      })(); },
+    }, "导出到文件"),
+    R.createElement("label", {
+      key: "implabel", className: "qm-set-btn",
+      style: { display: "inline-block" },
+    }, [
+      "从文件导入",
+      R.createElement("input", {
+        key: "imp", type: "file", accept: ".json,application/json",
+        "data-qm-backup-import": "1", disabled: B.busy,
+        style: { display: "none" },
+        onChange: (e: any) => { void (async () => {
+          const f = e && e.target && e.target.files && e.target.files[0];
+          if (!f) return;
+          let payload: any;
+          try { payload = JSON.parse(await f.text()); }
+          catch (_) { B.msg = "文件不是合法 JSON"; B.msgKind = "error";
+            settingsRenderPanel(); return; }
+          const d = await cfgBackupRequest("/import", "POST", { payload });
+          if (d) { B.msg = "导入成功，已恢复 " + (d.restored || []).length
+              + " 个配置文件"; B.msgKind = "ok"; }
+          await cfgBackupRefresh(true);
+        })(); },
+      }),
+    ]),
+  ]));
+
   if (B.msg) {
     kids.push(R.createElement("div", {
       key: "msg", className: "qm-set-saveMsg"
