@@ -1,12 +1,12 @@
-var fi = Object.defineProperty;
-var ns = (t) => {
+var hi = Object.defineProperty;
+var rs = (t) => {
   throw TypeError(t);
 };
-var gi = (t, e, n) => e in t ? fi(t, e, { enumerable: !0, configurable: !0, writable: !0, value: n }) : t[e] = n;
-var U = (t, e, n) => gi(t, typeof e != "symbol" ? e + "" : e, n), hi = (t, e, n) => e.has(t) || ns("Cannot " + n);
-var as = (t, e, n) => e.has(t) ? ns("Cannot add the same private member more than once") : e instanceof WeakSet ? e.add(t) : e.set(t, n);
-var Tn = (t, e, n) => (hi(t, e, "access private method"), n);
-function mr() {
+var bi = (t, e, n) => e in t ? hi(t, e, { enumerable: !0, configurable: !0, writable: !0, value: n }) : t[e] = n;
+var U = (t, e, n) => bi(t, typeof e != "symbol" ? e + "" : e, n), yi = (t, e, n) => e.has(t) || rs("Cannot " + n);
+var ss = (t, e, n) => e.has(t) ? rs("Cannot add the same private member more than once") : e instanceof WeakSet ? e.add(t) : e.set(t, n);
+var In = (t, e, n) => (yi(t, e, "access private method"), n);
+function fr() {
   return {
     async: !1,
     breaks: !1,
@@ -20,43 +20,43 @@ function mr() {
     walkTokens: null
   };
 }
-let pt = mr();
-function Is(t) {
-  pt = t;
+let mt = fr();
+function Os(t) {
+  mt = t;
 }
-const As = /[&<>"']/, bi = new RegExp(As.source, "g"), Os = /[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/, yi = new RegExp(Os.source, "g"), xi = {
+const $s = /[&<>"']/, xi = new RegExp($s.source, "g"), Ps = /[<>"']|&(?!(#\d{1,7}|#[Xx][a-fA-F0-9]{1,6}|\w+);)/, ki = new RegExp(Ps.source, "g"), vi = {
   "&": "&amp;",
   "<": "&lt;",
   ">": "&gt;",
   '"': "&quot;",
   "'": "&#39;"
-}, rs = (t) => xi[t];
-function we(t, e) {
+}, os = (t) => vi[t];
+function qe(t, e) {
   if (e) {
-    if (As.test(t))
-      return t.replace(bi, rs);
-  } else if (Os.test(t))
-    return t.replace(yi, rs);
+    if ($s.test(t))
+      return t.replace(xi, os);
+  } else if (Ps.test(t))
+    return t.replace(ki, os);
   return t;
 }
-const ki = /&(#(?:\d+)|(?:#x[0-9A-Fa-f]+)|(?:\w+));?/ig;
-function vi(t) {
-  return t.replace(ki, (e, n) => (n = n.toLowerCase(), n === "colon" ? ":" : n.charAt(0) === "#" ? n.charAt(1) === "x" ? String.fromCharCode(parseInt(n.substring(2), 16)) : String.fromCharCode(+n.substring(1)) : ""));
+const wi = /&(#(?:\d+)|(?:#x[0-9A-Fa-f]+)|(?:\w+));?/ig;
+function qi(t) {
+  return t.replace(wi, (e, n) => (n = n.toLowerCase(), n === "colon" ? ":" : n.charAt(0) === "#" ? n.charAt(1) === "x" ? String.fromCharCode(parseInt(n.substring(2), 16)) : String.fromCharCode(+n.substring(1)) : ""));
 }
-const wi = /(^|[^\[])\^/g;
+const Ei = /(^|[^\[])\^/g;
 function K(t, e) {
   let n = typeof t == "string" ? t : t.source;
   e = e || "";
   const a = {
     replace: (r, o) => {
       let s = typeof o == "string" ? o : o.source;
-      return s = s.replace(wi, "$1"), n = n.replace(r, s), a;
+      return s = s.replace(Ei, "$1"), n = n.replace(r, s), a;
     },
     getRegex: () => new RegExp(n, e)
   };
   return a;
 }
-function ss(t) {
+function is(t) {
   try {
     t = encodeURI(t).replace(/%25/g, "%");
   } catch {
@@ -64,8 +64,8 @@ function ss(t) {
   }
   return t;
 }
-const Vt = { exec: () => null };
-function os(t, e) {
+const Yt = { exec: () => null };
+function ls(t, e) {
   const n = t.replace(/\|/g, (o, s, d) => {
     let i = !1, f = s;
     for (; --f >= 0 && d[f] === "\\"; )
@@ -83,7 +83,7 @@ function os(t, e) {
     a[r] = a[r].trim().replace(/\\\|/g, "|");
   return a;
 }
-function zn(t, e, n) {
+function An(t, e, n) {
   const a = t.length;
   if (a === 0)
     return "";
@@ -92,7 +92,7 @@ function zn(t, e, n) {
     r++;
   return t.slice(0, a - r);
 }
-function qi(t, e) {
+function Si(t, e) {
   if (t.indexOf(e[1]) === -1)
     return -1;
   let n = 0;
@@ -105,8 +105,8 @@ function qi(t, e) {
       return a;
   return -1;
 }
-function is(t, e, n, a) {
-  const r = e.href, o = e.title ? we(e.title) : null, s = t[1].replace(/\\([\[\]])/g, "$1");
+function cs(t, e, n, a) {
+  const r = e.href, o = e.title ? qe(e.title) : null, s = t[1].replace(/\\([\[\]])/g, "$1");
   if (t[0].charAt(0) !== "!") {
     a.state.inLink = !0;
     const d = {
@@ -124,10 +124,10 @@ function is(t, e, n, a) {
     raw: n,
     href: r,
     title: o,
-    text: we(s)
+    text: qe(s)
   };
 }
-function Ei(t, e) {
+function _i(t, e) {
   const n = t.match(/^(\s+)(?:```)/);
   if (n === null)
     return e;
@@ -142,14 +142,14 @@ function Ei(t, e) {
   }).join(`
 `);
 }
-class Fn {
+class Kn {
   // set by the lexer
   constructor(e) {
     U(this, "options");
     U(this, "rules");
     // set by the lexer
     U(this, "lexer");
-    this.options = e || pt;
+    this.options = e || mt;
   }
   space(e) {
     const n = this.rules.block.newline.exec(e);
@@ -167,7 +167,7 @@ class Fn {
         type: "code",
         raw: n[0],
         codeBlockStyle: "indented",
-        text: this.options.pedantic ? a : zn(a, `
+        text: this.options.pedantic ? a : An(a, `
 `)
       };
     }
@@ -175,7 +175,7 @@ class Fn {
   fences(e) {
     const n = this.rules.block.fences.exec(e);
     if (n) {
-      const a = n[0], r = Ei(a, n[3] || "");
+      const a = n[0], r = _i(a, n[3] || "");
       return {
         type: "code",
         raw: a,
@@ -189,7 +189,7 @@ class Fn {
     if (n) {
       let a = n[2].trim();
       if (/#$/.test(a)) {
-        const r = zn(a, "#");
+        const r = An(a, "#");
         (this.options.pedantic || !r || / $/.test(r)) && (a = r.trim());
       }
       return {
@@ -214,7 +214,7 @@ class Fn {
     if (n) {
       let a = n[0].replace(/\n {0,3}((?:=+|-+) *)(?=\n|$)/g, `
     $1`);
-      a = zn(a.replace(/^ *>[ \t]?/gm, ""), `
+      a = An(a.replace(/^ *>[ \t]?/gm, ""), `
 `);
       const r = this.lexer.state.top;
       this.lexer.state.top = !0;
@@ -325,7 +325,7 @@ class Fn {
     const n = this.rules.block.table.exec(e);
     if (!n || !/[:|]/.test(n[2]))
       return;
-    const a = os(n[1]), r = n[2].replace(/^\||\| *$/g, "").split("|"), o = n[3] && n[3].trim() ? n[3].replace(/\n[ \t]*$/, "").split(`
+    const a = ls(n[1]), r = n[2].replace(/^\||\| *$/g, "").split("|"), o = n[3] && n[3].trim() ? n[3].replace(/\n[ \t]*$/, "").split(`
 `) : [], s = {
       type: "table",
       raw: n[0],
@@ -342,7 +342,7 @@ class Fn {
           tokens: this.lexer.inline(d)
         });
       for (const d of o)
-        s.rows.push(os(d, s.header.length).map((i) => ({
+        s.rows.push(ls(d, s.header.length).map((i) => ({
           text: i,
           tokens: this.lexer.inline(i)
         })));
@@ -389,7 +389,7 @@ class Fn {
       return {
         type: "escape",
         raw: n[0],
-        text: we(n[1])
+        text: qe(n[1])
       };
   }
   tag(e) {
@@ -411,11 +411,11 @@ class Fn {
       if (!this.options.pedantic && /^</.test(a)) {
         if (!/>$/.test(a))
           return;
-        const s = zn(a.slice(0, -1), "\\");
+        const s = An(a.slice(0, -1), "\\");
         if ((a.length - s.length) % 2 === 0)
           return;
       } else {
-        const s = qi(n[2], "()");
+        const s = Si(n[2], "()");
         if (s > -1) {
           const i = (n[0].indexOf("!") === 0 ? 5 : 4) + n[1].length + s;
           n[2] = n[2].substring(0, s), n[0] = n[0].substring(0, i).trim(), n[3] = "";
@@ -427,7 +427,7 @@ class Fn {
         s && (r = s[1], o = s[3]);
       } else
         o = n[3] ? n[3].slice(1, -1) : "";
-      return r = r.trim(), /^</.test(r) && (this.options.pedantic && !/>$/.test(a) ? r = r.slice(1) : r = r.slice(1, -1)), is(n, {
+      return r = r.trim(), /^</.test(r) && (this.options.pedantic && !/>$/.test(a) ? r = r.slice(1) : r = r.slice(1, -1)), cs(n, {
         href: r && r.replace(this.rules.inline.anyPunctuation, "$1"),
         title: o && o.replace(this.rules.inline.anyPunctuation, "$1")
       }, n[0], this.lexer);
@@ -445,7 +445,7 @@ class Fn {
           text: s
         };
       }
-      return is(a, o, a[0], this.lexer);
+      return cs(a, o, a[0], this.lexer);
     }
   }
   emStrong(e, n, a = "") {
@@ -494,7 +494,7 @@ class Fn {
     if (n) {
       let a = n[2].replace(/\n/g, " ");
       const r = /[^ ]/.test(a), o = /^ /.test(a) && / $/.test(a);
-      return r && o && (a = a.substring(1, a.length - 1)), a = we(a, !0), {
+      return r && o && (a = a.substring(1, a.length - 1)), a = qe(a, !0), {
         type: "codespan",
         raw: n[0],
         text: a
@@ -523,7 +523,7 @@ class Fn {
     const n = this.rules.inline.autolink.exec(e);
     if (n) {
       let a, r;
-      return n[2] === "@" ? (a = we(n[1]), r = "mailto:" + a) : (a = we(n[1]), r = a), {
+      return n[2] === "@" ? (a = qe(n[1]), r = "mailto:" + a) : (a = qe(n[1]), r = a), {
         type: "link",
         raw: n[0],
         text: a,
@@ -544,13 +544,13 @@ class Fn {
     if (n = this.rules.inline.url.exec(e)) {
       let r, o;
       if (n[2] === "@")
-        r = we(n[0]), o = "mailto:" + r;
+        r = qe(n[0]), o = "mailto:" + r;
       else {
         let s;
         do
           s = n[0], n[0] = ((a = this.rules.inline._backpedal.exec(n[0])) == null ? void 0 : a[0]) ?? "";
         while (s !== n[0]);
-        r = we(n[0]), n[1] === "www." ? o = "http://" + n[0] : o = n[0];
+        r = qe(n[0]), n[1] === "www." ? o = "http://" + n[0] : o = n[0];
       }
       return {
         type: "link",
@@ -571,7 +571,7 @@ class Fn {
     const n = this.rules.inline.text.exec(e);
     if (n) {
       let a;
-      return this.lexer.state.inRawBlock ? a = n[0] : a = we(n[0]), {
+      return this.lexer.state.inRawBlock ? a = n[0] : a = qe(n[0]), {
         type: "text",
         raw: n[0],
         text: a
@@ -579,118 +579,118 @@ class Fn {
     }
   }
 }
-const Si = /^(?: *(?:\n|$))+/, _i = /^( {4}[^\n]+(?:\n(?: *(?:\n|$))*)?)+/, Ni = /^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/, nn = /^ {0,3}((?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/, Ci = /^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/, $s = /(?:[*+-]|\d{1,9}[.)])/, Ps = K(/^(?!bull |blockCode|fences|blockquote|heading|html)((?:.|\n(?!\s*?\n|bull |blockCode|fences|blockquote|heading|html))+?)\n {0,3}(=+|-+) *(?:\n+|$)/).replace(/bull/g, $s).replace(/blockCode/g, / {4}/).replace(/fences/g, / {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g, / {0,3}>/).replace(/heading/g, / {0,3}#{1,6}/).replace(/html/g, / {0,3}<[^\n>]+>\n/).getRegex(), ur = /^([^\n]+(?:\n(?!hr|heading|lheading|blockquote|fences|list|html|table| +\n)[^\n]+)*)/, Ti = /^[^\n]+/, fr = /(?!\s*\])(?:\\.|[^\[\]\\])+/, zi = K(/^ {0,3}\[(label)\]: *(?:\n *)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n *)?| *\n *)(title))? *(?:\n+|$)/).replace("label", fr).replace("title", /(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/).getRegex(), Ii = K(/^( {0,3}bull)([ \t][^\n]+?)?(?:\n|$)/).replace(/bull/g, $s).getRegex(), Qn = "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul", gr = /<!--(?:-?>|[\s\S]*?(?:-->|$))/, Ai = K("^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n+|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>\\n*|$)|<![A-Z][\\s\\S]*?(?:>\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n *)+\\n|$)|<(?!script|pre|style|textarea)([a-z][\\w-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n *)+\\n|$)|</(?!script|pre|style|textarea)[a-z][\\w-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n *)+\\n|$))", "i").replace("comment", gr).replace("tag", Qn).replace("attribute", / +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>`]+)?/).getRegex(), Bs = K(ur).replace("hr", nn).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("|table", "").replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Qn).getRegex(), Oi = K(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/).replace("paragraph", Bs).getRegex(), hr = {
-  blockquote: Oi,
-  code: _i,
-  def: zi,
-  fences: Ni,
-  heading: Ci,
-  hr: nn,
-  html: Ai,
-  lheading: Ps,
-  list: Ii,
-  newline: Si,
-  paragraph: Bs,
-  table: Vt,
-  text: Ti
-}, ls = K("^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)").replace("hr", nn).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("blockquote", " {0,3}>").replace("code", " {4}[^\\n]").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Qn).getRegex(), $i = {
-  ...hr,
-  table: ls,
-  paragraph: K(ur).replace("hr", nn).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("table", ls).replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Qn).getRegex()
-}, Pi = {
-  ...hr,
-  html: K(`^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`).replace("comment", gr).replace(/tag/g, "(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\\b)\\w+(?!:|[^\\w\\s@]*@)\\b").getRegex(),
+const Ni = /^(?: *(?:\n|$))+/, Ci = /^( {4}[^\n]+(?:\n(?: *(?:\n|$))*)?)+/, Ti = /^ {0,3}(`{3,}(?=[^`\n]*(?:\n|$))|~{3,})([^\n]*)(?:\n|$)(?:|([\s\S]*?)(?:\n|$))(?: {0,3}\1[~`]* *(?=\n|$)|$)/, rn = /^ {0,3}((?:-[\t ]*){3,}|(?:_[ \t]*){3,}|(?:\*[ \t]*){3,})(?:\n+|$)/, zi = /^ {0,3}(#{1,6})(?=\s|$)(.*)(?:\n+|$)/, Bs = /(?:[*+-]|\d{1,9}[.)])/, Ms = K(/^(?!bull |blockCode|fences|blockquote|heading|html)((?:.|\n(?!\s*?\n|bull |blockCode|fences|blockquote|heading|html))+?)\n {0,3}(=+|-+) *(?:\n+|$)/).replace(/bull/g, Bs).replace(/blockCode/g, / {4}/).replace(/fences/g, / {0,3}(?:`{3,}|~{3,})/).replace(/blockquote/g, / {0,3}>/).replace(/heading/g, / {0,3}#{1,6}/).replace(/html/g, / {0,3}<[^\n>]+>\n/).getRegex(), gr = /^([^\n]+(?:\n(?!hr|heading|lheading|blockquote|fences|list|html|table| +\n)[^\n]+)*)/, Ii = /^[^\n]+/, hr = /(?!\s*\])(?:\\.|[^\[\]\\])+/, Ai = K(/^ {0,3}\[(label)\]: *(?:\n *)?([^<\s][^\s]*|<.*?>)(?:(?: +(?:\n *)?| *\n *)(title))? *(?:\n+|$)/).replace("label", hr).replace("title", /(?:"(?:\\"?|[^"\\])*"|'[^'\n]*(?:\n[^'\n]+)*\n?'|\([^()]*\))/).getRegex(), Oi = K(/^( {0,3}bull)([ \t][^\n]+?)?(?:\n|$)/).replace(/bull/g, Bs).getRegex(), Xn = "address|article|aside|base|basefont|blockquote|body|caption|center|col|colgroup|dd|details|dialog|dir|div|dl|dt|fieldset|figcaption|figure|footer|form|frame|frameset|h[1-6]|head|header|hr|html|iframe|legend|li|link|main|menu|menuitem|meta|nav|noframes|ol|optgroup|option|p|param|search|section|summary|table|tbody|td|tfoot|th|thead|title|tr|track|ul", br = /<!--(?:-?>|[\s\S]*?(?:-->|$))/, $i = K("^ {0,3}(?:<(script|pre|style|textarea)[\\s>][\\s\\S]*?(?:</\\1>[^\\n]*\\n+|$)|comment[^\\n]*(\\n+|$)|<\\?[\\s\\S]*?(?:\\?>\\n*|$)|<![A-Z][\\s\\S]*?(?:>\\n*|$)|<!\\[CDATA\\[[\\s\\S]*?(?:\\]\\]>\\n*|$)|</?(tag)(?: +|\\n|/?>)[\\s\\S]*?(?:(?:\\n *)+\\n|$)|<(?!script|pre|style|textarea)([a-z][\\w-]*)(?:attribute)*? */?>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n *)+\\n|$)|</(?!script|pre|style|textarea)[a-z][\\w-]*\\s*>(?=[ \\t]*(?:\\n|$))[\\s\\S]*?(?:(?:\\n *)+\\n|$))", "i").replace("comment", br).replace("tag", Xn).replace("attribute", / +[a-zA-Z:_][\w.:-]*(?: *= *"[^"\n]*"| *= *'[^'\n]*'| *= *[^\s"'=<>`]+)?/).getRegex(), Ls = K(gr).replace("hr", rn).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("|table", "").replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Xn).getRegex(), Pi = K(/^( {0,3}> ?(paragraph|[^\n]*)(?:\n|$))+/).replace("paragraph", Ls).getRegex(), yr = {
+  blockquote: Pi,
+  code: Ci,
+  def: Ai,
+  fences: Ti,
+  heading: zi,
+  hr: rn,
+  html: $i,
+  lheading: Ms,
+  list: Oi,
+  newline: Ni,
+  paragraph: Ls,
+  table: Yt,
+  text: Ii
+}, ds = K("^ *([^\\n ].*)\\n {0,3}((?:\\| *)?:?-+:? *(?:\\| *:?-+:? *)*(?:\\| *)?)(?:\\n((?:(?! *\\n|hr|heading|blockquote|code|fences|list|html).*(?:\\n|$))*)\\n*|$)").replace("hr", rn).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("blockquote", " {0,3}>").replace("code", " {4}[^\\n]").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Xn).getRegex(), Bi = {
+  ...yr,
+  table: ds,
+  paragraph: K(gr).replace("hr", rn).replace("heading", " {0,3}#{1,6}(?:\\s|$)").replace("|lheading", "").replace("table", ds).replace("blockquote", " {0,3}>").replace("fences", " {0,3}(?:`{3,}(?=[^`\\n]*\\n)|~{3,})[^\\n]*\\n").replace("list", " {0,3}(?:[*+-]|1[.)]) ").replace("html", "</?(?:tag)(?: +|\\n|/?>)|<(?:script|pre|style|textarea|!--)").replace("tag", Xn).getRegex()
+}, Mi = {
+  ...yr,
+  html: K(`^ *(?:comment *(?:\\n|\\s*$)|<(tag)[\\s\\S]+?</\\1> *(?:\\n{2,}|\\s*$)|<tag(?:"[^"]*"|'[^']*'|\\s[^'"/>\\s]*)*?/?> *(?:\\n{2,}|\\s*$))`).replace("comment", br).replace(/tag/g, "(?!(?:a|em|strong|small|s|cite|q|dfn|abbr|data|time|code|var|samp|kbd|sub|sup|i|b|u|mark|ruby|rt|rp|bdi|bdo|span|br|wbr|ins|del|img)\\b)\\w+(?!:|[^\\w\\s@]*@)\\b").getRegex(),
   def: /^ *\[([^\]]+)\]: *<?([^\s>]+)>?(?: +(["(][^\n]+[")]))? *(?:\n+|$)/,
   heading: /^(#{1,6})(.*)(?:\n+|$)/,
-  fences: Vt,
+  fences: Yt,
   // fences not supported
   lheading: /^(.+?)\n {0,3}(=+|-+) *(?:\n+|$)/,
-  paragraph: K(ur).replace("hr", nn).replace("heading", ` *#{1,6} *[^
-]`).replace("lheading", Ps).replace("|table", "").replace("blockquote", " {0,3}>").replace("|fences", "").replace("|list", "").replace("|html", "").replace("|tag", "").getRegex()
-}, Ms = /^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/, Bi = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/, Ls = /^( {2,}|\\)\n(?!\s*$)/, Mi = /^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/, an = "\\p{P}\\p{S}", Li = K(/^((?![*_])[\spunctuation])/, "u").replace(/punctuation/g, an).getRegex(), ji = /\[[^[\]]*?\]\([^\(\)]*?\)|`[^`]*?`|<[^<>]*?>/g, Di = K(/^(?:\*+(?:((?!\*)[punct])|[^\s*]))|^_+(?:((?!_)[punct])|([^\s_]))/, "u").replace(/punct/g, an).getRegex(), Fi = K("^[^_*]*?__[^_*]*?\\*[^_*]*?(?=__)|[^*]+(?=[^*])|(?!\\*)[punct](\\*+)(?=[\\s]|$)|[^punct\\s](\\*+)(?!\\*)(?=[punct\\s]|$)|(?!\\*)[punct\\s](\\*+)(?=[^punct\\s])|[\\s](\\*+)(?!\\*)(?=[punct])|(?!\\*)[punct](\\*+)(?!\\*)(?=[punct])|[^punct\\s](\\*+)(?=[^punct\\s])", "gu").replace(/punct/g, an).getRegex(), Wi = K("^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)[punct](_+)(?=[\\s]|$)|[^punct\\s](_+)(?!_)(?=[punct\\s]|$)|(?!_)[punct\\s](_+)(?=[^punct\\s])|[\\s](_+)(?!_)(?=[punct])|(?!_)[punct](_+)(?!_)(?=[punct])", "gu").replace(/punct/g, an).getRegex(), Ki = K(/\\([punct])/, "gu").replace(/punct/g, an).getRegex(), Hi = K(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/).replace("scheme", /[a-zA-Z][a-zA-Z0-9+.-]{1,31}/).replace("email", /[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/).getRegex(), Ui = K(gr).replace("(?:-->|$)", "-->").getRegex(), Gi = K("^comment|^</[a-zA-Z][\\w:-]*\\s*>|^<[a-zA-Z][\\w-]*(?:attribute)*?\\s*/?>|^<\\?[\\s\\S]*?\\?>|^<![a-zA-Z]+\\s[\\s\\S]*?>|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>").replace("comment", Ui).replace("attribute", /\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*"[^"]*"|\s*=\s*'[^']*'|\s*=\s*[^\s"'=<>`]+)?/).getRegex(), Wn = /(?:\[(?:\\.|[^\[\]\\])*\]|\\.|`[^`]*`|[^\[\]\\`])*?/, Ji = K(/^!?\[(label)\]\(\s*(href)(?:\s+(title))?\s*\)/).replace("label", Wn).replace("href", /<(?:\\.|[^\n<>\\])+>|[^\s\x00-\x1f]*/).replace("title", /"(?:\\"?|[^"\\])*"|'(?:\\'?|[^'\\])*'|\((?:\\\)?|[^)\\])*\)/).getRegex(), js = K(/^!?\[(label)\]\[(ref)\]/).replace("label", Wn).replace("ref", fr).getRegex(), Ds = K(/^!?\[(ref)\](?:\[\])?/).replace("ref", fr).getRegex(), Zi = K("reflink|nolink(?!\\()", "g").replace("reflink", js).replace("nolink", Ds).getRegex(), br = {
-  _backpedal: Vt,
+  paragraph: K(gr).replace("hr", rn).replace("heading", ` *#{1,6} *[^
+]`).replace("lheading", Ms).replace("|table", "").replace("blockquote", " {0,3}>").replace("|fences", "").replace("|list", "").replace("|html", "").replace("|tag", "").getRegex()
+}, js = /^\\([!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~])/, Li = /^(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)/, Ds = /^( {2,}|\\)\n(?!\s*$)/, ji = /^(`+|[^`])(?:(?= {2,}\n)|[\s\S]*?(?:(?=[\\<!\[`*_]|\b_|$)|[^ ](?= {2,}\n)))/, sn = "\\p{P}\\p{S}", Di = K(/^((?![*_])[\spunctuation])/, "u").replace(/punctuation/g, sn).getRegex(), Fi = /\[[^[\]]*?\]\([^\(\)]*?\)|`[^`]*?`|<[^<>]*?>/g, Wi = K(/^(?:\*+(?:((?!\*)[punct])|[^\s*]))|^_+(?:((?!_)[punct])|([^\s_]))/, "u").replace(/punct/g, sn).getRegex(), Ki = K("^[^_*]*?__[^_*]*?\\*[^_*]*?(?=__)|[^*]+(?=[^*])|(?!\\*)[punct](\\*+)(?=[\\s]|$)|[^punct\\s](\\*+)(?!\\*)(?=[punct\\s]|$)|(?!\\*)[punct\\s](\\*+)(?=[^punct\\s])|[\\s](\\*+)(?!\\*)(?=[punct])|(?!\\*)[punct](\\*+)(?!\\*)(?=[punct])|[^punct\\s](\\*+)(?=[^punct\\s])", "gu").replace(/punct/g, sn).getRegex(), Hi = K("^[^_*]*?\\*\\*[^_*]*?_[^_*]*?(?=\\*\\*)|[^_]+(?=[^_])|(?!_)[punct](_+)(?=[\\s]|$)|[^punct\\s](_+)(?!_)(?=[punct\\s]|$)|(?!_)[punct\\s](_+)(?=[^punct\\s])|[\\s](_+)(?!_)(?=[punct])|(?!_)[punct](_+)(?!_)(?=[punct])", "gu").replace(/punct/g, sn).getRegex(), Ui = K(/\\([punct])/, "gu").replace(/punct/g, sn).getRegex(), Gi = K(/^<(scheme:[^\s\x00-\x1f<>]*|email)>/).replace("scheme", /[a-zA-Z][a-zA-Z0-9+.-]{1,31}/).replace("email", /[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+(@)[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)+(?![-_])/).getRegex(), Ji = K(br).replace("(?:-->|$)", "-->").getRegex(), Zi = K("^comment|^</[a-zA-Z][\\w:-]*\\s*>|^<[a-zA-Z][\\w-]*(?:attribute)*?\\s*/?>|^<\\?[\\s\\S]*?\\?>|^<![a-zA-Z]+\\s[\\s\\S]*?>|^<!\\[CDATA\\[[\\s\\S]*?\\]\\]>").replace("comment", Ji).replace("attribute", /\s+[a-zA-Z:_][\w.:-]*(?:\s*=\s*"[^"]*"|\s*=\s*'[^']*'|\s*=\s*[^\s"'=<>`]+)?/).getRegex(), Hn = /(?:\[(?:\\.|[^\[\]\\])*\]|\\.|`[^`]*`|[^\[\]\\`])*?/, Qi = K(/^!?\[(label)\]\(\s*(href)(?:\s+(title))?\s*\)/).replace("label", Hn).replace("href", /<(?:\\.|[^\n<>\\])+>|[^\s\x00-\x1f]*/).replace("title", /"(?:\\"?|[^"\\])*"|'(?:\\'?|[^'\\])*'|\((?:\\\)?|[^)\\])*\)/).getRegex(), Fs = K(/^!?\[(label)\]\[(ref)\]/).replace("label", Hn).replace("ref", hr).getRegex(), Ws = K(/^!?\[(ref)\](?:\[\])?/).replace("ref", hr).getRegex(), Vi = K("reflink|nolink(?!\\()", "g").replace("reflink", Fs).replace("nolink", Ws).getRegex(), xr = {
+  _backpedal: Yt,
   // only used for GFM url
-  anyPunctuation: Ki,
-  autolink: Hi,
-  blockSkip: ji,
-  br: Ls,
-  code: Bi,
-  del: Vt,
-  emStrongLDelim: Di,
-  emStrongRDelimAst: Fi,
-  emStrongRDelimUnd: Wi,
-  escape: Ms,
-  link: Ji,
-  nolink: Ds,
-  punctuation: Li,
-  reflink: js,
-  reflinkSearch: Zi,
-  tag: Gi,
-  text: Mi,
-  url: Vt
-}, Qi = {
-  ...br,
-  link: K(/^!?\[(label)\]\((.*?)\)/).replace("label", Wn).getRegex(),
-  reflink: K(/^!?\[(label)\]\s*\[([^\]]*)\]/).replace("label", Wn).getRegex()
-}, cr = {
-  ...br,
-  escape: K(Ms).replace("])", "~|])").getRegex(),
+  anyPunctuation: Ui,
+  autolink: Gi,
+  blockSkip: Fi,
+  br: Ds,
+  code: Li,
+  del: Yt,
+  emStrongLDelim: Wi,
+  emStrongRDelimAst: Ki,
+  emStrongRDelimUnd: Hi,
+  escape: js,
+  link: Qi,
+  nolink: Ws,
+  punctuation: Di,
+  reflink: Fs,
+  reflinkSearch: Vi,
+  tag: Zi,
+  text: ji,
+  url: Yt
+}, Xi = {
+  ...xr,
+  link: K(/^!?\[(label)\]\((.*?)\)/).replace("label", Hn).getRegex(),
+  reflink: K(/^!?\[(label)\]\s*\[([^\]]*)\]/).replace("label", Hn).getRegex()
+}, pr = {
+  ...xr,
+  escape: K(js).replace("])", "~|])").getRegex(),
   url: K(/^((?:ftp|https?):\/\/|www\.)(?:[a-zA-Z0-9\-]+\.?)+[^\s<]*|^email/, "i").replace("email", /[A-Za-z0-9._+-]+(@)[a-zA-Z0-9-_]+(?:\.[a-zA-Z0-9-_]*[a-zA-Z0-9])+(?![-_])/).getRegex(),
   _backpedal: /(?:[^?!.,:;*_'"~()&]+|\([^)]*\)|&(?![a-zA-Z0-9]+;$)|[?!.,:;*_'"~)]+(?!$))+/,
   del: /^(~~?)(?=[^\s~])([\s\S]*?[^\s~])\1(?=[^~]|$)/,
   text: /^([`~]+|[^`~])(?:(?= {2,}\n)|(?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)|[\s\S]*?(?:(?=[\\<!\[`*~_]|\b_|https?:\/\/|ftp:\/\/|www\.|$)|[^ ](?= {2,}\n)|[^a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-](?=[a-zA-Z0-9.!#$%&'*+\/=?_`{\|}~-]+@)))/
-}, Vi = {
-  ...cr,
-  br: K(Ls).replace("{2,}", "*").getRegex(),
-  text: K(cr.text).replace("\\b_", "\\b_| {2,}\\n").replace(/\{2,\}/g, "*").getRegex()
-}, In = {
-  normal: hr,
-  gfm: $i,
-  pedantic: Pi
-}, Ft = {
-  normal: br,
-  gfm: cr,
-  breaks: Vi,
-  pedantic: Qi
+}, Yi = {
+  ...pr,
+  br: K(Ds).replace("{2,}", "*").getRegex(),
+  text: K(pr.text).replace("\\b_", "\\b_| {2,}\\n").replace(/\{2,\}/g, "*").getRegex()
+}, On = {
+  normal: yr,
+  gfm: Bi,
+  pedantic: Mi
+}, Wt = {
+  normal: xr,
+  gfm: pr,
+  breaks: Yi,
+  pedantic: Xi
 };
-class Le {
+class je {
   constructor(e) {
     U(this, "tokens");
     U(this, "options");
     U(this, "state");
     U(this, "tokenizer");
     U(this, "inlineQueue");
-    this.tokens = [], this.tokens.links = /* @__PURE__ */ Object.create(null), this.options = e || pt, this.options.tokenizer = this.options.tokenizer || new Fn(), this.tokenizer = this.options.tokenizer, this.tokenizer.options = this.options, this.tokenizer.lexer = this, this.inlineQueue = [], this.state = {
+    this.tokens = [], this.tokens.links = /* @__PURE__ */ Object.create(null), this.options = e || mt, this.options.tokenizer = this.options.tokenizer || new Kn(), this.tokenizer = this.options.tokenizer, this.tokenizer.options = this.options, this.tokenizer.lexer = this, this.inlineQueue = [], this.state = {
       inLink: !1,
       inRawBlock: !1,
       top: !0
     };
     const n = {
-      block: In.normal,
-      inline: Ft.normal
+      block: On.normal,
+      inline: Wt.normal
     };
-    this.options.pedantic ? (n.block = In.pedantic, n.inline = Ft.pedantic) : this.options.gfm && (n.block = In.gfm, this.options.breaks ? n.inline = Ft.breaks : n.inline = Ft.gfm), this.tokenizer.rules = n;
+    this.options.pedantic ? (n.block = On.pedantic, n.inline = Wt.pedantic) : this.options.gfm && (n.block = On.gfm, this.options.breaks ? n.inline = Wt.breaks : n.inline = Wt.gfm), this.tokenizer.rules = n;
   }
   /**
    * Expose Rules
    */
   static get rules() {
     return {
-      block: In,
-      inline: Ft
+      block: On,
+      inline: Wt
     };
   }
   /**
    * Static Lex Method
    */
   static lex(e, n) {
-    return new Le(n).lex(e);
+    return new je(n).lex(e);
   }
   /**
    * Static Lex Inline Method
    */
   static lexInline(e, n) {
-    return new Le(n).inlineTokens(e);
+    return new je(n).inlineTokens(e);
   }
   /**
    * Preprocessing
@@ -876,17 +876,17 @@ class Le {
     return n;
   }
 }
-class Kn {
+class Un {
   constructor(e) {
     U(this, "options");
-    this.options = e || pt;
+    this.options = e || mt;
   }
   code(e, n, a) {
     var o;
     const r = (o = (n || "").match(/^\S*/)) == null ? void 0 : o[0];
     return e = e.replace(/\n$/, "") + `
-`, r ? '<pre><code class="language-' + we(r) + '">' + (a ? e : we(e, !0)) + `</code></pre>
-` : "<pre><code>" + (a ? e : we(e, !0)) + `</code></pre>
+`, r ? '<pre><code class="language-' + qe(r) + '">' + (a ? e : qe(e, !0)) + `</code></pre>
+` : "<pre><code>" + (a ? e : qe(e, !0)) + `</code></pre>
 `;
   }
   blockquote(e) {
@@ -958,7 +958,7 @@ ${e}</tr>
     return `<del>${e}</del>`;
   }
   link(e, n, a) {
-    const r = ss(e);
+    const r = is(e);
     if (r === null)
       return a;
     e = r;
@@ -966,7 +966,7 @@ ${e}</tr>
     return n && (o += ' title="' + n + '"'), o += ">" + a + "</a>", o;
   }
   image(e, n, a) {
-    const r = ss(e);
+    const r = is(e);
     if (r === null)
       return a;
     e = r;
@@ -977,7 +977,7 @@ ${e}</tr>
     return e;
   }
 }
-class yr {
+class kr {
   // no need for block level renderers
   strong(e) {
     return e;
@@ -1007,24 +1007,24 @@ class yr {
     return "";
   }
 }
-class je {
+class De {
   constructor(e) {
     U(this, "options");
     U(this, "renderer");
     U(this, "textRenderer");
-    this.options = e || pt, this.options.renderer = this.options.renderer || new Kn(), this.renderer = this.options.renderer, this.renderer.options = this.options, this.textRenderer = new yr();
+    this.options = e || mt, this.options.renderer = this.options.renderer || new Un(), this.renderer = this.options.renderer, this.renderer.options = this.options, this.textRenderer = new kr();
   }
   /**
    * Static Parse Method
    */
   static parse(e, n) {
-    return new je(n).parse(e);
+    return new De(n).parse(e);
   }
   /**
    * Static Parse Inline Method
    */
   static parseInline(e, n) {
-    return new je(n).parseInline(e);
+    return new De(n).parseInline(e);
   }
   /**
    * Parse Loop
@@ -1049,7 +1049,7 @@ class je {
         }
         case "heading": {
           const s = o;
-          a += this.renderer.heading(this.parseInline(s.tokens), s.depth, vi(this.parseInline(s.tokens, this.textRenderer)));
+          a += this.renderer.heading(this.parseInline(s.tokens), s.depth, qi(this.parseInline(s.tokens, this.textRenderer)));
           continue;
         }
         case "code": {
@@ -1201,10 +1201,10 @@ class je {
     return a;
   }
 }
-class Xt {
+class Rt {
   constructor(e) {
     U(this, "options");
-    this.options = e || pt;
+    this.options = e || mt;
   }
   /**
    * Process markdown before marked
@@ -1225,25 +1225,25 @@ class Xt {
     return e;
   }
 }
-U(Xt, "passThroughHooks", /* @__PURE__ */ new Set([
+U(Rt, "passThroughHooks", /* @__PURE__ */ new Set([
   "preprocess",
   "postprocess",
   "processAllTokens"
 ]));
-var dt, dr, Fs;
-class Xi {
+var pt, mr, Ks;
+class Ri {
   constructor(...e) {
-    as(this, dt);
-    U(this, "defaults", mr());
+    ss(this, pt);
+    U(this, "defaults", fr());
     U(this, "options", this.setOptions);
-    U(this, "parse", Tn(this, dt, dr).call(this, Le.lex, je.parse));
-    U(this, "parseInline", Tn(this, dt, dr).call(this, Le.lexInline, je.parseInline));
-    U(this, "Parser", je);
-    U(this, "Renderer", Kn);
-    U(this, "TextRenderer", yr);
-    U(this, "Lexer", Le);
-    U(this, "Tokenizer", Fn);
-    U(this, "Hooks", Xt);
+    U(this, "parse", In(this, pt, mr).call(this, je.lex, De.parse));
+    U(this, "parseInline", In(this, pt, mr).call(this, je.lexInline, De.parseInline));
+    U(this, "Parser", De);
+    U(this, "Renderer", Un);
+    U(this, "TextRenderer", kr);
+    U(this, "Lexer", je);
+    U(this, "Tokenizer", Kn);
+    U(this, "Hooks", Rt);
     this.use(...e);
   }
   /**
@@ -1300,7 +1300,7 @@ class Xi {
         }
         "childTokens" in o && o.childTokens && (n.childTokens[o.name] = o.childTokens);
       }), r.extensions = n), a.renderer) {
-        const o = this.defaults.renderer || new Kn(this.defaults);
+        const o = this.defaults.renderer || new Un(this.defaults);
         for (const s in a.renderer) {
           if (!(s in o))
             throw new Error(`renderer '${s}' does not exist`);
@@ -1315,7 +1315,7 @@ class Xi {
         r.renderer = o;
       }
       if (a.tokenizer) {
-        const o = this.defaults.tokenizer || new Fn(this.defaults);
+        const o = this.defaults.tokenizer || new Kn(this.defaults);
         for (const s in a.tokenizer) {
           if (!(s in o))
             throw new Error(`tokenizer '${s}' does not exist`);
@@ -1330,14 +1330,14 @@ class Xi {
         r.tokenizer = o;
       }
       if (a.hooks) {
-        const o = this.defaults.hooks || new Xt();
+        const o = this.defaults.hooks || new Rt();
         for (const s in a.hooks) {
           if (!(s in o))
             throw new Error(`hook '${s}' does not exist`);
           if (s === "options")
             continue;
           const d = s, i = a.hooks[d], f = o[d];
-          Xt.passThroughHooks.has(s) ? o[d] = (g) => {
+          Rt.passThroughHooks.has(s) ? o[d] = (g) => {
             if (this.defaults.async)
               return Promise.resolve(i.call(o, g)).then((b) => f.call(o, b));
             const k = i.call(o, g);
@@ -1363,17 +1363,17 @@ class Xi {
     return this.defaults = { ...this.defaults, ...e }, this;
   }
   lexer(e, n) {
-    return Le.lex(e, n ?? this.defaults);
+    return je.lex(e, n ?? this.defaults);
   }
   parser(e, n) {
-    return je.parse(e, n ?? this.defaults);
+    return De.parse(e, n ?? this.defaults);
   }
 }
-dt = new WeakSet(), dr = function(e, n) {
+pt = new WeakSet(), mr = function(e, n) {
   return (a, r) => {
     const o = { ...r }, s = { ...this.defaults, ...o };
     this.defaults.async === !0 && o.async === !1 && (s.silent || console.warn("marked(): The async option was set to true by an extension. The async: false option sent to parse will be ignored."), s.async = !0);
-    const d = Tn(this, dt, Fs).call(this, !!s.silent, !!s.async);
+    const d = In(this, pt, Ks).call(this, !!s.silent, !!s.async);
     if (typeof a > "u" || a === null)
       return d(new Error("marked(): input parameter is undefined or null"));
     if (typeof a != "string")
@@ -1390,11 +1390,11 @@ dt = new WeakSet(), dr = function(e, n) {
       return d(i);
     }
   };
-}, Fs = function(e, n) {
+}, Ks = function(e, n) {
   return (a) => {
     if (a.message += `
 Please report this to https://github.com/markedjs/marked.`, e) {
-      const r = "<p>An error occurred:</p><pre>" + we(a.message + "", !0) + "</pre>";
+      const r = "<p>An error occurred:</p><pre>" + qe(a.message + "", !0) + "</pre>";
       return n ? Promise.resolve(r) : r;
     }
     if (n)
@@ -1402,57 +1402,57 @@ Please report this to https://github.com/markedjs/marked.`, e) {
     throw a;
   };
 };
-const ct = new Xi();
+const dt = new Ri();
 function W(t, e) {
-  return ct.parse(t, e);
+  return dt.parse(t, e);
 }
 W.options = W.setOptions = function(t) {
-  return ct.setOptions(t), W.defaults = ct.defaults, Is(W.defaults), W;
+  return dt.setOptions(t), W.defaults = dt.defaults, Os(W.defaults), W;
 };
-W.getDefaults = mr;
-W.defaults = pt;
+W.getDefaults = fr;
+W.defaults = mt;
 W.use = function(...t) {
-  return ct.use(...t), W.defaults = ct.defaults, Is(W.defaults), W;
+  return dt.use(...t), W.defaults = dt.defaults, Os(W.defaults), W;
 };
 W.walkTokens = function(t, e) {
-  return ct.walkTokens(t, e);
+  return dt.walkTokens(t, e);
 };
-W.parseInline = ct.parseInline;
-W.Parser = je;
-W.parser = je.parse;
-W.Renderer = Kn;
-W.TextRenderer = yr;
-W.Lexer = Le;
-W.lexer = Le.lex;
-W.Tokenizer = Fn;
-W.Hooks = Xt;
+W.parseInline = dt.parseInline;
+W.Parser = De;
+W.parser = De.parse;
+W.Renderer = Un;
+W.TextRenderer = kr;
+W.Lexer = je;
+W.lexer = je.lex;
+W.Tokenizer = Kn;
+W.Hooks = Rt;
 W.parse = W;
 W.options;
 W.setOptions;
 W.use;
 W.walkTokens;
 W.parseInline;
-je.parse;
-Le.lex;
-const Ws = "question-modal", cs = "question_modal", Ua = 3, ds = "gate-v2@2026.10.21";
+De.parse;
+je.lex;
+const Hs = "question-modal", ps = "question_modal", Ja = 3, ms = "gate-v2@2026.10.21";
 function ze() {
   var t;
   return ((t = window.QwenPaw) == null ? void 0 : t.host) || {};
 }
-function Yi() {
+function el() {
   var t;
   return ((t = window.QwenPaw) == null ? void 0 : t.chat) || null;
 }
-function Ve() {
+function Xe() {
   return ze().antd || {};
 }
-function Ri() {
+function tl() {
   return ze().antdIcons || {};
 }
-const el = ["FormOutlined", "ProfileOutlined", "CheckSquareOutlined"];
-function Ga(t) {
-  const e = Ri();
-  for (const n of el) {
+const nl = ["FormOutlined", "ProfileOutlined", "CheckSquareOutlined"];
+function Za(t) {
+  const e = tl();
+  for (const n of nl) {
     const a = e[n];
     if (a)
       return t.createElement(a, {
@@ -1461,7 +1461,7 @@ function Ga(t) {
   }
   return t.createElement("span", { style: { color: "var(--app-accent, #ff7f16)" } }, "📋");
 }
-function tl() {
+function al() {
   try {
     const t = "question-modal-styles";
     if (document.getElementById(t)) return;
@@ -2323,9 +2323,9 @@ function M(t) {
   }
   return "/api" + t;
 }
-let Vn = "", Ks = "";
-function xr(t, e) {
-  t && (Ks = t), e && (Vn = e);
+let Yn = "", Us = "";
+function vr(t, e) {
+  t && (Us = t), e && (Yn = e);
 }
 function L() {
   const t = { "Content-Type": "application/json" };
@@ -2333,12 +2333,12 @@ function L() {
     const e = ze(), n = typeof e.getApiToken == "function" ? e.getApiToken() : "";
     n && (t.Authorization = "Bearer " + n);
     let a = typeof e.getSelectedAgentId == "function" ? e.getSelectedAgentId() : "";
-    a || (a = Vn), a && (t["X-Agent-Id"] = a);
+    a || (a = Yn), a && (t["X-Agent-Id"] = a);
   } catch {
   }
   return t;
 }
-function rn() {
+function on() {
   try {
     const e = ze();
     if (typeof e.getCurrentSessionId == "function") {
@@ -2354,45 +2354,45 @@ function rn() {
     if (e && e[1]) return e[1].toLowerCase();
   } catch {
   }
-  return Ks;
+  return Us;
 }
-globalThis.__qmSessionProbe = rn;
-let ps = null;
-function nl() {
-  if (ps) return;
+globalThis.__qmSessionProbe = on;
+let us = null;
+function rl() {
+  if (us) return;
   const t = typeof window < "u" && typeof window.setInterval == "function" ? window : typeof globalThis < "u" && typeof globalThis.setInterval == "function" ? globalThis : null;
-  t && (ps = t.setInterval(() => {
+  t && (us = t.setInterval(() => {
     try {
       fetch(M("/heartbeat"), {
         method: "POST",
         headers: L(),
-        body: JSON.stringify({ session_id: rn() || "" })
+        body: JSON.stringify({ session_id: on() || "" })
       }).catch(() => {
       });
     } catch {
     }
   }, 3e4));
 }
-nl();
-function Wt() {
+rl();
+function Kt() {
   try {
     const t = ze(), e = typeof t.getSelectedAgentId == "function" && t.getSelectedAgentId() || "";
     if (e) return e;
   } catch {
   }
-  return Vn;
+  return Yn;
 }
-const Ja = {};
-async function al(t, e, n) {
-  if (typeof window > "u" || Ja[t]) return "skipped";
+const Qa = {};
+async function sl(t, e, n) {
+  if (typeof window > "u" || Qa[t]) return "skipped";
   try {
     const o = "qm:v1:notified:" + t;
     if (window.localStorage && window.localStorage.getItem(o) === "1")
-      return Ja[t] = !0, "skipped";
+      return Qa[t] = !0, "skipped";
     window.localStorage.setItem(o, "1");
   } catch {
   }
-  Ja[t] = !0;
+  Qa[t] = !0;
   const a = n > 0 ? "「" + e + "」有 " + n + " 道题等你作答" : "「" + e + "」等你作答", r = window.Notification;
   if (!r) return "inpage";
   try {
@@ -2425,27 +2425,27 @@ async function al(t, e, n) {
   }
 }
 function ie(t) {
-  const e = Yt(t);
-  return e && e.session_id ? e.session_id : rn();
+  const e = en(t);
+  return e && e.session_id ? e.session_id : on();
 }
-const Za = 180, rl = 20, Hs = 6e3, sl = 60, ol = 8;
-function il() {
+const Va = 180, ol = 20, Gs = 6e3, il = 60, ll = 8;
+function cl() {
   try {
     return typeof document < "u" && document && typeof document.querySelectorAll == "function" ? document : null;
   } catch {
     return null;
   }
 }
-const ll = /[\s\-\u2013\u2014\u2015_\u00b7\u2022\u2026\u22ef\u2588-\u2593\u258b-\u258d\u25a0-\u25a3|\u23b8]+/g;
-function ms(t) {
+const dl = /[\s\-\u2013\u2014\u2015_\u00b7\u2022\u2026\u22ef\u2588-\u2593\u258b-\u258d\u25a0-\u25a3|\u23b8]+/g;
+function fs(t) {
   try {
-    return String(t || "").replace(ll, "").length;
+    return String(t || "").replace(dl, "").length;
   } catch {
     return 0;
   }
 }
-function us(t) {
-  const e = il();
+function gs(t) {
+  const e = cl();
   if (!e) return -1;
   let n = null;
   try {
@@ -2456,23 +2456,23 @@ function us(t) {
   if (!n) return -1;
   let a = -1;
   try {
-    a = ms((e.body || e.documentElement || {}).textContent);
+    a = fs((e.body || e.documentElement || {}).textContent);
   } catch {
     return -1;
   }
-  return a - ms(n.textContent);
+  return a - fs(n.textContent);
 }
-function cl(t) {
+function pl(t) {
   return t === "stalled" ? "⏳ 已提交，模型处理中 · 已越过阻塞阈值，多为模型限流/报错；若发新消息报「A task is already running」，点右上角 🔒 释放阻塞" : "⏳ 已提交，模型处理中";
 }
-function dl(t) {
+function ml(t) {
   return !t.submittedAt || t.deadReason || t.skippedAll || !t.observed || t.releasedNote || t.retired ? null : { phase: t.pastSoft ? "stalled" : "waiting" };
 }
-function fs(t) {
+function hs(t) {
   try {
     const e = typeof window < "u" ? window : null;
     if (e && typeof e.requestIdleCallback == "function") {
-      e.requestIdleCallback(t, { timeout: Hs });
+      e.requestIdleCallback(t, { timeout: Gs });
       return;
     }
   } catch {
@@ -2482,17 +2482,17 @@ function fs(t) {
   } catch {
   }
 }
-const pl = "qm:v1:analysis:global", ml = "qm:v1:analysis:", ul = {
+const ul = "qm:v1:analysis:global", fl = "qm:v1:analysis:", gl = {
   mode: "manual",
   modelId: "",
   withContext: !1,
   parallel: !1
 };
-function Kt(t) {
+function Ht(t) {
   return t === "ai" || t === "recommend" ? t : "manual";
 }
-function fl(t) {
-  if (!t || typeof t != "object") return { ...ul };
+function hl(t) {
+  if (!t || typeof t != "object") return { ...gl };
   const e = t.modelId !== void 0 ? t.modelId : t.model_id, n = t.withContext !== void 0 ? t.withContext : t.with_context;
   return {
     // Three-way mode.  Anything unrecognised (including legacy payloads that
@@ -2504,28 +2504,28 @@ function fl(t) {
     parallel: !!t.parallel
   };
 }
-function gl() {
+function bl() {
   try {
     const t = [];
     for (let e = 0; e < localStorage.length; e++) {
       const n = localStorage.key(e);
-      n && n.indexOf(ml) === 0 && n !== pl && t.push(n);
+      n && n.indexOf(fl) === 0 && n !== ul && t.push(n);
     }
     t.forEach((e) => localStorage.removeItem(e));
   } catch {
   }
 }
-async function hl() {
+async function yl() {
   try {
     const t = await fetch(M("/question-modal/prefs"), { headers: L() });
     if (!t.ok) return null;
     const e = await t.json();
-    return !e || !e.ok || !e.prefs ? null : fl(e.prefs);
+    return !e || !e.ok || !e.prefs ? null : hl(e.prefs);
   } catch {
     return null;
   }
 }
-async function kr() {
+async function wr() {
   try {
     const t = await fetch(M("/question-modal/templates"), { headers: L() });
     if (!t.ok) return { items: [], defaultId: "" };
@@ -2535,7 +2535,7 @@ async function kr() {
     return { items: [], defaultId: "" };
   }
 }
-async function An(t, e, n) {
+async function $n(t, e, n) {
   if (!t) return null;
   try {
     const a = await fetch(M("/question-modal/survey-action"), {
@@ -2545,7 +2545,7 @@ async function An(t, e, n) {
         tool_call_id: t,
         action: e,
         payload: n,
-        origin: Zn()
+        origin: Vn()
       })
     }), r = await a.json().catch(() => ({}));
     return a.ok ? {
@@ -2557,7 +2557,7 @@ async function An(t, e, n) {
     return null;
   }
 }
-async function bl(t) {
+async function xl(t) {
   if (!t) return null;
   try {
     const e = await fetch(
@@ -2575,7 +2575,7 @@ async function bl(t) {
     return null;
   }
 }
-function yl(t, e) {
+function kl(t, e) {
   if (!t) return () => {
   };
   let n = !1, a = null, r = 0, o = null, s = 0, d = !1, i = 0, f = 0, g = null;
@@ -2591,7 +2591,7 @@ function yl(t, e) {
           } catch {
           }
         }, fetch(u, _).then(async (P) => {
-          const x = Gl(P);
+          const x = Zl(P);
           if (!P.ok || !P.body || x) {
             if (P.status === 404 || P.status === 501 || P.status === 405) {
               d = !0, k(!1);
@@ -2615,11 +2615,11 @@ function yl(t, e) {
 `)) >= 0; ) {
                 const J = $.slice(0, me);
                 $ = $.slice(me + 2), J.split(`
-`).forEach((Y) => {
-                  if (!Y.startsWith("data: ")) return;
+`).forEach((R) => {
+                  if (!R.startsWith("data: ")) return;
                   let H = null;
                   try {
-                    H = JSON.parse(Y.slice(6));
+                    H = JSON.parse(R.slice(6));
                   } catch {
                     return;
                   }
@@ -2641,12 +2641,12 @@ function yl(t, e) {
   }, v = () => {
     if (n || d)
       return;
-    if (k(!1), i += 1, f || (f = Date.now()), i >= eo) {
-      if (Date.now() - (f || Date.now()) >= no) {
+    if (k(!1), i += 1, f || (f = Date.now()), i >= no) {
+      if (Date.now() - (f || Date.now()) >= ro) {
         d = !0, k(!1);
         return;
       }
-      o = setTimeout(b, to);
+      o = setTimeout(b, ao);
       return;
     }
     r = Math.min(r + 1, 6);
@@ -2667,7 +2667,7 @@ function yl(t, e) {
     g = null, e.onStatus(!1);
   };
 }
-async function Qa(t, e, n) {
+async function Xa(t, e, n) {
   try {
     return (await fetch(M("/question-modal/session-prefs"), {
       method: "POST",
@@ -2691,8 +2691,8 @@ async function Qa(t, e, n) {
     return !1;
   }
 }
-let Us = null;
-async function tn(t, e, n, a) {
+let Js = null;
+async function an(t, e, n, a) {
   const r = t || "", o = "&session_id=" + encodeURIComponent(n || "") + "&agent_id=" + encodeURIComponent(a || "");
   try {
     const s = M(
@@ -2722,15 +2722,15 @@ async function tn(t, e, n, a) {
       schedule: i.schedule && typeof i.schedule == "object" ? i.schedule : null,
       libraries: i.libraries && typeof i.libraries == "object" ? i.libraries : void 0
     };
-    return Us = { chatId: r, at: Date.now(), data: f }, f;
+    return Js = { chatId: r, at: Date.now(), data: f }, f;
   } catch {
     return null;
   }
 }
-function Gs() {
-  Us = null;
+function Zs() {
+  Js = null;
 }
-async function Xn() {
+async function Rn() {
   const t = await fetch(
     M("/question-modal/stale-surveys"),
     { headers: L() }
@@ -2738,14 +2738,14 @@ async function Xn() {
   if (!t.ok) throw new Error("HTTP " + t.status);
   return await t.json();
 }
-function Yn(t) {
+function ea(t) {
   const e = l.stale;
   e.exceeded = t && t.exceeded || [], e.within = t && t.within || [], e.blocking = t && t.blocking || [], e.residual = t && t.residual || [], e.rows = t && t.items || e.blocking.concat(e.residual), e.threshold = t && typeof t.threshold_sec == "number" ? t.threshold_sec : null, e.scanned = !0;
 }
-function pr(t) {
+function ur(t) {
   return t == null ? "加载中…" : t <= 0 ? "已关闭自动释放" : t % 3600 === 0 ? `${t / 3600} 小时` : `${Math.round(t / 60)} 分钟`;
 }
-async function vr(t) {
+async function qr(t) {
   const e = await fetch(M("/question-modal/stale-surveys/release"), {
     method: "POST",
     headers: L(),
@@ -2754,7 +2754,7 @@ async function vr(t) {
   if (!e.ok) throw new Error(n && n.detail || "HTTP " + e.status);
   return n;
 }
-async function xl(t) {
+async function vl(t) {
   const e = await fetch(M("/question-modal/stale-surveys/terminate"), {
     method: "POST",
     headers: L(),
@@ -2763,15 +2763,15 @@ async function xl(t) {
   if (!e.ok) throw new Error(n && n.detail || "HTTP " + e.status);
   return n;
 }
-async function kl() {
+async function wl() {
   l.stale.busy = !0, l.stale.msgKind = "info", l.stale.msg = "正在扫描…", q();
   const t = Date.now();
   try {
-    const e = await Xn();
-    Yn(e), l.stale.page = 0, l.stale.resPage = 0;
+    const e = await Rn();
+    ea(e), l.stale.page = 0, l.stale.resPage = 0;
     const n = l.stale.rows.length, a = l.stale.blocking.length, r = l.stale.residual.length, o = l.stale.exceeded.length, s = l.stale.within.length, d = Date.now() - t;
     l.stale.msgKind = "ok";
-    const i = pr(l.stale.threshold);
+    const i = ur(l.stale.threshold);
     l.stale.msg = n > 0 ? `扫描完成：共 ${n} 条挂起（正在阻塞 ${a} 条、异常残留 ${r} 条；已超阈值 ${o} 条、观察期内 ${s} 条；阈值 ${i}，耗时 ${d}ms）` : `扫描完成：没有挂起的问卷（阈值 ${i}，耗时 ${d}ms）`;
   } catch (e) {
     l.stale.rows = [], l.stale.exceeded = [], l.stale.within = [], l.stale.blocking = [], l.stale.residual = [], l.stale.scanned = !1, l.stale.msgKind = "error", l.stale.msg = "扫描失败：" + (e && e.message ? e.message : String(e)) + "（这不代表没有挂起项，请重试）";
@@ -2779,33 +2779,33 @@ async function kl() {
     l.stale.busy = !1, q();
   }
 }
-async function Va(t, e = "释放") {
+async function Ya(t, e = "释放") {
   l.stale.busy = !0, l.stale.msg = "", q();
   try {
-    const n = await vr({ tool_call_ids: t }), a = Number(n && n.released) || 0, r = Number(n && n.already) || 0, o = Number(n && n.failed) || 0;
+    const n = await qr({ tool_call_ids: t }), a = Number(n && n.released) || 0, r = Number(n && n.already) || 0, o = Number(n && n.failed) || 0;
     l.stale.msgKind = o > 0 ? "warn" : "ok", l.stale.msg = o > 0 ? `${e} ${a} 条，${o} 条未成功（见日志）` + (r ? `；${r} 条此前已处理` : "") : a > 0 ? `已${e} ${a} 条问卷` + (r ? `；${r} 条此前已处理` : "") : `无需${e}：${r || t.length} 条此前已处理`;
-    const s = await Xn();
-    Yn(s);
+    const s = await Rn();
+    ea(s);
   } catch (n) {
     l.stale.msgKind = "error", l.stale.msg = e + "失败：" + (n && n.message ? n.message : String(n));
   } finally {
     l.stale.busy = !1, q();
   }
 }
-async function vl() {
+async function ql() {
   l.stale.busy = !0, l.stale.msg = "", q();
   try {
-    const t = await vr({ all: !0 }), e = Number(t && t.released) || 0, n = Number(t && t.failed) || 0, a = Number(t && t.already) || 0, r = Number(t && t.requested) || 0;
+    const t = await qr({ all: !0 }), e = Number(t && t.released) || 0, n = Number(t && t.failed) || 0, a = Number(t && t.already) || 0, r = Number(t && t.requested) || 0;
     l.stale.msgKind = n > 0 ? "warn" : "ok", l.stale.msg = r === 0 ? "当前没有可释放项" : n > 0 ? `释放 ${e}/${r} 条，${n} 条未成功（见日志）` : `已释放 ${e} 条问卷` + (a ? `；${a} 条此前已释放` : "");
-    const o = await Xn();
-    Yn(o);
+    const o = await Rn();
+    ea(o);
   } catch (t) {
     l.stale.msgKind = "error", l.stale.msg = "批量释放失败：" + (t && t.message ? t.message : String(t));
   } finally {
     l.stale.busy = !1, q();
   }
 }
-async function wl() {
+async function El() {
   const t = (l.stale.residual || []).map((e) => String(e && e.tool_call_id)).filter(Boolean);
   if (!t.length) {
     l.stale.msgKind = "info", l.stale.msg = "当前没有可清理的残留问卷", q();
@@ -2813,20 +2813,20 @@ async function wl() {
   }
   l.stale.busy = !0, l.stale.msg = "", q();
   try {
-    const e = await vr({ tool_call_ids: t }), n = Number(e && e.released) || 0, a = Number(e && e.already) || 0, r = Number(e && e.failed) || 0;
+    const e = await qr({ tool_call_ids: t }), n = Number(e && e.released) || 0, a = Number(e && e.already) || 0, r = Number(e && e.failed) || 0;
     l.stale.msgKind = r > 0 ? "warn" : "ok", l.stale.msg = r > 0 ? `清理 ${n} 条，${r} 条未成功（见日志）` : `已清理 ${n} 条残留` + (a ? `；${a} 条此前已收尾` : "");
-    const o = await Xn();
-    Yn(o), l.stale.resPage = 0;
+    const o = await Rn();
+    ea(o), l.stale.resPage = 0;
   } catch (e) {
     l.stale.msgKind = "error", l.stale.msg = "清理失败：" + (e && e.message ? e.message : String(e));
   } finally {
     l.stale.busy = !1, q();
   }
 }
-async function ql(t) {
+async function Sl(t) {
   l.stale.busy = !0, l.stale.msg = "", q();
   try {
-    const e = await xl(t), n = e && e.results || [], a = n.filter((o) => o && o.stopped).length, r = n.filter((o) => o && !o.stopped).length;
+    const e = await vl(t), n = e && e.results || [], a = n.filter((o) => o && o.stopped).length, r = n.filter((o) => o && !o.stopped).length;
     l.stale.msgKind = a > 0 ? "ok" : "warn", l.stale.msg = a > 0 ? `已终止 ${a} 个会话` + (r ? `；${r} 个会话已不存在` : "") : `${r} 个会话已不存在或已空闲，无需终止（问卷数据仍可用「释放」清理）`;
   } catch (e) {
     l.stale.msgKind = "error", l.stale.msg = "终止会话失败：" + (e && e.message ? e.message : String(e));
@@ -2834,7 +2834,7 @@ async function ql(t) {
     l.stale.busy = !1, q();
   }
 }
-async function Js(t) {
+async function Qs(t) {
   try {
     const e = await fetch(M("/question-modal/templates"), {
       method: "POST",
@@ -2846,7 +2846,7 @@ async function Js(t) {
     return { ok: !1, error: "保存请求失败：" + (e && e.message ? e.message : e) };
   }
 }
-async function Zs(t) {
+async function Vs(t) {
   try {
     const e = await fetch(M("/question-modal/templates/" + encodeURIComponent(t)), {
       method: "DELETE",
@@ -2857,7 +2857,7 @@ async function Zs(t) {
     return { ok: !1, error: "删除请求失败：" + (e && e.message ? e.message : e) };
   }
 }
-async function Qs() {
+async function Xs() {
   try {
     const t = await fetch(M("/models"), { headers: L() });
     if (!t.ok) return [];
@@ -2870,7 +2870,7 @@ async function Qs() {
     return [];
   }
 }
-function El(t) {
+function _l(t) {
   if (!t) return "";
   try {
     return String(W.parse(t, { async: !1, breaks: !0 }));
@@ -2878,9 +2878,9 @@ function El(t) {
     return "<pre style='white-space:pre-wrap'>" + t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") + "</pre>";
   }
 }
-function F(t, e) {
+function D(t, e) {
   try {
-    const n = Ve().message;
+    const n = Xe().message;
     if (n && typeof n[t] == "function") {
       n[t](e);
       return;
@@ -2893,32 +2893,32 @@ const ye = "__other__";
 function Te(t) {
   return String(t && typeof t == "object" ? t.value ?? t.label ?? "" : t);
 }
-function St(t) {
+function _t(t) {
   return t ? t.skipped === !0 ? !0 : Array.isArray(t.value) ? t.value.length > 0 : !!(String(t.value ?? "").trim() || String(t.other ?? "").trim() || t.attachments && t.attachments.length) : !1;
 }
-function Xa(t, e, n) {
+function Ra(t, e, n) {
   const a = { ...t };
   return !e || typeof e != "object" || Object.keys(e).forEach((r) => {
     if (n && n.has(r) || !Object.prototype.hasOwnProperty.call(a, r)) return;
     const o = e[r];
-    !o || typeof o != "object" || !St(a[r]) && St(o) && (a[r] = { ...o });
+    !o || typeof o != "object" || !_t(a[r]) && _t(o) && (a[r] = { ...o });
   }), a;
 }
-function gs(t) {
+function bs(t) {
   if (!t || typeof t != "object") return [];
   const e = t.recommended !== void 0 ? t.recommended : t.ai_recommended;
   return e == null ? [] : (Array.isArray(e) ? e : [e]).map((a) => String(a ?? "").trim()).filter((a) => a.length > 0);
 }
-function hs(t, e) {
+function ys(t, e) {
   if (!t || typeof t != "object") return "";
   const n = Array.isArray(t.per_question) ? t.per_question : [];
   if (!n.length) return "";
   const a = n.find((r) => Number(r && r.index) === Number(e)) || (n.length === 1 ? n[0] : null);
   return a ? String(a.choice === void 0 || a.choice === null ? "" : a.choice).trim() : "";
 }
-function Sl(t, e, n) {
+function Nl(t, e, n) {
   if (!n.length) return !1;
-  const a = (i) => String(i || "").replace(/^\s*推荐\s*[·:：\-]\s*/, "").replace(/[*_`"'\u300c\u300d\u300e\u300f]/g, "").replace(/\s+/g, "").trim(), r = Te(e), o = De(e), s = a(r), d = a(o);
+  const a = (i) => String(i || "").replace(/^\s*推荐\s*[·:：\-]\s*/, "").replace(/[*_`"'\u300c\u300d\u300e\u300f]/g, "").replace(/\s+/g, "").trim(), r = Te(e), o = Fe(e), s = a(r), d = a(o);
   return n.some((i) => {
     const f = a(i);
     return f ? !!(i === r || i === o || f === s || f === d || Math.min(f.length, s.length, d.length) >= 4 && (f.length >= 4 && (s.includes(f) || f.includes(s)) || f.length >= 4 && (d.includes(f) || f.includes(d)))) : !1;
@@ -2928,15 +2928,15 @@ function le(t) {
   const e = t && t.type;
   return e === "single" || e === "multi" || e === "text" ? e : t && (t.options || []).length ? t.multiple === !0 ? "multi" : "single" : "text";
 }
-let Vs = !0;
-function Hn(t, e) {
+let Ys = !0;
+function Gn(t, e) {
   const n = String(t && t.title || "").trim();
-  return n || (Vs ? "第 " + (e + 1) + " 题" : "");
+  return n || (Ys ? "第 " + (e + 1) + " 题" : "");
 }
-function De(t) {
+function Fe(t) {
   return String(t && typeof t == "object" ? t.label ?? t.value ?? "" : t);
 }
-function _l(t, e) {
+function Cl(t, e) {
   const n = /* @__PURE__ */ new Set(), a = (o) => {
     o != null && o !== "" && n.add(String(o));
   }, r = t.options || [];
@@ -2944,16 +2944,16 @@ function _l(t, e) {
     (Array.isArray(e.value) ? e.value : []).forEach((s) => {
       a(s);
       const d = r.find((i) => Te(i) === String(s));
-      d && a(De(d)), String(s) === ye && e.other && a(e.other);
+      d && a(Fe(d)), String(s) === ye && e.other && a(e.other);
     });
   else {
     a(e.value);
     const o = r.find((s) => Te(s) === String(e.value));
-    o && a(De(o)), String(e.value) === ye && e.other && a(e.other);
+    o && a(Fe(o)), String(e.value) === ye && e.other && a(e.other);
   }
   return n;
 }
-function Nl(t, e) {
+function Tl(t, e) {
   return (Array.isArray(t) ? t : [t]).some((a) => {
     const r = String(a);
     if (r.startsWith("=")) return e.has(r.slice(1));
@@ -2963,7 +2963,7 @@ function Nl(t, e) {
     return !1;
   });
 }
-function Xs(t, e) {
+function Rs(t, e) {
   const n = /^q(\d+)$/i.exec(t.trim());
   if (n) {
     const r = parseInt(n[1], 10);
@@ -2971,27 +2971,27 @@ function Xs(t, e) {
   }
   return e.findIndex((r) => (r.title || "").trim() === t.trim());
 }
-function Ys(t, e, n) {
+function eo(t, e, n) {
   const a = e[t], r = a && a.showIf;
   if (!r || typeof r != "object" || !Object.keys(r).length) return !0;
   for (const o of Object.keys(r)) {
-    const s = Xs(o, e);
+    const s = Rs(o, e);
     if (s < 0) continue;
     const d = e[s];
     if (!d) continue;
-    if (d.showIf && !Ys(s, e, n)) return !1;
+    if (d.showIf && !eo(s, e, n)) return !1;
     const i = n[`q${s}`];
-    if (!i || !Nl(r[o], _l(d, i))) return !1;
+    if (!i || !Tl(r[o], Cl(d, i))) return !1;
   }
   return !0;
 }
-function Ge(t, e) {
+function Je(t, e) {
   const n = [];
   return t.forEach((a, r) => {
-    Ys(r, t, e) && n.push(r);
+    eo(r, t, e) && n.push(r);
   }), n;
 }
-function Cl(t) {
+function zl(t) {
   try {
     const e = t && t.content || [], n = e[0] && e[0].data && e[0].data.arguments;
     return n ? typeof n == "string" ? JSON.parse(n) : n : {};
@@ -2999,10 +2999,10 @@ function Cl(t) {
     return {};
   }
 }
-function On(t) {
+function Pn(t) {
   return Array.isArray(t.questions);
 }
-function Tl(t) {
+function Il(t) {
   try {
     const e = t && t.content || [], n = e[0] && e[0].data;
     return n && n.call_id || "";
@@ -3010,7 +3010,7 @@ function Tl(t) {
     return "";
   }
 }
-function zl(t) {
+function Al(t) {
   try {
     const e = t && t.content || [], n = e[0] && e[0].data, a = n && n.output;
     return a ? typeof a == "string" ? a : Array.isArray(a) ? a.map((r) => r && (r.text || r.content) || "").join(`
@@ -3019,10 +3019,10 @@ function zl(t) {
     return "";
   }
 }
-function Il(t) {
+function Ol(t) {
   return t ? /\[scroll folded\]/.test(t) : !1;
 }
-function Al(t) {
+function $l(t) {
   if (!t) return "";
   const e = String(t).split(`
 `).map((a) => a.trim()).filter(Boolean);
@@ -3034,19 +3034,19 @@ function Al(t) {
   const n = String(t).match(/"reason"\s*:\s*"([^"]{1,120})"/);
   return n && n[1] && n[1] !== "timeout" ? n[1] : "";
 }
-function Ht(t, e) {
+function Ut(t, e) {
   if (!e) return "";
   if (e.kind === "skipped" && !e.answers) {
     const r = String(e.skipped_by || ""), o = String(e.skip_reason || "").trim();
     return (o ? `${r === "watchdog" ? "系统自动释放" : r === "timeout" ? "系统自动跳过" : "已跳过本次问卷"}：${o}` : "已跳过本次问卷。") + `
 
-` + jn(t);
+` + Fn(t);
   }
   const n = e && e.answers || {}, a = ["【用户提交的问卷答案】"];
   return Object.keys(n).forEach((r) => {
     const o = n[r];
     if (!o || typeof o != "object") return;
-    const s = Xs(r, t), d = s >= 0 ? t[s] : null, i = d ? le(d) === "single" ? "单选" : le(d) === "multi" ? "多选" : "问答" : "问答", f = d ? Hn(d, s) : r;
+    const s = Rs(r, t), d = s >= 0 ? t[s] : null, i = d ? le(d) === "single" ? "单选" : le(d) === "multi" ? "多选" : "问答" : "问答", f = d ? Gn(d, s) : r;
     let g = o.value;
     if (Array.isArray(g) && (g = g.join("、")), o.other && (g = (g ? g + "、" : "") + o.other), o.skipped) {
       const k = String(o.skipped_by || ""), b = k === "requires_human" ? "（AI 跳过：需人工观察，未交给用户作答）" : k === "no_recommend" ? "（AI 跳过：无可用推荐）" : "（用户跳过本题）";
@@ -3056,7 +3056,7 @@ function Ht(t, e) {
   }), e.other && a.push("", `其他意见：${e.other}`), a.join(`
 `);
 }
-async function Ol(t, e) {
+async function Pl(t, e) {
   try {
     const n = new URLSearchParams();
     t && n.set("tool_call_id", t), e && n.set("session_id", e);
@@ -3066,12 +3066,12 @@ async function Ol(t, e) {
     );
     if (!a.ok) return { kind: "error" };
     const r = await a.json();
-    return r && xr(r.session_id, r.agent_id), r && r.found ? { kind: "found", data: r } : r && r.orphan ? { kind: "orphan" } : { kind: "absent" };
+    return r && vr(r.session_id, r.agent_id), r && r.found ? { kind: "found", data: r } : r && r.orphan ? { kind: "orphan" } : { kind: "absent" };
   } catch {
     return { kind: "error" };
   }
 }
-async function Ut(t) {
+async function Gt(t) {
   if (!t) return null;
   try {
     const e = await fetch(
@@ -3085,7 +3085,7 @@ async function Ut(t) {
     return null;
   }
 }
-async function $l(t) {
+async function Bl(t) {
   try {
     const e = new FormData();
     e.append("file", t);
@@ -3114,19 +3114,19 @@ async function $l(t) {
     return { ok: !1, error: `${t.name}: ${e && e.message || e}` };
   }
 }
-const Un = "qm:v1:stash_att:", bs = 25 * 1024 * 1024, Mn = /* @__PURE__ */ new Map(), Ln = /* @__PURE__ */ new Map();
-let Gn = null, Jn = 0, Ya = null;
-function ys() {
-  const t = Jn > 0;
-  Ln.forEach((e) => {
+const Jn = "qm:v1:stash_att:", xs = 25 * 1024 * 1024, jn = /* @__PURE__ */ new Map(), Dn = /* @__PURE__ */ new Map();
+let Zn = null, Qn = 0, er = null;
+function ks() {
+  const t = Qn > 0;
+  Dn.forEach((e) => {
     try {
       e(t);
     } catch {
     }
   });
 }
-function Pl() {
-  if (Ya) return Ya;
+function Ml() {
+  if (er) return er;
   if (typeof document > "u" || !document.createElement) return null;
   let t = null;
   try {
@@ -3150,51 +3150,51 @@ function Pl() {
       e && e.target && (e.target.value = "");
     } catch {
     }
-    const a = Gn;
-    Gn = null, !(!a || !n.length) && await Rs(n, a.callId, a.target, a.key);
+    const a = Zn;
+    Zn = null, !(!a || !n.length) && await to(n, a.callId, a.target, a.key);
   };
   try {
     const e = document.body || document.documentElement;
     e && typeof e.appendChild == "function" && e.appendChild(t);
   } catch {
   }
-  return Ya = t, t;
+  return er = t, t;
 }
-function Bl(t, e, n) {
+function Ll(t, e, n) {
   if (!t) {
-    F("error", "附件不可用：本次问卷缺少工具调用标识，请刷新页面后重试。");
+    D("error", "附件不可用：本次问卷缺少工具调用标识，请刷新页面后重试。");
     return;
   }
-  Gn = { callId: t, target: e, key: n };
-  const a = Pl();
+  Zn = { callId: t, target: e, key: n };
+  const a = Ml();
   if (a && typeof a.click == "function")
     try {
       a.click();
       return;
     } catch {
     }
-  a || (Gn = null);
+  a || (Zn = null);
 }
-async function Rs(t, e, n, a) {
-  Jn += 1, ys();
+async function to(t, e, n, a) {
+  Qn += 1, ks();
   const r = [], o = [];
   try {
     for (const d of t) {
-      if (d.size && d.size > bs) {
-        o.push(`${d.name}: 文件过大（上限 ${Math.round(bs / 1024 / 1024)} MB）`);
+      if (d.size && d.size > xs) {
+        o.push(`${d.name}: 文件过大（上限 ${Math.round(xs / 1024 / 1024)} MB）`);
         continue;
       }
-      const i = await $l(d);
+      const i = await Bl(d);
       i.ok ? r.push(i.att) : o.push(i.error);
     }
   } finally {
-    Jn -= 1, ys();
+    Qn -= 1, ks();
   }
-  const s = Mn.get(e);
+  const s = jn.get(e);
   if (r.length || o.length) {
     const d = n === "final" ? "final" : "q";
     if (!e) {
-      F(
+      D(
         "error",
         "附件未生效：未能绑定到本次问卷（缺少工具调用标识）。请刷新页面后重试。"
       );
@@ -3205,32 +3205,32 @@ async function Rs(t, e, n, a) {
         s(r, d, a, o);
       } catch {
       }
-    else r.length && Ml(e, r, d, a);
+    else r.length && jl(e, r, d, a);
   }
 }
-function Ml(t, e, n, a) {
+function jl(t, e, n, a) {
   if (!(!t || !e.length))
     try {
-      const r = localStorage.getItem(Un + t), o = r ? JSON.parse(r) : [], s = (Array.isArray(o) ? o : []).concat(
+      const r = localStorage.getItem(Jn + t), o = r ? JSON.parse(r) : [], s = (Array.isArray(o) ? o : []).concat(
         e.map((d) => ({ att: d, target: n, key: a }))
       );
-      localStorage.setItem(Un + t, JSON.stringify(s));
+      localStorage.setItem(Jn + t, JSON.stringify(s));
     } catch {
     }
 }
-function Ll(t) {
+function Dl(t) {
   if (!t) return [];
   try {
-    const e = localStorage.getItem(Un + t);
+    const e = localStorage.getItem(Jn + t);
     if (!e) return [];
-    localStorage.removeItem(Un + t);
+    localStorage.removeItem(Jn + t);
     const n = JSON.parse(e);
     return Array.isArray(n) ? n : [];
   } catch {
     return [];
   }
 }
-function jl(t) {
+function Fl(t) {
   const e = t && t.clipboardData;
   if (!e) return [];
   let n = [];
@@ -3247,11 +3247,11 @@ function jl(t) {
     }
   return n;
 }
-function Dl(t) {
+function Wl(t) {
   return !t && t !== 0 ? "" : t < 1024 ? t + " B" : t < 1024 * 1024 ? (t / 1024).toFixed(1) + " KB" : (t / 1024 / 1024).toFixed(1) + " MB";
 }
-async function Ra(t, e) {
-  const n = e || ie(t), a = Yt(t), r = a && a.request_id ? a.request_id : "";
+async function tr(t, e) {
+  const n = e || ie(t), a = en(t), r = a && a.request_id ? a.request_id : "";
   if (r)
     try {
       const o = await fetch(M("/question-modal/skip"), {
@@ -3288,7 +3288,7 @@ async function Ra(t, e) {
     }
   return { ok: !1, released: !1, reason: "no-handle" };
 }
-async function xs(t) {
+async function vs(t) {
   if (!t) return { ok: !1, released: !1, reason: "no-handle" };
   try {
     const e = await fetch(
@@ -3306,7 +3306,7 @@ async function xs(t) {
     return { ok: !1, released: !1, reason: "network" };
   }
 }
-async function Fl(t) {
+async function Kl(t) {
   try {
     const e = t ? "?session_id=" + encodeURIComponent(t) : "", n = await fetch(
       M("/question-modal/pending") + e,
@@ -3323,13 +3323,13 @@ async function Fl(t) {
     );
     if (!s.ok) return null;
     const d = await s.json();
-    return d && xr(d.session_id, d.agent_id), d && d.found ? d : null;
+    return d && vr(d.session_id, d.agent_id), d && d.found ? d : null;
   } catch {
     return null;
   }
 }
-const Rn = "qm:v1:reqid:", Wl = 3e4, Kl = 45e3, eo = 6, to = 6e4, no = 15 * 6e4, Hl = 700, Ul = 8;
-function Gl(t) {
+const ta = "qm:v1:reqid:", Hl = 3e4, Ul = 45e3, no = 6, ao = 6e4, ro = 15 * 6e4, Gl = 700, Jl = 8;
+function Zl(t) {
   try {
     if (String((t.headers && t.headers.get ? t.headers.get("content-type") : "") || "").toLowerCase().indexOf("text/html") >= 0) return !0;
     const n = Number(t.status || 0);
@@ -3341,16 +3341,16 @@ function Gl(t) {
 function he(t) {
   if (t)
     try {
-      localStorage.removeItem(Rn + t);
+      localStorage.removeItem(ta + t);
     } catch {
     }
 }
-function Jl() {
+function Ql() {
   try {
     const t = [];
     for (let r = 0; r < localStorage.length; r++) {
       const o = localStorage.key(r);
-      o && o.indexOf(Rn) === 0 && t.push(o);
+      o && o.indexOf(ta) === 0 && t.push(o);
     }
     const e = 7 * 24 * 3600 * 1e3, n = [];
     t.forEach((r) => {
@@ -3368,23 +3368,23 @@ function Jl() {
   } catch {
   }
 }
-function Zl(t, e, n, a) {
+function Vl(t, e, n, a) {
   if (!(!t || !e))
     try {
-      localStorage.setItem(Rn + t, JSON.stringify({
+      localStorage.setItem(ta + t, JSON.stringify({
         request_id: e,
         session_id: n || "",
         agent_id: a || "",
         tool_call_id: t,
         ts: Date.now()
-      })), Jl();
+      })), Ql();
     } catch {
     }
 }
-function Yt(t) {
+function en(t) {
   if (!t) return null;
   try {
-    const e = localStorage.getItem(Rn + t);
+    const e = localStorage.getItem(ta + t);
     if (!e) return null;
     const n = JSON.parse(e);
     return !n || !n.request_id || n.tool_call_id !== t ? (he(t), null) : n;
@@ -3392,11 +3392,11 @@ function Yt(t) {
     return null;
   }
 }
-const wr = "qm:v1:state:";
-function Qt(t) {
+const Er = "qm:v1:state:";
+function Xt(t) {
   if (!t) return null;
   try {
-    const e = localStorage.getItem(wr + t);
+    const e = localStorage.getItem(Er + t);
     if (!e) return null;
     const n = JSON.parse(e);
     return !n || typeof n != "object" ? null : n;
@@ -3404,7 +3404,7 @@ function Qt(t) {
     return null;
   }
 }
-function Zn() {
+function Vn() {
   try {
     let t = sessionStorage.getItem("qm:v1:tab");
     return t || (t = Math.random().toString(36).slice(2, 10) + Date.now().toString(36), sessionStorage.setItem("qm:v1:tab", t)), t;
@@ -3412,21 +3412,21 @@ function Zn() {
     return "tab-anon";
   }
 }
-const ao = Zn(), ks = "qm:v1:sessionprefs-ping";
-function ot(t, e) {
+const so = Vn(), ws = "qm:v1:sessionprefs-ping";
+function it(t, e) {
   if (t)
     try {
-      const a = { ...Qt(t) || {}, ...e, ts: Date.now(), origin: ao };
-      localStorage.setItem(wr + t, JSON.stringify(a)), Ql();
+      const a = { ...Xt(t) || {}, ...e, ts: Date.now(), origin: so };
+      localStorage.setItem(Er + t, JSON.stringify(a)), Xl();
     } catch {
     }
 }
-function Ql() {
+function Xl() {
   try {
     const t = [];
     for (let r = 0; r < localStorage.length; r++) {
       const o = localStorage.key(r);
-      o && o.indexOf(wr) === 0 && t.push(o);
+      o && o.indexOf(Er) === 0 && t.push(o);
     }
     const e = 7 * 24 * 3600 * 1e3, n = [];
     t.forEach((r) => {
@@ -3444,7 +3444,7 @@ function Ql() {
   } catch {
   }
 }
-async function Vl(t) {
+async function Yl(t) {
   try {
     const e = await fetch(
       M("/question-modal/resolve") + "?request_id=" + encodeURIComponent(t),
@@ -3452,13 +3452,13 @@ async function Vl(t) {
     );
     if (!e.ok) return { kind: "error" };
     const n = await e.json();
-    return n && xr(n.session_id, n.agent_id), n && n.found ? { kind: "found", data: n } : n && n.orphan ? { kind: "orphan" } : { kind: "absent" };
+    return n && vr(n.session_id, n.agent_id), n && n.found ? { kind: "found", data: n } : n && n.orphan ? { kind: "orphan" } : { kind: "absent" };
   } catch {
     return { kind: "error" };
   }
 }
-function Xl(t, e, n, a) {
-  const r = ["【用户提交的问卷答案】"], o = new Set(Ge(t, e));
+function Rl(t, e, n, a) {
+  const r = ["【用户提交的问卷答案】"], o = new Set(Je(t, e));
   return t.forEach((s, d) => {
     if (!o.has(d)) return;
     const i = e[`q${d}`];
@@ -3467,11 +3467,11 @@ function Xl(t, e, n, a) {
     if (Array.isArray(f))
       f = f.filter((u) => u !== ye).map((u) => {
         const _ = (s.options || []).find((N) => Te(N) === String(u));
-        return _ ? De(_) : u;
+        return _ ? Fe(_) : u;
       }).join("、");
     else {
       const u = (s.options || []).find((_) => Te(_) === String(f));
-      u && (f = De(u)), String(i.value) === ye && (f = "");
+      u && (f = Fe(u)), String(i.value) === ye && (f = "");
     }
     const g = le(s) === "single" ? "单选" : le(s) === "multi" ? "多选" : "问答", k = !!String(f || "").trim() || !!String(i.other || "").trim() || !!(i.attachments && i.attachments.length), b = String(i.skipped_by || ""), v = i.skipped ? b === "requires_human" ? "（AI 跳过：需人工观察，未交给用户作答）" : b === "no_recommend" ? "（AI 跳过：无可用推荐）" : "（用户跳过本题）" : k ? f : "（未作答）";
     let y = `- q${d} [${g}] ${v}`;
@@ -3479,7 +3479,7 @@ function Xl(t, e, n, a) {
   }), n && r.push(`- 其他意见：${n}`), a && a.length && r.push(`- 其他意见附件：${a.map((s) => s.file_name).join("、")}`), r.join(`
 `);
 }
-function Yl(t) {
+function ec(t) {
   const e = {};
   return Object.keys(t || {}).forEach((n) => {
     const a = t[n];
@@ -3495,26 +3495,26 @@ function Yl(t) {
     e[n] = { ...a, other: "", attachments: [] };
   }), e;
 }
-const Rl = ["必须", "务必", "不得为空", "不能为空"], ec = ["可为空", "可留空", "选填", "可选", "非必填"];
-function ro(t) {
+const tc = ["必须", "务必", "不得为空", "不能为空"], nc = ["可为空", "可留空", "选填", "可选", "非必填"];
+function oo(t) {
   if (!t || typeof t != "object" || t.optional === !1) return !1;
   if (t.optional === !0) return !0;
   const e = String(t.title || "");
-  return !e || Rl.some((n) => e.indexOf(n) !== -1) ? !1 : ec.some((n) => e.indexOf(n) !== -1);
+  return !e || tc.some((n) => e.indexOf(n) !== -1) ? !1 : nc.some((n) => e.indexOf(n) !== -1);
 }
-function tc(t, e) {
+function ac(t, e) {
   const n = { ...e || {} };
   let a = [];
   try {
-    a = Ge(t, n);
+    a = Je(t, n);
   } catch {
     return n;
   }
   return a.forEach((r) => {
     const o = t[r];
-    if (!ro(o)) return;
+    if (!oo(o)) return;
     const s = `q${r}`, d = n[s];
-    if (d && (d.skipped === !0 || St(d))) return;
+    if (d && (d.skipped === !0 || _t(d))) return;
     const i = le(o);
     n[s] = {
       type: i,
@@ -3525,14 +3525,14 @@ function tc(t, e) {
     };
   }), n;
 }
-function jn(t) {
+function Fn(t) {
   return t.map((e, n) => {
-    const a = le(e) === "single" ? "单选" : le(e) === "multi" ? "多选" : "问答", r = (e.options || []).map(De).join("、");
-    return `${n + 1}. [${a}] ${Hn(e, n)}${r ? "（" + r + "）" : ""}`;
+    const a = le(e) === "single" ? "单选" : le(e) === "multi" ? "多选" : "问答", r = (e.options || []).map(Fe).join("、");
+    return `${n + 1}. [${a}] ${Gn(e, n)}${r ? "（" + r + "）" : ""}`;
   }).join(`
 `);
 }
-function er(t) {
+function nr(t) {
   const { R: e, files: n, disabled: a, uploading: r, error: o, onPick: s, onRemove: d } = t, i = {
     display: "inline-flex",
     alignItems: "center",
@@ -3570,7 +3570,7 @@ function er(t) {
       e.createElement("span", {
         style: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
         title: g.file_name
-      }, g.file_name + (g.size ? "（" + Dl(g.size) + "）" : "")),
+      }, g.file_name + (g.size ? "（" + Wl(g.size) + "）" : "")),
       e.createElement("span", {
         style: { cursor: "pointer", opacity: 0.7, padding: "0 2px" },
         title: "移除附件",
@@ -3592,7 +3592,7 @@ function er(t) {
     }, "附件失败：" + o) : null
   );
 }
-function nc(t) {
+function rc(t) {
   const {
     R: e,
     providers: n,
@@ -3603,7 +3603,7 @@ function nc(t) {
     onOpenChange: d,
     tab: i,
     onTabChange: f
-  } = t, k = Ve().Popover, b = [];
+  } = t, k = Xe().Popover, b = [];
   n.forEach((S) => {
     [...S.models || [], ...S.extra_models || []].forEach((B) => {
       b.push({
@@ -3802,7 +3802,7 @@ function nc(t) {
     }, "▾")
   );
 }
-function ac(t) {
+function sc(t) {
   const { R: e, mode: n, onChange: a, disabled: r, open: o, onOpenChange: s, popRef: d, panelRef: i } = t, f = {
     ai: "自动分析",
     recommend: "只用推荐",
@@ -3984,7 +3984,7 @@ function ac(t) {
   ) : null;
   return [y, u];
 }
-function rc(t) {
+function oc(t) {
   const { R: e, templates: n, value: a, onSelect: r, onManage: o } = t;
   return e.createElement(
     "div",
@@ -4055,10 +4055,10 @@ function rc(t) {
     }, "＋ 管理模板…")
   );
 }
-function sc(t) {
+function ic(t) {
   const { R: e, open: n, templates: a, value: r, edit: o, onEditChange: s, onClose: d, onSelect: i, onSave: f, onDelete: g } = t;
   if (!n) return null;
-  const k = Ve(), { Input: b, Modal: v } = k, y = {
+  const k = Xe(), { Input: b, Modal: v } = k, y = {
     maxHeight: "60vh",
     overflowY: "auto",
     background: "var(--app-bg-elevated, #fff)",
@@ -4220,7 +4220,7 @@ function sc(t) {
     wrapClassName: "qm-tpl-modal"
   }, P) : P;
 }
-function oc(t) {
+function lc(t) {
   const {
     R: e,
     busy: n,
@@ -4237,7 +4237,7 @@ function oc(t) {
     onOpenChange: v,
     popRef: y,
     panelRef: u
-  } = t, N = Ve().Popover, P = e.createElement("button", {
+  } = t, N = Xe().Popover, P = e.createElement("button", {
     type: "button",
     disabled: g,
     key: "qm-analysis-trigger",
@@ -4426,7 +4426,7 @@ function oc(t) {
           className: "qm-md",
           "data-qm-md": "true",
           style: { marginTop: 4 },
-          dangerouslySetInnerHTML: { __html: El(I.reasoning || "") }
+          dangerouslySetInnerHTML: { __html: _l(I.reasoning || "") }
         })
       ))
     ) : n || r ? null : e.createElement(
@@ -4519,11 +4519,11 @@ function oc(t) {
   );
   return [P, b ? S : null];
 }
-function ic(t) {
-  const e = ze().React, n = Ve(), { Input: a, Button: r } = n, o = a.TextArea, s = t.data || {}, d = Cl(s), i = Tl(s), f = zl(s), g = Il(f), k = g ? "" : f, b = d.questions || [], v = d.title || "问卷", y = Qt(i), [u, _] = e.useState(
+function cc(t) {
+  const e = ze().React, n = Xe(), { Input: a, Button: r } = n, o = a.TextArea, s = t.data || {}, d = zl(s), i = Il(s), f = Al(s), g = Ol(f), k = g ? "" : f, b = d.questions || [], v = d.title || "问卷", y = Xt(i), [u, _] = e.useState(
     () => !!(y && y.answered) || !!k || g
   ), [N, P] = e.useState(""), [x, T] = e.useState(() => {
-    const c = Yt(i);
+    const c = en(i);
     return c && c.request_id ? c.request_id : y && typeof y.reqId == "string" ? y.reqId : "";
   }), [E, $] = e.useState(
     () => y && typeof y.visStep == "number" && y.visStep >= 0 ? y.visStep : 0
@@ -4531,7 +4531,7 @@ function ic(t) {
     () => y && typeof y.slowAt == "number" ? y.slowAt : 0
   ), [I, me] = e.useState(
     () => y && typeof y.slowStep == "number" ? y.slowStep : -1
-  ), [J, Y] = e.useState(
+  ), [J, R] = e.useState(
     () => !!(y && y.slowFired === !0)
   ), [H, Ie] = e.useState(() => {
     const c = {};
@@ -4542,181 +4542,181 @@ function ic(t) {
     return p && typeof p == "object" && Object.keys(p).forEach((h) => {
       c[h] && (c[h] = { ...c[h], ...p[h] });
     }), c;
-  }), [Ae, te] = e.useState(
+  }), [Ae, ne] = e.useState(
     () => y && typeof y.finalOther == "string" ? y.finalOther : ""
-  ), [D, O] = e.useState(!1), [R, ke] = e.useState(
+  ), [F, A] = e.useState(!1), [ee, ke] = e.useState(
     () => y && typeof y.releasedNote == "string" ? y.releasedNote : ""
   ), [Z, ce] = e.useState(
     () => y && typeof y.localResult == "string" ? y.localResult : ""
-  ), [Q, V] = e.useState(
+  ), [V, X] = e.useState(
     // 新版写实措辞（系统自动释放/系统自动跳过/问卷已跳过）不含「跳过了本次问卷」，
     // 只认旧正则会让新 payload 的卡完全不进折叠摘要（harness [AR1] 抓到）。
     () => !!(y && y.skippedAll) || /跳过了本次问卷|系统自动释放|系统自动跳过|问卷已跳过|用户手动释放阻塞/.test(k || "")
-  ), [qe, ne] = e.useState(
-    () => (y && typeof y.skipReason == "string" ? y.skipReason : "") || Al(k || "")
-  ), [ae, Ee] = e.useState(
+  ), [Ee, ae] = e.useState(
+    () => (y && typeof y.skipReason == "string" ? y.skipReason : "") || $l(k || "")
+  ), [Q, ve] = e.useState(
     () => y && Array.isArray(y.finalOtherAtt) ? y.finalOtherAtt : []
-  ), [Oe, Xe] = e.useState(
+  ), [Oe, Ye] = e.useState(
     () => !!(y && y.expanded)
-  ), [Nt, ut] = e.useState(!1), ta = e.useRef(0), [Se, uo] = e.useState(
+  ), [Ct, ft] = e.useState(!1), aa = e.useRef(0), [Se, go] = e.useState(
     () => y && typeof y.deadReason == "string" ? y.deadReason : ""
-  ), [Ye, Ct] = e.useState(
+  ), [Re, Tt] = e.useState(
     () => y && typeof y.gateBlocked == "string" ? y.gateBlocked : ""
-  ), [ft, na] = e.useState(
+  ), [gt, ra] = e.useState(
     () => y && typeof y.submittedAt == "number" ? y.submittedAt : 0
-  ), [aa, ra] = e.useState(
+  ), [sa, oa] = e.useState(
     () => !!(y && y.pastSoft === !0)
-  ), [Tt, sn] = e.useState(
+  ), [zt, ln] = e.useState(
     () => !!(y && y.waitRetired === !0)
-  ), zt = e.useRef(
-    !!(y && typeof y.submittedAt == "number" && y.submittedAt > 0 && Date.now() - y.submittedAt < Za * 1e3)
-  ), Re = e.useRef(!1), on = e.useRef(!!(y && y.pastSoft === !0)), [sa, fo] = e.useState(() => ({
+  ), It = e.useRef(
+    !!(y && typeof y.submittedAt == "number" && y.submittedAt > 0 && Date.now() - y.submittedAt < Va * 1e3)
+  ), et = e.useRef(!1), cn = e.useRef(!!(y && y.pastSoft === !0)), [ia, ho] = e.useState(() => ({
     show_recommend_badge: !0,
     slow_question_sec: 60
-  })), go = e.useRef(sa), Er = (c) => {
-    go.current = c, fo(c);
+  })), bo = e.useRef(ia), _r = (c) => {
+    bo.current = c, ho(c);
   }, ue = (c, p) => {
-    const h = sa[c];
+    const h = ia[c];
     return h ?? p;
   };
-  Vs = !!ue("fallback_title", !0);
-  const Sr = Math.max(30, Number(ue("wait_hint_sec", Za)) || Za), ho = "manual", [ee, ln] = e.useState(ho), [_r, oa] = e.useState(""), [Vc, bo] = e.useState(!1), [ia, la] = e.useState(!1), [ca, da] = e.useState(!1), [yo, xo] = e.useState([]), [Nr, pa] = e.useState(!1), [cn, gt] = e.useState(null), [ko, et] = e.useState(""), [It, ma] = e.useState(!1), ua = e.useRef(null), fa = e.useRef(null), Cr = e.useRef(0);
+  Ys = !!ue("fallback_title", !0);
+  const Nr = Math.max(30, Number(ue("wait_hint_sec", Va)) || Va), yo = "manual", [te, dn] = e.useState(yo), [Cr, la] = e.useState(""), [Yc, xo] = e.useState(!1), [ca, da] = e.useState(!1), [pa, ma] = e.useState(!1), [ko, vo] = e.useState([]), [Tr, ua] = e.useState(!1), [pn, ht] = e.useState(null), [wo, tt] = e.useState(""), [At, fa] = e.useState(!1), ga = e.useRef(null), ha = e.useRef(null), zr = e.useRef(0);
   e.useEffect(() => {
-    It && (Cr.current = Date.now());
-  }, [It]), e.useEffect(() => {
-    if (!It) return;
+    At && (zr.current = Date.now());
+  }, [At]), e.useEffect(() => {
+    if (!At) return;
     const c = (h) => {
-      if (Date.now() - Cr.current < 350) return;
+      if (Date.now() - zr.current < 350) return;
       const m = h && h.target;
-      ua.current && m && ua.current.contains(m) || fa.current && m && fa.current.contains(m) || ma(!1);
+      ga.current && m && ga.current.contains(m) || ha.current && m && ha.current.contains(m) || fa(!1);
     }, p = (h) => {
-      h && h.key === "Escape" && ma(!1);
+      h && h.key === "Escape" && fa(!1);
     };
     return document.addEventListener("mousedown", c), document.addEventListener("keydown", p), () => {
       document.removeEventListener("mousedown", c), document.removeEventListener("keydown", p);
     };
-  }, [It]);
-  const [dn, Pe] = e.useState(!1), [pn, ht] = e.useState(!1), bt = e.useRef(null), ga = e.useRef(null), ha = e.useRef(null);
+  }, [At]);
+  const [mn, Pe] = e.useState(!1), [un, bt] = e.useState(!1), yt = e.useRef(null), ba = e.useRef(null), ya = e.useRef(null);
   e.useEffect(() => {
-    if (!dn && !pn) return;
+    if (!mn && !un) return;
     const c = (p) => {
       const h = p && p.target;
-      bt.current && h && bt.current.contains(h) || ga.current && h && ga.current.contains(h) || (Pe(!1), ht(!1));
+      yt.current && h && yt.current.contains(h) || ba.current && h && ba.current.contains(h) || (Pe(!1), bt(!1));
     };
     return document.addEventListener("mousedown", c), () => document.removeEventListener("mousedown", c);
-  }, [dn, pn]);
-  const [ba, yt] = e.useState(!1), ya = e.useRef(null), xa = e.useRef(null);
+  }, [mn, un]);
+  const [xa, xt] = e.useState(!1), ka = e.useRef(null), va = e.useRef(null);
   e.useEffect(() => {
-    if (!ba) return;
+    if (!xa) return;
     const c = (p) => {
       const h = p && p.target;
-      ya.current && h && ya.current.contains(h) || xa.current && h && xa.current.contains(h) || yt(!1);
+      ka.current && h && ka.current.contains(h) || va.current && h && va.current.contains(h) || xt(!1);
     };
     return document.addEventListener("mousedown", c), () => document.removeEventListener("mousedown", c);
-  }, [ba]);
-  const [vo, wo] = e.useState(!1), [qo, Eo] = e.useState("paid"), Je = e.useRef({}), Fe = e.useRef({}), xt = e.useRef(0), At = e.useRef(null), [So, kt] = e.useState(0), [ka, va] = e.useState([]), [Ze, mn] = e.useState(""), We = e.useRef(Ze);
-  We.current = Ze;
-  const [wa, Qe] = e.useState(!1), [_o, Tr] = e.useState(!1), [No, qa] = e.useState(null);
-  e.useEffect(() => {
-    if (!wa) return;
-    const c = (p) => {
-      const h = p && p.target;
-      bt.current && h && bt.current.contains(h) || ha.current && h && ha.current.contains(h) || Qe(!1);
-    };
-    return document.addEventListener("mousedown", c), () => document.removeEventListener("mousedown", c);
-  }, [wa]);
-  const [Ea, Ke] = e.useState(!1);
+  }, [xa]);
+  const [qo, Eo] = e.useState(!1), [So, _o] = e.useState("paid"), Ze = e.useRef({}), We = e.useRef({}), kt = e.useRef(0), Ot = e.useRef(null), [No, vt] = e.useState(0), [wa, qa] = e.useState([]), [Qe, fn] = e.useState(""), Ke = e.useRef(Qe);
+  Ke.current = Qe;
+  const [Ea, Ve] = e.useState(!1), [Co, Ir] = e.useState(!1), [To, Sa] = e.useState(null);
   e.useEffect(() => {
     if (!Ea) return;
     const c = (p) => {
-      const h = bt.current;
-      h && p && p.target && h.contains(p.target) || Ke(!1);
+      const h = p && p.target;
+      yt.current && h && yt.current.contains(h) || ya.current && h && ya.current.contains(h) || Ve(!1);
     };
     return document.addEventListener("mousedown", c), () => document.removeEventListener("mousedown", c);
   }, [Ea]);
-  const [Sa, He] = e.useState(!1), un = e.useRef(null), zr = e.useRef(null);
+  const [_a, He] = e.useState(!1);
   e.useEffect(() => {
-    if (!Sa) return;
+    if (!_a) return;
     const c = (p) => {
-      const h = zr.current;
-      if (h && p && p.target && h.contains(p.target)) return;
-      const m = p && p.target;
-      m && m.closest && m.closest("[data-qm-release-lock]") || He(!1);
+      const h = yt.current;
+      h && p && p.target && h.contains(p.target) || He(!1);
     };
     return document.addEventListener("mousedown", c), () => document.removeEventListener("mousedown", c);
-  }, [Sa]);
-  const [Be, Ir] = e.useState(
+  }, [_a]);
+  const [Na, Ue] = e.useState(!1), gn = e.useRef(null), Ar = e.useRef(null);
+  e.useEffect(() => {
+    if (!Na) return;
+    const c = (p) => {
+      const h = Ar.current;
+      if (h && p && p.target && h.contains(p.target)) return;
+      const m = p && p.target;
+      m && m.closest && m.closest("[data-qm-release-lock]") || Ue(!1);
+    };
+    return document.addEventListener("mousedown", c), () => document.removeEventListener("mousedown", c);
+  }, [Na]);
+  const [Be, Or] = e.useState(
     () => !!(y && y.autoPaused)
-  ), Co = e.useRef(Be);
-  Co.current = Be;
-  const vt = e.useRef(!1), _a = e.useRef(0), fn = e.useRef({}), [To, zo] = e.useState(0), Ot = e.useRef(/* @__PURE__ */ new Set()), $t = (c) => {
-    c && Ot.current.add(c);
-  }, gn = e.useRef({}), [Io, hn] = e.useState(0), tt = e.useRef({}), [Pt, Ao] = e.useState(!1), Oo = e.useRef(!1);
-  Oo.current = Pt, e.useRef(!1);
-  const $o = async () => {
+  ), zo = e.useRef(Be);
+  zo.current = Be;
+  const wt = e.useRef(!1), Ca = e.useRef(0), hn = e.useRef({}), [Io, Ao] = e.useState(0), $t = e.useRef(/* @__PURE__ */ new Set()), Pt = (c) => {
+    c && $t.current.add(c);
+  }, bn = e.useRef({}), [Oo, yn] = e.useState(0), nt = e.useRef({}), [Bt, $o] = e.useState(!1), Po = e.useRef(!1);
+  Po.current = Bt, e.useRef(!1);
+  const Bo = async () => {
     try {
-      const c = await tn(
+      const c = await an(
         "",
         !0,
         ie(i),
-        Wt()
+        Kt()
       );
       if (!c || !c.config) return;
       const p = c.config;
-      Er(p), p.mode !== void 0 && ln(Kt(p.mode)), typeof p.model_id == "string" && p.model_id && oa(p.model_id), typeof p.with_context == "boolean" && la(p.with_context), typeof p.parallel == "boolean" && da(p.parallel), kt((h) => h + 1);
+      _r(p), p.mode !== void 0 && dn(Ht(p.mode)), typeof p.model_id == "string" && p.model_id && la(p.model_id), typeof p.with_context == "boolean" && da(p.with_context), typeof p.parallel == "boolean" && ma(p.parallel), vt((h) => h + 1);
     } catch {
     }
-  }, Ar = e.useRef(!1), bn = (c) => {
+  }, $r = e.useRef(!1), xn = (c) => {
     if (c.mode !== void 0) {
-      ln(c.mode), Qa(
+      dn(c.mode), Xa(
         { mode: c.mode },
         ie(i),
-        Wt()
+        Kt()
       );
       try {
-        localStorage.setItem(ks, ao + ":" + Date.now());
+        localStorage.setItem(ws, so + ":" + Date.now());
       } catch {
       }
     }
     const p = {};
-    c.modelId !== void 0 && (p.model_id = c.modelId), c.withContext !== void 0 && (p.with_context = c.withContext), c.parallel !== void 0 && (p.parallel = c.parallel), Object.keys(p).length && (c.modelId !== void 0 && oa(c.modelId), c.withContext !== void 0 && la(c.withContext), c.parallel !== void 0 && da(c.parallel), Qa(p, ie(i), Wt()));
-  }, Or = (c) => {
-    !c || c === Ze || (mn(c), We.current = c, ot(i, { templateId: c }), Qa(
+    c.modelId !== void 0 && (p.model_id = c.modelId), c.withContext !== void 0 && (p.with_context = c.withContext), c.parallel !== void 0 && (p.parallel = c.parallel), Object.keys(p).length && (c.modelId !== void 0 && la(c.modelId), c.withContext !== void 0 && da(c.withContext), c.parallel !== void 0 && ma(c.parallel), Xa(p, ie(i), Kt()));
+  }, Pr = (c) => {
+    !c || c === Qe || (fn(c), Ke.current = c, it(i, { templateId: c }), Xa(
       { template_id: c },
       ie(i),
-      Wt()
-    ), gt(null), Je.current = {}, Fe.current = {}, kt((p) => p + 1));
-  }, Po = async (c) => {
-    const p = await Js({
+      Kt()
+    ), ht(null), Ze.current = {}, We.current = {}, vt((p) => p + 1));
+  }, Mo = async (c) => {
+    const p = await Qs({
       id: c.id || "",
       name: c.name || "",
       system: c.system || "",
       user: c.user || ""
     });
     if (!p.ok) {
-      F("error", p.error || "保存失败");
+      D("error", p.error || "保存失败");
       return;
     }
-    va(p.items || []), qa(null), F("success", "模板已保存");
-  }, Bo = async (c) => {
-    const p = await Zs(c);
+    qa(p.items || []), Sa(null), D("success", "模板已保存");
+  }, Lo = async (c) => {
+    const p = await Vs(c);
     if (!p.ok) {
-      F("warning", p.error || "删除失败");
+      D("warning", p.error || "删除失败");
       return;
     }
-    va(p.items || []);
+    qa(p.items || []);
     const h = (p.items || []).map((m) => m.id);
-    if (h.indexOf(We.current) === -1) {
+    if (h.indexOf(Ke.current) === -1) {
       const m = h[0] || "";
-      mn(m), We.current = m, ot(i, { templateId: m });
+      fn(m), Ke.current = m, it(i, { templateId: m });
     }
-    F("success", "模板已删除");
+    D("success", "模板已删除");
   };
   e.useEffect(() => {
     if (u) return;
     const c = (p) => {
       try {
-        String(p && p.key || "") === ks && $o();
+        String(p && p.key || "") === ws && Bo();
       } catch {
       }
     };
@@ -4724,47 +4724,47 @@ function ic(t) {
   }, [u, i]), e.useEffect(() => {
     if (u) return;
     let c = !0;
-    return gl(), (async () => {
+    return bl(), (async () => {
       const [p, h, m, w] = await Promise.all([
-        Qs(),
-        hl(),
-        kr(),
+        Xs(),
+        yl(),
+        wr(),
         // Chat identity: the card knows its own session; the server resolves
         // it to a chat UUID (the host never exposes one to the front end).
-        tn(
+        an(
           "",
           !0,
           ie(i),
-          Wt()
+          Kt()
         )
       ]);
       if (!c) return;
-      if (xo(p), va(m.items), w && w.config) {
+      if (vo(p), qa(m.items), w && w.config) {
         const C = w.config;
-        Er(C), C.mode !== void 0 && ln(Kt(C.mode)), typeof C.model_id == "string" && C.model_id && oa(C.model_id), typeof C.with_context == "boolean" && la(C.with_context), typeof C.parallel == "boolean" && da(C.parallel), typeof C.template_id == "string" && C.template_id && (mn(C.template_id), We.current = C.template_id);
+        _r(C), C.mode !== void 0 && dn(Ht(C.mode)), typeof C.model_id == "string" && C.model_id && la(C.model_id), typeof C.with_context == "boolean" && da(C.with_context), typeof C.parallel == "boolean" && ma(C.parallel), typeof C.template_id == "string" && C.template_id && (fn(C.template_id), Ke.current = C.template_id);
       }
       const z = m.items.map((C) => C.id);
-      if (!We.current || z.indexOf(We.current) === -1) {
+      if (!Ke.current || z.indexOf(Ke.current) === -1) {
         const C = m.defaultId || z[0] || "";
-        C && (mn(C), We.current = C);
+        C && (fn(C), Ke.current = C);
       }
       if (w && w.config) {
         const C = w.config;
-        bo(C.__follow_active__ === !0);
+        xo(C.__follow_active__ === !0);
       }
-      Ar.current = !0, kt((C) => C + 1);
+      $r.current = !0, vt((C) => C + 1);
     })(), () => {
       c = !1;
     };
   }, [i]), e.useEffect(() => {
-    xt.current = E;
+    kt.current = E;
   }, [E]);
-  const Na = async (c) => {
-    if (Nr) return;
+  const Ta = async (c) => {
+    if (Tr) return;
     const p = E;
-    pa(!0), et("");
+    ua(!0), tt("");
     const h = typeof AbortController < "u" ? new AbortController() : null;
-    At.current = h;
+    Ot.current = h;
     try {
       const m = await fetch(M("/question-modal/analyze"), {
         method: "POST",
@@ -4775,30 +4775,30 @@ function ic(t) {
           session_id: ie(i),
           title: v,
           questions: b,
-          model_id: _r,
+          model_id: Cr,
           mode: c,
-          with_context: ia,
-          parallel: ca,
+          with_context: ca,
+          parallel: pa,
           question_index: p,
           answers: H,
-          template_id: We.current,
+          template_id: Ke.current,
           // b5：单题分析超时来自生效配置（后端会钳到 [30,600]）
           timeout_sec: Number(ue("model_timeout_sec", 120)) || 120
         }),
         signal: h ? h.signal : void 0
       }), w = await m.json().catch(() => ({})), z = w && w.analysis || null, C = z && z.error || w && w.error || "";
-      w && w.cancelled || z && z.cancelled ? et("已终止分析。") : !m.ok || !w || w.ok === !1 || z && z.ok === !1 ? et(C || "分析失败（服务返回 " + m.status + "）") : z && (Je.current[p] = z, Fe.current[p] = !0, xt.current === p && gt(z), F("success", "第 " + (p + 1) + " 题 AI 分析完成"));
+      w && w.cancelled || z && z.cancelled ? tt("已终止分析。") : !m.ok || !w || w.ok === !1 || z && z.ok === !1 ? tt(C || "分析失败（服务返回 " + m.status + "）") : z && (Ze.current[p] = z, We.current[p] = !0, kt.current === p && ht(z), D("success", "第 " + (p + 1) + " 题 AI 分析完成"));
     } catch (m) {
-      At.current === h && h && h.signal.aborted || m && m.name === "AbortError" ? et("已终止分析。") : et("分析请求失败：" + (m && m.message ? m.message : m));
+      Ot.current === h && h && h.signal.aborted || m && m.name === "AbortError" ? tt("已终止分析。") : tt("分析请求失败：" + (m && m.message ? m.message : m));
     } finally {
-      At.current === h && (At.current = null), pa(!1), tt.current[p] = !0, hn((m) => m + 1);
+      Ot.current === h && (Ot.current = null), ua(!1), nt.current[p] = !0, yn((m) => m + 1);
     }
-  }, Mo = () => {
+  }, jo = () => {
     const c = E;
-    delete Je.current[c], gt(null), et(""), Na("manual");
-  }, wt = (c) => {
+    delete Ze.current[c], ht(null), tt(""), Ta("manual");
+  }, qt = (c) => {
     var h;
-    const p = c !== void 0 ? c : xt.current;
+    const p = c !== void 0 ? c : kt.current;
     try {
       fetch(M("/question-modal/analyze/cancel"), {
         method: "POST",
@@ -4813,95 +4813,95 @@ function ic(t) {
     } catch {
     }
     try {
-      An(i, "cancel_analysis", {});
+      $n(i, "cancel_analysis", {});
     } catch {
     }
     try {
-      (h = At.current) == null || h.abort();
+      (h = Ot.current) == null || h.abort();
     } catch {
     }
-    pa(!1);
-  }, Lo = () => {
-    wt(), et("已终止分析。");
-  }, jo = () => {
-    Be ? (gn.current = {}, tt.current = {}, Fe.current = {}, vt.current = !1, Ir(!1), kt((c) => c + 1), F("info", "已恢复自动答题")) : (wt(), Ir(!0), F("info", "已暂停自动答题，你可以手动作答"));
+    ua(!1);
+  }, Do = () => {
+    qt(), tt("已终止分析。");
+  }, Fo = () => {
+    Be ? (bn.current = {}, nt.current = {}, We.current = {}, wt.current = !1, Or(!1), vt((c) => c + 1), D("info", "已恢复自动答题")) : (qt(), Or(!0), D("info", "已暂停自动答题，你可以手动作答"));
   };
   e.useEffect(() => {
     if (u) return;
-    const c = Je.current[E];
-    gt(c || null);
+    const c = Ze.current[E];
+    ht(c || null);
     const p = "?tool_call_id=" + encodeURIComponent(i) + "&question_index=" + E;
     let h = !0;
     return fetch(M("/question-modal/analysis") + p, { headers: L() }).then((m) => m.ok ? m.json() : null).then((m) => {
-      !h || !m || !m.found || !m.analysis || (Je.current[E] = m.analysis, xt.current === E && gt(m.analysis));
+      !h || !m || !m.found || !m.analysis || (Ze.current[E] = m.analysis, kt.current === E && ht(m.analysis));
     }).catch(() => {
     }), () => {
       h = !1;
     };
   }, [i, E]), e.useEffect(() => {
-    u || Ar.current && ee === "ai" && Pt && (!On(d) || !b.length || Fe.current[E] || D || (Fe.current[E] = !0, Na("auto")));
+    u || $r.current && te === "ai" && Bt && (!Pn(d) || !b.length || We.current[E] || F || (We.current[E] = !0, Ta("auto")));
   }, [
     u,
-    ee,
+    te,
     i,
-    So,
-    ia,
+    No,
     ca,
+    pa,
     b,
     E,
     // backendDown 必须在内：它由 SSE 连接状态驱动，变化时要重新评估
     // 「让位还是自己分析」。漏了就永远停在让位状态（连不上也不分析）。
-    Pt
+    Bt
   ]);
-  const Do = () => {
-    const c = cn && cn.per_question || [];
+  const Wo = () => {
+    const c = pn && pn.per_question || [];
     if (!c.length) return;
     if (!c.some((h) => h.type === "multi" ? String(h.choice || "").split(/[、,，]/).map((m) => m.trim()).filter(Boolean).length > 0 : String(h.choice || "").trim().length > 0)) {
-      F("warning", "本题未得到有效推荐（分析可能失败或被截断），请点「重新分析」或更换模型");
+      D("warning", "本题未得到有效推荐（分析可能失败或被截断），请点「重新分析」或更换模型");
       return;
     }
     Ie((h) => {
       const m = { ...h };
       return c.forEach((w) => {
         const z = `q${w.index}`;
-        $t(z);
+        Pt(z);
         const C = m[z] || { type: w.type, value: "", other: "" };
         if (w.type === "multi") {
-          const se = String(w.choice || "").split(/[、,，]/).map((X) => X.trim()).filter(Boolean);
+          const se = String(w.choice || "").split(/[、,，]/).map((Y) => Y.trim()).filter(Boolean);
           m[z] = { ...C, value: se };
         } else
           m[z] = { ...C, value: w.choice || C.value };
       }), m;
-    }), F("success", "已套用 AI 推荐（可继续手工调整后提交）");
-  }, nt = (c, p, h = !1) => {
-    wt(), uo(c), V(!0), ce(p), ut(!1), _(!0), he(i), h && ot(i, { backendReleased: !0 });
-  }, Fo = async (c, p) => {
-    const h = await Ra(i, ie(i));
-    return h.ok ? (nt(c, p, h.released), !0) : (ut(!0), Ta(!1), !1);
+    }), D("success", "已套用 AI 推荐（可继续手工调整后提交）");
+  }, at = (c, p, h = !1) => {
+    qt(), go(c), X(!0), ce(p), ft(!1), _(!0), he(i), h && it(i, { backendReleased: !0 });
+  }, Ko = async (c, p) => {
+    const h = await tr(i, ie(i));
+    return h.ok ? (at(c, p, h.released), !0) : (ft(!0), Ia(!1), !1);
   };
   e.useEffect(() => {
     var p;
-    const c = (p = Qt(i)) == null ? void 0 : p.answers;
-    ot(i, {
+    const c = (p = Xt(i)) == null ? void 0 : p.answers;
+    it(i, {
       // reqId included: submit/skip are dead without it, and it must
       // survive the remount that a focus-regain (e.g. closing the file
       // dialog) triggers.
       reqId: x,
       visStep: E,
-      answers: Xa(H, c, Ot.current),
+      answers: Ra(H, c, $t.current),
       finalOther: Ae,
-      finalOtherAtt: ae,
+      finalOtherAtt: Q,
       answered: u,
-      skippedAll: Q,
+      skippedAll: V,
       expanded: Oe,
       localResult: Z,
-      submittedAt: ft,
-      skipReason: qe,
+      submittedAt: gt,
+      skipReason: Ee,
       // pastSoft / waitRetired MUST persist (同 deadReason/releasedNote 家族)：
       // 宿主会因 tool result 合并改 key、虚拟列表滚出滚回、页面刷新而反复重挂
       // 本卡；丢标志 = 已退休的行重亮，或已升级的文案退回成普通等待。
-      pastSoft: aa,
-      waitRetired: Tt,
+      pastSoft: sa,
+      waitRetired: zt,
       // 题级用时（五次裁定）：slowAt 存**计时起点**而非布尔值——重挂载后按
       // 剩余时间续算，否则用户等 59s 后滚一下卡片就要再等一分钟。slowStep 把
       // 起点绑定到题号，重挂后若题号对不上即自动清零重计。
@@ -4915,10 +4915,10 @@ function ic(t) {
       // dead survey disguised itself as「✓ 已跳过问卷」— exactly the reported
       // 「切窗口把整卷跳过」.  Restoring it keeps the truth across remounts.
       deadReason: Se,
-      gateBlocked: Ye,
-      releasedNote: R,
+      gateBlocked: Re,
+      releasedNote: ee,
       autoPaused: Be,
-      templateId: Ze
+      templateId: Qe
     });
   }, [
     i,
@@ -4926,58 +4926,58 @@ function ic(t) {
     E,
     H,
     Ae,
-    ae,
-    u,
     Q,
+    u,
+    V,
     Oe,
     Z,
-    ft,
-    qe,
-    aa,
-    Tt,
+    gt,
+    Ee,
+    sa,
+    zt,
     S,
     I,
     J,
     Se,
     Be,
-    Ze,
-    Ye,
-    R
+    Qe,
+    Re,
+    ee
   ]), e.useEffect(() => {
-    if (!u || !ft || Tt || !zt.current) return;
-    let c = 0, p = !1, h = us(i);
+    if (!u || !gt || zt || !It.current) return;
+    let c = 0, p = !1, h = gs(i);
     const m = () => {
       if (p) return;
-      const w = Math.floor((Date.now() - ft) / 1e3);
-      if (w >= Sr) {
-        Re.current = !0, sn(!0);
+      const w = Math.floor((Date.now() - gt) / 1e3);
+      if (w >= Nr) {
+        et.current = !0, ln(!0);
         return;
       }
-      if (!Re.current) {
-        const z = us(i);
-        z >= 0 && (h < 0 ? h = z : z - h >= ol && (Re.current = !0));
+      if (!et.current) {
+        const z = gs(i);
+        z >= 0 && (h < 0 ? h = z : z - h >= ll && (et.current = !0));
       }
-      if (!Re.current && w >= rl && !on.current && (on.current = !0, ra(!0)), Re.current) {
+      if (!et.current && w >= ol && !cn.current && (cn.current = !0, oa(!0)), et.current) {
         c = setTimeout(
           () => {
-            p || sn(!0);
+            p || ln(!0);
           },
-          Math.max(1e3, (Sr - w) * 1e3)
+          Math.max(1e3, (Nr - w) * 1e3)
         );
         return;
       }
       c = setTimeout(() => {
-        p || fs(m);
-      }, Hs);
+        p || hs(m);
+      }, Gs);
     };
-    return fs(m), () => {
+    return hs(m), () => {
       p = !0, clearTimeout(c);
     };
-  }, [u, ft, Tt]);
-  const [Ca, Ta] = e.useState(!1), [za, $r] = e.useState(""), Pr = (c, p, h) => {
-    c.length && (p === "final" ? Ee((m) => m.concat(c)) : Ie((m) => {
+  }, [u, gt, zt]);
+  const [za, Ia] = e.useState(!1), [Aa, Br] = e.useState(""), Mr = (c, p, h) => {
+    c.length && (p === "final" ? ve((m) => m.concat(c)) : Ie((m) => {
       const w = h || `q${E}`;
-      $t(w);
+      Pt(w);
       const z = m[w] || { type: "text", value: "", other: "" };
       return { ...m, [w]: { ...z, attachments: (z.attachments || []).concat(c) } };
     }));
@@ -4985,84 +4985,84 @@ function ic(t) {
   e.useEffect(() => {
     if (!i) return;
     const c = (m, w, z, C) => {
-      Pr(m, w, z), C && C.length ? $r(C.join("；")) : $r("");
-    }, p = (m) => Ta(m);
-    Mn.set(i, c), Ln.set(i, p);
-    const h = Ll(i);
-    return h.length && h.forEach((m) => Pr([m.att], m.target, m.key)), Ta(Jn > 0), () => {
-      Mn.get(i) === c && Mn.delete(i), Ln.get(i) === p && Ln.delete(i);
+      Mr(m, w, z), C && C.length ? Br(C.join("；")) : Br("");
+    }, p = (m) => Ia(m);
+    jn.set(i, c), Dn.set(i, p);
+    const h = Dl(i);
+    return h.length && h.forEach((m) => Mr([m.att], m.target, m.key)), Ia(Qn > 0), () => {
+      jn.get(i) === c && jn.delete(i), Dn.get(i) === p && Dn.delete(i);
     };
   }, [i, E]);
-  const Ia = (c, p) => Bl(i, c, p), Aa = (c, p, h) => {
-    const m = jl(c);
+  const Oa = (c, p) => Ll(i, c, p), $a = (c, p, h) => {
+    const m = Fl(c);
     if (m.length) {
       try {
         c.preventDefault();
       } catch {
       }
-      Rs(m, i, p, h);
+      to(m, i, p, h);
     }
   };
   e.useEffect(() => {
     if (!g || N) return;
     let c = !0;
-    return Ut(i).then((p) => {
+    return Gt(i).then((p) => {
       if (!c || !p) return;
-      p.kind === "skipped" && !p.answers && V(!0);
+      p.kind === "skipped" && !p.answers && X(!0);
       const h = String(p.skip_reason || "").trim();
-      h && ne((m) => m || h), P(Ht(b, p));
+      h && ae((m) => m || h), P(Ut(b, p));
     }), () => {
       c = !1;
     };
   }, [g, i, N]), e.useEffect(() => {
     if (u || !i || k) return;
     let c = !0;
-    return Ut(i).then((p) => {
+    return Gt(i).then((p) => {
       if (!c || !p) return;
-      p.kind === "skipped" && !p.answers && V(!0);
+      p.kind === "skipped" && !p.answers && X(!0);
       const h = String(p.skip_reason || "").trim();
-      h && ne((m) => m || h), P((m) => m || Ht(b, p)), ce(Ht(b, p)), _(!0), he(i);
+      h && ae((m) => m || h), P((m) => m || Ut(b, p)), ce(Ut(b, p)), _(!0), he(i);
     }), () => {
       c = !1;
     };
   }, [i, u, k]), e.useEffect(() => {
     if (u) return;
     let c = !0, p = 0, h = 0, m = 0, w = !1, z = !1, C = 0, se = 0;
-    ta.current || (ta.current = Date.now());
-    let X = !!Yt(i), Ne = !1;
-    const ve = (j) => {
-      !c || !j || !j.request_id || (X = !0, h = 0, m = 0, w = !1, T(j.request_id), ut(!1), C && (clearTimeout(C), C = 0), Zl(
+    aa.current || (aa.current = Date.now());
+    let Y = !!en(i), Ne = !1;
+    const we = (j) => {
+      !c || !j || !j.request_id || (Y = !0, h = 0, m = 0, w = !1, T(j.request_id), ft(!1), C && (clearTimeout(C), C = 0), Vl(
         i,
         j.request_id,
-        j.session_id || rn(),
+        j.session_id || on(),
         j.agent_id
       ));
     }, de = (j) => {
-      c && (C && (clearTimeout(C), C = 0), se && (clearTimeout(se), se = 0), Fo(
+      c && (C && (clearTimeout(C), C = 0), se && (clearTimeout(se), se = 0), Ko(
         j,
         j === "orphan" ? `本次问卷已失效：问卷服务在作答期间重启，原来的等待已中断。
 无需再操作，请直接在对话中继续。` : `本次问卷已失效：后端已不再保留这条记录（可能已过期或服务曾重启）。
 无需再操作，请直接在对话中继续。`
       ));
-    }, jt = Yt(i), st = async () => {
-      if (!jt) return !1;
-      const j = await Vl(jt.request_id);
+    }, Dt = en(i), ot = async () => {
+      if (!Dt) return !1;
+      const j = await Yl(Dt.request_id);
       if (!c) return !0;
       if (j.kind === "found") {
         const fe = j.data;
-        return fe.tool_call_id && i && fe.tool_call_id !== i ? (he(i), !1) : (ve(fe), !0);
+        return fe.tool_call_id && i && fe.tool_call_id !== i ? (he(i), !1) : (we(fe), !0);
       }
       return j.kind === "orphan" ? (de("orphan"), !0) : (j.kind === "absent" && he(i), !1);
     }, Ce = (j = !1) => {
       if (c) {
         if (p += 1, j || (h += 1, m || (m = Date.now())), j) {
           if (!Ne) {
-            Ne = !0, Ut(i).then((pe) => {
+            Ne = !0, Gt(i).then((pe) => {
               if (c) {
                 if (pe) {
-                  pe.kind === "skipped" && !pe.answers && V(!0);
-                  const Dt = String(pe.skip_reason || "").trim();
-                  Dt && ne((Ha) => Ha || Dt), P(Ht(b, pe)), ce(Ht(b, pe)), _(!0), he(i);
+                  pe.kind === "skipped" && !pe.answers && X(!0);
+                  const Ft = String(pe.skip_reason || "").trim();
+                  Ft && ae((Ga) => Ga || Ft), P(Ut(b, pe)), ce(Ut(b, pe)), _(!0), he(i);
                   return;
                 }
                 Ce(!0);
@@ -5070,18 +5070,18 @@ function ic(t) {
             });
             return;
           }
-          if (X) {
+          if (Y) {
             de("gone");
             return;
           }
-          const fe = Date.now() - (ta.current || Date.now());
-          if (p >= 12 && fe >= Kl) {
+          const fe = Date.now() - (aa.current || Date.now());
+          if (p >= 12 && fe >= Ul) {
             de("gone");
             return;
           }
         }
-        if (h >= eo) {
-          if (Date.now() - (m || Date.now()) >= no) {
+        if (h >= no) {
+          if (Date.now() - (m || Date.now()) >= ro) {
             if (w = !0, !z) {
               z = !0;
               try {
@@ -5097,16 +5097,16 @@ function ic(t) {
             }
             return;
           }
-          C = setTimeout(oe, to);
+          C = setTimeout(oe, ao);
           return;
         }
-        C = setTimeout(oe, p < Ul ? Hl : 5e3);
+        C = setTimeout(oe, p < Jl ? Gl : 5e3);
       }
     }, $e = () => {
-      Ol(i, ie(i)).then((j) => {
+      Pl(i, ie(i)).then((j) => {
         if (c) {
           if (j.kind === "found") {
-            ve(j.data);
+            we(j.data);
             return;
           }
           if (j.kind === "orphan") {
@@ -5117,11 +5117,11 @@ function ic(t) {
             Ce(!1);
             return;
           }
-          Fl(ie(i)).then((fe) => {
+          Kl(ie(i)).then((fe) => {
             if (c) {
               if (fe) {
                 if (fe.tool_call_id && i && fe.tool_call_id !== i) {
-                  Ut(i).then((pe) => {
+                  Gt(i).then((pe) => {
                     if (c) {
                       if (pe) {
                         _(!0), he(i);
@@ -5132,15 +5132,15 @@ function ic(t) {
                   });
                   return;
                 }
-                ve(fe);
+                we(fe);
                 return;
               }
-              Ut(i).then((pe) => {
+              Gt(i).then((pe) => {
                 if (c) {
                   if (pe) {
-                    pe.kind === "skipped" && !pe.answers && V(!0);
-                    const Dt = String(pe.skip_reason || "").trim();
-                    Dt && ne((Ha) => Ha || Dt), _(!0), he(i);
+                    pe.kind === "skipped" && !pe.answers && X(!0);
+                    const Ft = String(pe.skip_reason || "").trim();
+                    Ft && ae((Ga) => Ga || Ft), _(!0), he(i);
                     return;
                   }
                   Ce(!0);
@@ -5152,28 +5152,28 @@ function ic(t) {
       });
     }, oe = () => {
       if (c) {
-        if (!jt) {
+        if (!Dt) {
           $e();
           return;
         }
-        st().then((j) => {
+        ot().then((j) => {
           !c || j || $e();
         });
       }
     };
     return se = setTimeout(() => {
-      c && ut(!0);
-    }, Wl), oe(), () => {
+      c && ft(!0);
+    }, Hl), oe(), () => {
       c = !1, C && clearTimeout(C), se && clearTimeout(se);
     };
   }, [u, i]);
-  const Br = async () => {
-    O(!0);
+  const Lr = async () => {
+    A(!0);
     try {
       const c = ie(i);
-      let p = await Ra(i, c);
+      let p = await tr(i, c);
       if ((!p.released || p.reason === "orphan") && p.reason !== "network" && c) {
-        const m = await xs(c);
+        const m = await vs(c);
         m.ok && m.released ? p = m : m.ok && !p.ok && (p = { ok: !0, released: !1, reason: "gone" });
       }
       if (!p.ok)
@@ -5182,52 +5182,52 @@ function ic(t) {
         );
       if (p.released) {
         const m = p.reason === "host-stop";
-        nt(
+        at(
           p.reason === "orphan" ? "orphan" : "",
           p.reason === "orphan" ? `本次问卷已失效：问卷服务在作答期间重启，原来的等待已中断。
 无需再操作，请直接在对话中继续。` : m ? `本次问卷已释放：已直接终止本次运行，会话可继续对话。
 （插件端记录已不可达，例如插件刚重载过；本次回答未回传给模型。）` : "用户跳过了本次问卷。",
           !0
-        ), F(
+        ), D(
           "info",
           m ? "已释放本次问卷（已终止本次运行）" : "已释放本次问卷，会话可继续"
         );
       } else
-        nt(
+        at(
           "gone",
           `本次问卷已失效：后端已不再保留这条记录（可能已过期或服务曾重启）。
 无需再操作，请直接在对话中继续。`,
           !0
-        ), F("info", "本次问卷已失效，已关闭");
+        ), D("info", "本次问卷已失效，已关闭");
     } catch (c) {
-      F("error", "释放失败: " + (c && c.message ? c.message : c));
+      D("error", "释放失败: " + (c && c.message ? c.message : c));
     } finally {
-      O(!1);
+      A(!1);
     }
-  }, Mr = async () => {
-    O(!0);
+  }, jr = async () => {
+    A(!0);
     try {
       const c = ie(i);
-      let p = await Ra(i, c);
+      let p = await tr(i, c);
       if ((!p.released || p.reason === "orphan") && p.reason !== "network" && c) {
-        const m = await xs(c);
+        const m = await vs(c);
         m.ok && m.released ? p = m : m.ok && !p.ok && (p = { ok: !0, released: !1, reason: "gone" });
       }
       if (!p.ok) {
-        ke(p.reason === "network" ? "网络不可达，未能释放；请稍后重试。" : "未能取得问卷句柄（" + p.reason + "）。"), F("error", "释放失败：网络或句柄不可达");
+        ke(p.reason === "network" ? "网络不可达，未能释放；请稍后重试。" : "未能取得问卷句柄（" + p.reason + "）。"), D("error", "释放失败：网络或句柄不可达");
         return;
       }
       if (p.released) {
         const m = p.reason === "host-stop";
-        ke(m ? "已直接终止本次运行，会话可继续对话。（插件端记录已不可达，本次回答未回传给模型。）" : "已释放本次问卷的阻塞，会话可继续。"), F("info", m ? "已释放阻塞（已终止本次运行）" : "已释放阻塞，会话可继续");
+        ke(m ? "已直接终止本次运行，会话可继续对话。（插件端记录已不可达，本次回答未回传给模型。）" : "已释放本次问卷的阻塞，会话可继续。"), D("info", m ? "已释放阻塞（已终止本次运行）" : "已释放阻塞，会话可继续");
       } else
-        ke("后端已无这条记录的阻塞：会话当前不应被本次问卷锁住。若发新消息仍报 A task is already running，请点宿主输入框的「停止」。"), F("info", "后端已无此阻塞，无需释放");
+        ke("后端已无这条记录的阻塞：会话当前不应被本次问卷锁住。若发新消息仍报 A task is already running，请点宿主输入框的「停止」。"), D("info", "后端已无此阻塞，无需释放");
     } catch (c) {
-      F("error", "释放失败: " + (c && c.message ? c.message : c));
+      D("error", "释放失败: " + (c && c.message ? c.message : c));
     } finally {
-      O(!1);
+      A(!1);
     }
-  }, Wo = e.createElement(
+  }, Ho = e.createElement(
     "svg",
     {
       width: 13,
@@ -5242,19 +5242,19 @@ function ic(t) {
     },
     e.createElement("rect", { x: 3, y: 11, width: 18, height: 11, rx: 2 }),
     e.createElement("path", { d: "M7 11V7a5 5 0 0 1 9.9-1" })
-  ), yn = (c, p) => e.createElement("button", {
+  ), kn = (c, p) => e.createElement("button", {
     type: "button",
     key: p,
     className: "qm-release-lock",
     "data-qm-release-lock": "true",
     title: "释放阻塞（若发新消息报 A task is already running，点此释放）",
     "aria-label": "释放阻塞",
-    disabled: D,
+    disabled: F,
     // US-010: 二次确认——点击不再直接执行，先弹确认气泡；确定后由
     // releaseConfirmPanel 执行原 onClick（rescue / releaseBlocked 零改动）。
     // 打开时同步收起全部 header 弹层（互斥组）。
     onClick: () => {
-      un.current = c, Pe(!1), ht(!1), yt(!1), Qe(!1), Ke(!1), He(!0);
+      gn.current = c, Pe(!1), bt(!1), xt(!1), Ve(!1), He(!1), Ue(!0);
     },
     style: {
       width: 24,
@@ -5266,17 +5266,17 @@ function ic(t) {
       alignItems: "center",
       justifyContent: "center",
       borderRadius: 6,
-      cursor: D ? "default" : "pointer",
+      cursor: F ? "default" : "pointer",
       border: "1px solid var(--app-warning-border, rgba(250,173,20,0.45))",
       background: "transparent",
       color: "var(--app-warning-text, #d46b08)"
     }
-  }, Wo), Ko = e.createElement(
+  }, Ho), Uo = e.createElement(
     "div",
     {
       role: "dialog",
       "aria-label": "确认释放阻塞",
-      ref: zr,
+      ref: Ar,
       style: {
         position: "absolute",
         top: 34,
@@ -5332,46 +5332,46 @@ function ic(t) {
           color: "var(--app-text-secondary, inherit)"
         },
         onClick: () => {
-          He(!1), un.current = null;
+          Ue(!1), gn.current = null;
         }
       }, "取消"),
       e.createElement("button", {
         type: "button",
-        disabled: D,
+        disabled: F,
         style: {
           padding: "4px 12px",
           fontSize: 12,
-          cursor: D ? "default" : "pointer",
+          cursor: F ? "default" : "pointer",
           border: "none",
           borderRadius: 6,
-          opacity: D ? 0.5 : 1,
+          opacity: F ? 0.5 : 1,
           background: "#d92d20",
           color: "#fff",
           fontWeight: 500
         },
         onClick: () => {
-          const c = un.current;
-          He(!1), un.current = null, c && c();
+          const c = gn.current;
+          Ue(!1), gn.current = null, c && c();
         }
       }, "确定")
     )
-  ), xn = Sa ? Ko : null, kn = Ge(b, H), at = kn.length, Me = E >= at, re = Me ? -1 : kn[E], Bt = Me ? at : E;
+  ), vn = Na ? Uo : null, wn = Je(b, H), rt = wn.length, Me = E >= rt, re = Me ? -1 : wn[E], Mt = Me ? rt : E;
   e.useEffect(() => {
-    if (Kt(ue("mode", "manual")) !== "manual") return;
+    if (Ht(ue("mode", "manual")) !== "manual") return;
     let p = String(ue("notify_channel_pc", "") || "");
     if (!p) {
       const m = String(ue("notify_channel", "off") || "off"), w = !!ue("notify_manual_mode", !1);
       p = m === "browser" || (m === "off" || !m) && w ? "browser" : m;
     }
-    if (p !== "browser" || u || Q || Se || !On(d) || !b.length) return;
-    const h = Ge(b, H).filter((m) => !St(H[`q${m}`])).length;
-    al(i, v, h);
-  }, [sa, u, Q, Se, Bt]);
-  const vn = Math.max(0, Number(ue("slow_question_sec", sl)) || 0) * 1e3, Ho = Math.round(vn / 1e3);
+    if (p !== "browser" || u || V || Se || !Pn(d) || !b.length) return;
+    const h = Je(b, H).filter((m) => !_t(H[`q${m}`])).length;
+    sl(i, v, h);
+  }, [ia, u, V, Se, Mt]);
+  const qn = Math.max(0, Number(ue("slow_question_sec", il)) || 0) * 1e3, Go = Math.round(qn / 1e3);
   e.useEffect(() => {
-    if (u || Q || Se || vn <= 0) return;
-    if (I !== Bt) {
-      me(Bt), B(Date.now()), Y(!1);
+    if (u || V || Se || qn <= 0) return;
+    if (I !== Mt) {
+      me(Mt), B(Date.now()), R(!1);
       return;
     }
     if (!S) {
@@ -5379,33 +5379,33 @@ function ic(t) {
       return;
     }
     if (J) return;
-    const c = S + vn - Date.now();
+    const c = S + qn - Date.now();
     if (c <= 0) {
-      Y(!0);
+      R(!0);
       return;
     }
     let p = !1;
     const h = setTimeout(() => {
-      p || Y(!0);
+      p || R(!0);
     }, c);
     return () => {
       p = !0, clearTimeout(h);
     };
-  }, [u, Q, Se, Bt, I, S, J, vn]);
-  const _e = re >= 0 ? b[re] : null, qt = `q${re}`, G = re >= 0 && H[qt] || { type: le(_e), value: le(_e) === "multi" ? [] : "", other: "" }, Et = (c) => {
+  }, [u, V, Se, Mt, I, S, J, qn]);
+  const _e = re >= 0 ? b[re] : null, Et = `q${re}`, G = re >= 0 && H[Et] || { type: le(_e), value: le(_e) === "multi" ? [] : "", other: "" }, St = (c) => {
     var m;
-    Ye && Ct(""), re >= 0 && $t(`q${re}`);
-    const p = { ...H, [qt]: { ...c, skipped: !1 } }, h = Ge(b, p);
+    Re && Tt(""), re >= 0 && Pt(`q${re}`);
+    const p = { ...H, [Et]: { ...c, skipped: !1 } }, h = Je(b, p);
     b.forEach((w, z) => {
       h.indexOf(z) === -1 && delete p[`q${z}`];
-    }), ot(i, {
-      answers: Xa(p, (m = Qt(i)) == null ? void 0 : m.answers, Ot.current)
+    }), it(i, {
+      answers: Ra(p, (m = Xt(i)) == null ? void 0 : m.answers, $t.current)
     }), Ie(p);
   };
   e.useEffect(() => {
-    E > at && $(at);
-  }, [at, E]);
-  const Oa = async (c, p) => {
+    E > rt && $(rt);
+  }, [rt, E]);
+  const Pa = async (c, p) => {
     const h = await fetch(M(c), {
       method: "POST",
       headers: L(),
@@ -5416,77 +5416,77 @@ function ic(t) {
       throw w.status = h.status, w;
     }
     return m;
-  }, $a = () => {
+  }, Ba = () => {
     var c;
-    return Yl(Xa(
-      tc(b, H),
-      (c = Qt(i)) == null ? void 0 : c.answers,
-      Ot.current
+    return ec(Ra(
+      ac(b, H),
+      (c = Xt(i)) == null ? void 0 : c.answers,
+      $t.current
     ));
-  }, Uo = () => !!ue("gate_unsaved", !0), Go = (c) => ro(c), Lr = (c, p) => {
-    if (!Uo()) return [];
-    const h = new Set(Ge(b, c)), m = (z) => h.has(z) && !St(c[`q${z}`]) && !Go(b[z]), w = [];
+  }, Jo = () => !!ue("gate_unsaved", !0), Zo = (c) => oo(c), Dr = (c, p) => {
+    if (!Jo()) return [];
+    const h = new Set(Je(b, c)), m = (z) => h.has(z) && !_t(c[`q${z}`]) && !Zo(b[z]), w = [];
     return typeof p == "number" ? (m(p) && w.push(p + 1), w) : (b.forEach((z, C) => {
       m(C) && w.push(C + 1);
     }), w);
-  }, jr = (c, p, h) => {
+  }, Fr = (c, p, h) => {
     const m = "第 " + c.join("、") + " 题", w = h === "提交" ? "请选择后再提交；如需跳过，请点「跳过并提交」或逐题「跳过本题」。" : "请选择后再继续；如需跳过，请点「跳过本题」。";
-    Ct("⛔ " + m + "尚未选择。" + w);
-    const z = Ge(b, p).length;
-    Oa("/question-modal/gate-block", {
+    Tt("⛔ " + m + "尚未选择。" + w);
+    const z = Je(b, p).length;
+    Pa("/question-modal/gate-block", {
       request_id: x,
       tool_call_id: i,
       session_id: ie(i),
       missing: c,
       answered: z - c.length,
       total: z,
-      bundle: ds
+      bundle: ms
     }).catch(() => {
     });
-  }, Pa = async (c, p = !1) => {
+  }, Ma = async (c, p = !1) => {
     if (!x)
-      return F("warning", "问卷尚未就绪，请稍候"), "not-ready";
-    const h = $a();
+      return D("warning", "问卷尚未就绪，请稍候"), "not-ready";
+    const h = Ba();
     if (!p) {
-      const m = Lr(h);
+      const m = Dr(h);
       if (m.length)
-        return jr(m, h, "提交"), "blocked";
-      Ct("");
+        return Fr(m, h, "提交"), "blocked";
+      Tt("");
     }
-    O(!0);
+    A(!0);
     try {
-      const m = await Oa("/question-modal/answer", {
+      const m = await Pa("/question-modal/answer", {
         request_id: x,
         session_id: ie(i),
         answers: h,
         other: Ae,
-        attachments: ae
+        attachments: Q
       });
       return m && m.orphan ? (fetch(
         M("/question-modal/cancel-session") + "?session_id=" + encodeURIComponent(ie(i)),
         { method: "POST", headers: L() }
       ).catch(() => {
-      }), nt(
+      }), at(
         "orphan",
         `本次问卷已失效：问卷服务在作答期间重启，原来的等待已中断。
 无需再操作，请直接在对话中继续。`,
         !0
-      ), F("info", "本次问卷已失效，已关闭"), "sent") : (he(i), ce(Xl(b, h, Ae, ae)), na(Date.now()), ra(!1), sn(!1), Re.current = !1, on.current = !1, zt.current = !0, _(!0), "sent");
+      ), D("info", "本次问卷已失效，已关闭"), "sent") : (he(i), ce(Rl(b, h, Ae, Q)), ra(Date.now()), oa(!1), ln(!1), et.current = !1, cn.current = !1, It.current = !0, _(!0), "sent");
     } catch (m) {
-      return m && m.status === 404 ? (nt(
+      return m && m.status === 404 ? (at(
         "gone",
         `本次问卷已失效：后端已不再保留这条记录（可能已过期或服务曾重启）。
 无需再操作，请直接在对话中继续。`,
         !0
-      ), F("info", "本次问卷已失效，已关闭"), "blocked") : (F("error", "提交失败: " + m.message), p ? (vt.current = !1, _a.current += 1, _a.current >= Ua && F(
+      ), D("info", "本次问卷已失效，已关闭"), "blocked") : (D("error", "提交失败: " + m.message), p ? (wt.current = !1, Ca.current += 1, Ca.current >= Ja && D(
         "warning",
-        "自动提交连续失败 " + Ua + " 次，已停止重试。请手动点「提交」，或检查网络/模型限额后重试。"
-      ), hn((w) => w + 1), "not-ready") : "blocked");
+        "自动提交连续失败 " + Ja + " 次，已停止重试。请手动点「提交」，或检查网络/模型限额后重试。"
+      ), yn((w) => w + 1), "not-ready") : "blocked");
     } finally {
-      O(!1);
+      A(!1);
     }
-  }, Jo = () => {
-    re < 0 || (Ye && Ct(""), wt(xt.current), Fe.current[xt.current] = !0, $t(`q${re}`), Ie((c) => {
+  }, Qo = () => {
+    re < 0 || (Re && Tt(""), qt(kt.current), We.current[kt.current] = !0, Pt(`q${re}`), Ie((c) => {
       const p = { ...c };
       p[`q${re}`] = {
         type: (c[`q${re}`] || {}).type || le(_e),
@@ -5494,81 +5494,81 @@ function ic(t) {
         other: "",
         skipped: !0
       };
-      const h = Ge(b, p);
+      const h = Je(b, p);
       return b.forEach((m, w) => {
         h.indexOf(w) === -1 && delete p[`q${w}`];
       }), p;
     }), $((c) => c + 1));
-  }, Zo = () => {
+  }, Vo = () => {
     if (Me) {
-      Pa();
+      Ma();
       return;
     }
-    const c = $a(), p = Lr(c, re);
+    const c = Ba(), p = Dr(c, re);
     if (p.length) {
-      jr(p, c, "下一步");
+      Fr(p, c, "下一步");
       return;
     }
-    Ye && Ct(""), $((h) => h + 1);
-  }, Qo = async () => {
+    Re && Tt(""), $((h) => h + 1);
+  }, Xo = async () => {
     if (!x) {
-      F("warning", "问卷尚未就绪，请稍候");
+      D("warning", "问卷尚未就绪，请稍候");
       return;
     }
-    wt(), O(!0);
+    qt(), A(!0);
     try {
-      const c = await Oa("/question-modal/skip", {
+      const c = await Pa("/question-modal/skip", {
         request_id: x,
         session_id: ie(i)
       });
       if (c && c.orphan) {
-        nt(
+        at(
           "orphan",
           `本次问卷已失效：问卷服务在作答期间重启，原来的等待已中断。
 无需再操作，请直接在对话中继续。`,
           !0
-        ), F("info", "本次问卷已失效，已关闭");
+        ), D("info", "本次问卷已失效，已关闭");
         return;
       }
-      F("info", "已跳过问卷"), he(i), V(!0), ne("用户跳过了本次问卷（在卡片上点了「跳过问卷」）"), ce("用户跳过了本次问卷。"), na(Date.now()), ra(!1), sn(!1), Re.current = !1, on.current = !1, zt.current = !0, _(!0);
+      D("info", "已跳过问卷"), he(i), X(!0), ae("用户跳过了本次问卷（在卡片上点了「跳过问卷」）"), ce("用户跳过了本次问卷。"), ra(Date.now()), oa(!1), ln(!1), et.current = !1, cn.current = !1, It.current = !0, _(!0);
     } catch (c) {
       if (c && c.status === 404) {
-        nt(
+        at(
           "gone",
           `本次问卷已失效：后端已不再保留这条记录（可能已过期或服务曾重启）。
 无需再操作，请直接在对话中继续。`,
           !0
-        ), F("info", "本次问卷已失效，已关闭");
+        ), D("info", "本次问卷已失效，已关闭");
         return;
       }
-      F("error", "跳过失败: " + c.message);
+      D("error", "跳过失败: " + c.message);
     } finally {
-      O(!1);
+      A(!1);
     }
   };
   e.useEffect(() => {
-    if (u || ee !== "ai" && ee !== "recommend" || Be || (ee === "recommend" || ee === "ai") && !Pt || !On(d) || !b.length || D) return;
+    if (u || te !== "ai" && te !== "recommend" || Be || (te === "recommend" || te === "ai") && !Bt || !Pn(d) || !b.length || F) return;
     if (Me) {
-      if (vt.current || _a.current >= Ua) return;
-      const X = $a();
-      if (!kn.every(
-        (ve, de) => !!tt.current[de] || St(X[`q${ve}`])
+      if (wt.current || Ca.current >= Ja) return;
+      const Y = Ba();
+      if (!wn.every(
+        (we, de) => !!nt.current[de] || _t(Y[`q${we}`])
       ) || !x) return;
-      vt.current = !0, Pa(void 0, !0).then((ve) => {
-        ve === "not-ready" && (vt.current = !1);
+      wt.current = !0, Ma(void 0, !0).then((we) => {
+        we === "not-ready" && (wt.current = !1);
       });
       return;
     }
     const c = E;
-    if (gn.current[c] || ee === "ai" && !tt.current[c]) return;
-    const p = kn[c], h = b[p], m = le(h), w = gs(h), z = hs(Je.current[c], p);
-    if (ee === "ai" && !tt.current[c]) return;
-    gn.current[c] = !0;
+    if (bn.current[c] || te === "ai" && !nt.current[c]) return;
+    const p = wn[c], h = b[p], m = le(h), w = bs(h), z = ys(Ze.current[c], p);
+    if (te === "ai" && !nt.current[c]) return;
+    bn.current[c] = !0;
     const C = w.length ? w.join("、") : z, se = !!C;
-    $t(`q${p}`), se || (fn.current[p] = !0, zo((X) => X + 1), F("warning", "第 " + (p + 1) + " 题没有可用的推荐，已标记为未作答")), Ie((X) => {
-      const Ne = { ...X }, ve = `q${p}`, de = Ne[ve] || { type: m, value: m === "multi" ? [] : "", other: "" };
+    Pt(`q${p}`), se || (hn.current[p] = !0, Ao((Y) => Y + 1), D("warning", "第 " + (p + 1) + " 题没有可用的推荐，已标记为未作答")), Ie((Y) => {
+      const Ne = { ...Y }, we = `q${p}`, de = Ne[we] || { type: m, value: m === "multi" ? [] : "", other: "" };
       if (!se)
-        Ne[ve] = {
+        Ne[we] = {
           ...de,
           type: m,
           value: m === "multi" ? [] : "",
@@ -5577,11 +5577,11 @@ function ic(t) {
           skipped_by: "no_recommend"
         };
       else if (m === "multi") {
-        const st = h.options || [], Ce = (oe) => String(oe).replace(/^\s*推荐\s*[·:：\-]\s*/, "").trim(), $e = C.split(/[、,，]/).map((oe) => Ce(oe)).filter(Boolean).map((oe) => {
-          const j = st.find((fe) => Te(fe) === oe || De(fe) === oe);
+        const ot = h.options || [], Ce = (oe) => String(oe).replace(/^\s*推荐\s*[·:：\-]\s*/, "").trim(), $e = C.split(/[、,，]/).map((oe) => Ce(oe)).filter(Boolean).map((oe) => {
+          const j = ot.find((fe) => Te(fe) === oe || Fe(fe) === oe);
           return j ? Te(j) : oe;
         });
-        Ne[ve] = {
+        Ne[we] = {
           ...de,
           type: m,
           value: $e,
@@ -5589,8 +5589,8 @@ function ic(t) {
           attachments: $e.length === 1 && $e[0] === ye ? de.attachments : []
         };
       } else if (m === "single") {
-        const st = h.options || [], Ce = (j) => String(j).replace(/^\s*推荐\s*[·:：\-]\s*/, "").trim(), $e = st.find((j) => Te(j) === C || De(j) === C) || st.find((j) => Te(j) === Ce(C) || De(j) === Ce(C)), oe = $e ? Te($e) : C;
-        Ne[ve] = {
+        const ot = h.options || [], Ce = (j) => String(j).replace(/^\s*推荐\s*[·:：\-]\s*/, "").trim(), $e = ot.find((j) => Te(j) === C || Fe(j) === C) || ot.find((j) => Te(j) === Ce(C) || Fe(j) === Ce(C)), oe = $e ? Te($e) : C;
+        Ne[we] = {
           ...de,
           type: m,
           value: oe,
@@ -5598,99 +5598,99 @@ function ic(t) {
           attachments: String(oe) === ye ? de.attachments : []
         };
       } else
-        Ne[ve] = { ...de, type: m, value: C };
-      const jt = Ge(b, Ne);
-      return b.forEach((st, Ce) => {
-        jt.indexOf(Ce) === -1 && delete Ne[`q${Ce}`];
+        Ne[we] = { ...de, type: m, value: C };
+      const Dt = Je(b, Ne);
+      return b.forEach((ot, Ce) => {
+        Dt.indexOf(Ce) === -1 && delete Ne[`q${Ce}`];
       }), Ne;
-    }), Fe.current[c] = !0, tt.current[c] = !0, $((X) => X + 1), hn((X) => X + 1);
+    }), We.current[c] = !0, nt.current[c] = !0, $((Y) => Y + 1), yn((Y) => Y + 1);
   }, [
     u,
-    ee,
+    te,
     Be,
-    D,
+    F,
     i,
     E,
-    Io,
-    at,
+    Oo,
+    rt,
     d,
     // reqId 必须在内：自动提交要等它就绪（竞态修复，见末页分支注释）。
     // backendDown 必须在内（阶段 2）：它变化决定前端是"让位"还是"自己动"，
     // 不进依赖数组的话 SSE 断开后本页永远不会开始驱动。
     x,
-    Pt
+    Bt
   ]);
-  const Mt = e.useRef(!1), rt = e.useRef(0), Lt = e.useRef(!1), Ue = e.useRef({});
+  const Lt = e.useRef(!1), st = e.useRef(0), jt = e.useRef(!1), Ge = e.useRef({});
   e.useEffect(() => {
     if (u || !i) return;
     let c = !0;
     const p = (m) => {
       if (!(!c || !m)) {
-        Mt.current = !0, Lt.current = !0;
+        Lt.current = !0, jt.current = !0;
         try {
           if (Array.isArray(m.questions) && m.questions.length && (!b || b.length), m.answers && typeof m.answers == "object" && (Ie((z) => {
             const C = { ...z };
             return Object.keys(m.answers).forEach((se) => {
-              const X = m.answers[se];
-              !X || typeof X != "object" || Ot.current.has(se) || (C[se] = {
+              const Y = m.answers[se];
+              !Y || typeof Y != "object" || $t.current.has(se) || (C[se] = {
                 ...C[se] || { type: "single", value: "", other: "" },
-                ...X
+                ...Y
               });
             }), C;
-          }), ot(i, { answers: m.answers })), typeof m.cursor == "number" && m.cursor >= 0 && $(m.cursor), typeof m.mode == "string" && m.mode) {
-            const z = Kt(m.mode);
-            ln((C) => C === z ? C : z);
+          }), it(i, { answers: m.answers })), typeof m.cursor == "number" && m.cursor >= 0 && $(m.cursor), typeof m.mode == "string" && m.mode) {
+            const z = Ht(m.mode);
+            dn((C) => C === z ? C : z);
           }
           m.per_question && typeof m.per_question == "object" && Object.keys(m.per_question).forEach((z) => {
             const C = parseInt(z, 10);
-            !isNaN(C) && m.per_question[z] && (Je.current[C] = m.per_question[z]);
-          }), m.status === "submitted" && (na((z) => z || Date.now()), m.released && ot(i, { backendReleased: !0 }), _(!0), he(i));
+            !isNaN(C) && m.per_question[z] && (Ze.current[C] = m.per_question[z]);
+          }), m.status === "submitted" && (ra((z) => z || Date.now()), m.released && it(i, { backendReleased: !0 }), _(!0), he(i));
           const w = String(m.skip_reason || "").trim();
-          w && ne((z) => z || w), typeof m.mode == "string" && m.mode && (Ue.current.mode = Kt(m.mode)), Object.keys(m.answers || {}).forEach((z) => {
-            Ue.current["a:" + z] = JSON.stringify(m.answers[z] || {});
-          }), typeof m.cursor == "number" && (Ue.current.cursor = "c:" + m.cursor), Lt.current = !0, hn((z) => z + 1);
+          w && ae((z) => z || w), typeof m.mode == "string" && m.mode && (Ge.current.mode = Ht(m.mode)), Object.keys(m.answers || {}).forEach((z) => {
+            Ge.current["a:" + z] = JSON.stringify(m.answers[z] || {});
+          }), typeof m.cursor == "number" && (Ge.current.cursor = "c:" + m.cursor), jt.current = !0, yn((z) => z + 1);
         } finally {
           setTimeout(() => {
-            Mt.current = !1;
+            Lt.current = !1;
           }, 0);
         }
       }
     };
-    bl(i).then((m) => {
-      !c || !m || !m.found || !m.state || (rt.current = Math.max(rt.current, m.rev), p(m.state));
+    xl(i).then((m) => {
+      !c || !m || !m.found || !m.state || (st.current = Math.max(st.current, m.rev), p(m.state));
     });
-    const h = yl(i, {
+    const h = kl(i, {
       onSnapshot: (m, w) => {
-        rt.current = Math.max(rt.current, m), w && p(w);
+        st.current = Math.max(st.current, m), w && p(w);
       },
       onChange: (m) => {
         const w = parseInt(m.rev || 0, 10) || 0;
-        w && w <= rt.current && m.origin !== Zn() || (rt.current = Math.max(rt.current, w), !(m.origin && m.origin === Zn()) && p(m.state));
+        w && w <= st.current && m.origin !== Vn() || (st.current = Math.max(st.current, w), !(m.origin && m.origin === Vn()) && p(m.state));
       },
       onStatus: (m) => {
-        c && Ao((w) => w === !m ? w : !m);
+        c && $o((w) => w === !m ? w : !m);
       }
     });
     return () => {
       c = !1, h();
     };
   }, [u, i]), e.useEffect(() => {
-    u || !i || Mt.current || Lt.current && Object.keys(H || {}).forEach((c) => {
+    u || !i || Lt.current || jt.current && Object.keys(H || {}).forEach((c) => {
       const p = JSON.stringify(H[c] || {});
-      Ue.current["a:" + c] !== p && (Ue.current["a:" + c] = p, An(
+      Ge.current["a:" + c] !== p && (Ge.current["a:" + c] = p, $n(
         i,
         "set_answer",
         { key: c, answer: H[c] }
       ));
     });
   }, [u, i, JSON.stringify(H)]), e.useEffect(() => {
-    if (u || !i || Mt.current || !Lt.current) return;
+    if (u || !i || Lt.current || !jt.current) return;
     const c = "c:" + E;
-    Ue.current.cursor !== c && (Ue.current.cursor = c, An(i, "goto", { cursor: E }));
+    Ge.current.cursor !== c && (Ge.current.cursor = c, $n(i, "goto", { cursor: E }));
   }, [u, i, E]), e.useEffect(() => {
-    u || !i || Mt.current || Lt.current && Ue.current.mode !== ee && (Ue.current.mode = ee, An(i, "set_mode", { mode: ee }));
-  }, [u, i, ee]);
-  const wn = {
+    u || !i || Lt.current || jt.current && Ge.current.mode !== te && (Ge.current.mode = te, $n(i, "set_mode", { mode: te }));
+  }, [u, i, te]);
+  const En = {
     // US-010: 锚定 🔒 二次确认气泡（releaseConfirmPanel）的 absolute 定位；
     // 各卡片 return 的根 div 均用本样式（折叠行经 spread 继承）。
     position: "relative",
@@ -5702,14 +5702,14 @@ function ic(t) {
     marginBottom: 8,
     color: "var(--app-text, inherit)",
     fontSize: 13
-  }, Ba = {
+  }, La = {
     marginBottom: 14,
     paddingBottom: 12,
     borderBottom: "1px solid var(--app-border-subtle, rgba(127,127,127,0.15))",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between"
-  }, Ma = { flex: 1, display: "flex", alignItems: "center", gap: 8 }, qn = { fontSize: 14, fontWeight: 600, color: "var(--app-text, inherit)" }, La = {
+  }, ja = { flex: 1, display: "flex", alignItems: "center", gap: 8 }, Sn = { fontSize: 14, fontWeight: 600, color: "var(--app-text, inherit)" }, Da = {
     background: "var(--app-accent-soft, rgba(255,127,22,0.14))",
     borderRadius: 14,
     padding: "2px 10px",
@@ -5718,18 +5718,18 @@ function ic(t) {
     color: "var(--app-accent-text, var(--app-accent, #ff7f16))",
     fontFamily: "SF Mono,Monaco,Consolas,monospace",
     flex: "none"
-  }, Dr = { display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }, ja = {
+  }, Wr = { display: "flex", flexDirection: "column", gap: 8, marginBottom: 14 }, Fa = {
     fontSize: 12,
     color: "var(--app-text-tertiary, inherit)",
     fontWeight: 500
-  }, Vo = { display: "flex", flexDirection: "column", gap: 8 }, Da = {
+  }, Yo = { display: "flex", flexDirection: "column", gap: 8 }, Wa = {
     display: "flex",
     gap: 8,
     justifyContent: "flex-end",
     alignItems: "center",
     paddingTop: 8,
     borderTop: "1px solid var(--app-border-subtle, rgba(127,127,127,0.15))"
-  }, En = {
+  }, _n = {
     minWidth: 88,
     height: 36,
     fontSize: 13,
@@ -5741,20 +5741,20 @@ function ic(t) {
     justifyContent: "center",
     gap: 4,
     cursor: "pointer"
-  }, Fr = {
-    ...En,
+  }, Kr = {
+    ..._n,
     background: "transparent",
     border: "1.5px solid var(--app-border-strong, rgba(127,127,127,0.45))",
     color: "var(--app-text-secondary, inherit)",
     boxShadow: "none"
-  }, Xo = {
-    ...En,
+  }, Ro = {
+    ..._n,
     border: "none",
     background: "linear-gradient(135deg, var(--app-accent, #ff7f16) 0%, var(--app-accent-active, #d96a10) 100%)",
     color: "var(--app-text-inverse, #fff)",
     boxShadow: "0 2px 8px var(--app-accent-ring, rgba(255,127,22,0.2))"
-  }, Fa = {
-    ...En,
+  }, Ka = {
+    ..._n,
     width: "100%",
     justifyContent: "flex-start",
     minWidth: 0,
@@ -5771,13 +5771,13 @@ function ic(t) {
     height: "auto",
     minHeight: 32,
     alignItems: "center"
-  }, Wr = {
+  }, Hr = {
     // Restored to the original look (user asked for options to stay as-is).
-    ...Fa,
+    ...Ka,
     border: "1.5px solid var(--app-accent, #ff7f16)",
     color: "var(--app-accent, #ff7f16)",
     background: "var(--app-accent-soft, rgba(255,127,22,0.08))"
-  }, Kr = {
+  }, Ur = {
     flex: "none",
     marginRight: 8,
     fontSize: 10,
@@ -5788,17 +5788,17 @@ function ic(t) {
     color: "var(--app-accent, #ff7f16)",
     background: "transparent",
     border: "1.5px solid var(--app-accent, #ff7f16)"
-  }, Yo = { height: 32, fontSize: 13, borderRadius: 8 }, Hr = { fontSize: 13, borderRadius: 8, lineHeight: 1.5 }, Ur = (c) => {
+  }, ei = { height: 32, fontSize: 13, borderRadius: 8 }, Gr = { fontSize: 13, borderRadius: 8, lineHeight: 1.5 }, Jr = (c) => {
     const p = Te(c);
     return G.type === "multi" ? Array.isArray(G.value) && G.value.indexOf(p) !== -1 : G.value === p;
-  }, Gr = Ur(ye), Jr = (c) => {
-    if (u || D) return;
+  }, Zr = Jr(ye), Qr = (c) => {
+    if (u || F) return;
     const p = Te(c);
     if (G.type === "multi") {
       const h = Array.isArray(G.value) ? G.value.slice() : [], m = h.indexOf(p);
       m === -1 ? h.push(p) : h.splice(m, 1);
       const w = h.length === 1 && h[0] === ye;
-      Et({
+      St({
         ...G,
         value: h,
         other: w ? G.other : "",
@@ -5806,51 +5806,51 @@ function ic(t) {
       });
     } else {
       const h = p === ye;
-      Et({
+      St({
         ...G,
         value: p,
         other: h ? G.other : "",
         attachments: h ? G.attachments : []
       });
     }
-  }, Ro = !!ue("show_recommend_badge", !0), Zr = ue("badge_position", "left") === "right", ei = ue("badge_style", "rect") === "round", Qr = (c) => c && Ro ? e.createElement("span", {
+  }, ti = !!ue("show_recommend_badge", !0), Vr = ue("badge_position", "left") === "right", ni = ue("badge_style", "rect") === "round", Xr = (c) => c && ti ? e.createElement("span", {
     key: "rec",
     className: "qm-rec-badge",
     "data-qm-rec": "true",
-    style: ei ? { ...Kr, borderRadius: 999 } : Kr
-  }, "AI 推荐") : null, ti = !!ue("auto_number_options", !0), ni = !!ue("highlight_recommended", !1), ai = { background: "var(--app-accent-faint, rgba(255,127,22,0.08))" }, Vr = (c, p, h, m, w, z) => e.createElement(
+    style: ni ? { ...Ur, borderRadius: 999 } : Ur
+  }, "AI 推荐") : null, ai = !!ue("auto_number_options", !0), ri = !!ue("highlight_recommended", !1), si = { background: "var(--app-accent-faint, rgba(255,127,22,0.08))" }, Yr = (c, p, h, m, w, z) => e.createElement(
     "button",
     {
       key: m,
       type: "button",
-      disabled: u || D,
+      disabled: u || F,
       // A recommended row is NEUTRAL like any other (#3): no accent tint, so
       // colour never reads as "already selected".  All recommendation signal
       // lives in the left badge.  btnRowRec is intentionally empty (kept so a
       // future tweak has one obvious home).
       // 推荐项底色（c3）：默认关闭——只用徽章表达，避免被误读成「已选中」。
-      style: w && ni ? { ...p ? Wr : Fa, ...ai } : p ? Wr : Fa,
+      style: w && ri ? { ...p ? Hr : Ka, ...si } : p ? Hr : Ka,
       onClick: h
     },
     // 徽章位置可配（c1）：默认在选项文字左侧。
-    Zr ? null : Qr(w),
+    Vr ? null : Xr(w),
     e.createElement("span", {
       style: { flex: 1, minWidth: 0, whiteSpace: "normal", textAlign: "left" }
-    }, (p ? "✓ " : "") + (z && ti ? z + ". " : "") + c),
-    Zr ? Qr(w) : null
+    }, (p ? "✓ " : "") + (z && ai ? z + ". " : "") + c),
+    Vr ? Xr(w) : null
   );
-  if (!u && !On(d))
+  if (!u && !Pn(d))
     return e.createElement(
       "div",
-      { style: wn, className: "qm-card", "data-qm-card": "true", "data-qm-card-id": i },
+      { style: En, className: "qm-card", "data-qm-card": "true", "data-qm-card-id": i },
       e.createElement(
         "div",
-        { style: Ba, className: "qm-header" },
+        { style: La, className: "qm-header" },
         e.createElement(
           "div",
-          { style: Ma },
-          Ga(e),
-          e.createElement("span", { style: qn, className: "qm-title" }, v)
+          { style: ja },
+          Za(e),
+          e.createElement("span", { style: Sn, className: "qm-title" }, v)
         ),
         e.createElement(
           "div",
@@ -5861,30 +5861,30 @@ function ic(t) {
           // 按钮移除，不留多套并存）。准备中的卡同样会把会话锁死，越过
           // stuck 阈值后必须仍有唯一逃生口；点击走基线 rescue 逻辑
           // （converge 收尾 + toast，语义与 334ad7b 逐字一致）。
-          Nt ? yn(Br, "qm-release-lock-prep") : null,
-          e.createElement("span", { style: La }, "准备中")
+          Ct ? kn(Lr, "qm-release-lock-prep") : null,
+          e.createElement("span", { style: Da }, "准备中")
         )
       ),
       e.createElement("div", {
-        style: { ...Dr, color: "var(--app-text-tertiary, inherit)", fontSize: 12 }
+        style: { ...Wr, color: "var(--app-text-tertiary, inherit)", fontSize: 12 }
       }, "正在准备题目…"),
       // US-010: 🔒 二次确认气泡挂卡片根。
-      xn
+      vn
     );
   if (u) {
     const c = () => {
-      const h = dl({
-        submittedAt: ft,
+      const h = ml({
+        submittedAt: gt,
         deadReason: Se,
-        releasedNote: R,
-        skippedAll: Q,
+        releasedNote: ee,
+        skippedAll: V,
         // retired = 后台计时到寿命上限 → 整行退休（也覆盖「判定成功后等到退休」
         // 那条路径：判定成功只停轮询、不改视图）。
-        retired: Tt,
-        pastSoft: aa,
+        retired: zt,
+        pastSoft: sa,
         // observed = 本实例真的在等这段。历史卡（提交超出寿命窗口）为 false，
         // 绝不显示「模型处理中」，也不挂释放按钮（用户裁定 q1=分情况）。
-        observed: !!zt.current
+        observed: !!It.current
       });
       return h ? e.createElement("span", {
         className: "qm-wait-hint",
@@ -5898,13 +5898,13 @@ function ic(t) {
           color: h.phase === "stalled" ? "var(--app-warning-text, #d46b08)" : "var(--app-text-secondary, inherit)"
         },
         title: "问卷已提交并放行，agent 正在生成回复（后台计时，不占用页面）"
-      }, cl(h.phase)) : null;
-    }, p = !!zt.current;
-    return Q && !Oe ? e.createElement(
+      }, pl(h.phase)) : null;
+    }, p = !!It.current;
+    return V && !Oe ? e.createElement(
       "div",
       {
         style: {
-          ...wn,
+          ...En,
           padding: "8px 14px",
           marginBottom: 8,
           display: "flex",
@@ -5925,7 +5925,7 @@ function ic(t) {
       ),
       // 跳过原因（用户裁定 2026-11-08 第 1 项）：折叠行也要能看出「为什么」，
       // 不能只剩光秃秃的「跳过」。用 warning 色与状态字区分，且不撑破布局。
-      qe ? e.createElement("span", {
+      Ee ? e.createElement("span", {
         "data-qm-skip-reason": "true",
         style: {
           flex: 1,
@@ -5936,8 +5936,8 @@ function ic(t) {
           textOverflow: "ellipsis",
           whiteSpace: "nowrap"
         },
-        title: qe
-      }, qe) : null,
+        title: Ee
+      }, Ee) : null,
       // ── 卡片标题（2026-11-14 修复「标题被压成竖排一字一行」）──────────
       //
       // 根因：这里曾写 `flex: releasedNote ? 0 : (skipReason ? 0 : 1)`。
@@ -5953,8 +5953,8 @@ function ic(t) {
       // 绝不允许靠"压到 0 宽"这种副作用来腾空间。
       e.createElement("span", {
         style: {
-          ...qn,
-          flex: R || qe ? "0 1 auto" : 1,
+          ...Sn,
+          flex: ee || Ee ? "0 1 auto" : 1,
           minWidth: 0,
           overflow: "hidden",
           textOverflow: "ellipsis",
@@ -5963,24 +5963,24 @@ function ic(t) {
         },
         title: v
       }, v),
-      R ? e.createElement("span", {
+      ee ? e.createElement("span", {
         style: {
           flex: 1,
           minWidth: 0,
           fontSize: 12,
           color: "var(--app-text-secondary, inherit)"
         }
-      }, R) : c(),
+      }, ee) : c(),
       e.createElement("button", {
         type: "button",
         style: {
-          ...Fr,
+          ...Kr,
           minWidth: 0,
           height: 26,
           padding: "0 10px",
           fontSize: 12
         },
-        onClick: () => Xe(!0)
+        onClick: () => Ye(!0)
       }, "展开"),
       // Escape hatch for the「already finished but the chat is still locked」
       // shape: the card can be settled while the agent's Future was never
@@ -5991,20 +5991,20 @@ function ic(t) {
       // never cancelled behind the user's back.
       // 用户裁定 q1=**分情况**：本实例真的在等这段才常驻；纯历史卡不显示。
       // US-005: 释放入口收口到行尾 🔒 icon（原「释放阻塞」按钮移除）。
-      p ? yn(Mr, "qm-release-lock-fold") : null,
+      p ? kn(jr, "qm-release-lock-fold") : null,
       // US-010: 🔒 二次确认气泡挂卡片根（折叠行经 card spread 已有 relative）。
-      xn
+      vn
     ) : e.createElement(
       "div",
-      { style: wn, className: "qm-card", "data-qm-card": "true", "data-qm-card-id": i },
+      { style: En, className: "qm-card", "data-qm-card": "true", "data-qm-card-id": i },
       e.createElement(
         "div",
-        { style: { ...Ba, marginBottom: 8, paddingBottom: 8 } },
+        { style: { ...La, marginBottom: 8, paddingBottom: 8 } },
         e.createElement(
           "div",
-          { style: Ma },
-          Ga(e),
-          e.createElement("span", { style: qn }, v)
+          { style: ja },
+          Za(e),
+          e.createElement("span", { style: Sn }, v)
         ),
         e.createElement(
           "div",
@@ -6013,17 +6013,17 @@ function ic(t) {
           },
           // US-005: 释放入口收口到 header 🔒 icon（原底部「释放阻塞」按钮
           // 移除，不留多套并存）；出现条件沿用 showRelease 判定。
-          p ? yn(Mr, "qm-release-lock-ans") : null,
+          p ? kn(jr, "qm-release-lock-ans") : null,
           e.createElement(
             "span",
-            { style: { ...La, color: Se ? "var(--app-warning-text, #d46b08)" : "var(--app-success-text, #389e0d)" } },
-            Se ? "已失效" : Q ? "已跳过" : "已完成"
+            { style: { ...Da, color: Se ? "var(--app-warning-text, #d46b08)" : "var(--app-success-text, #389e0d)" } },
+            Se ? "已失效" : V ? "已跳过" : "已完成"
           )
         )
       ),
       // 展开后的只读卡：单独一节醒目「跳过原因」，便于复盘自动模式整卷跳过。
       // 与折叠行共用同一个 skipReason（真相源唯一），不在此另做解析。
-      Q && (qe || Se) ? e.createElement(
+      V && (Ee || Se) ? e.createElement(
         "div",
         {
           "data-qm-skip-reason-block": "true",
@@ -6039,7 +6039,7 @@ function ic(t) {
           }
         },
         e.createElement("span", { style: { fontWeight: 600 } }, "跳过原因："),
-        String(qe || Se || "问卷已失效/跳过")
+        String(Ee || Se || "问卷已失效/跳过")
       ) : null,
       e.createElement("pre", {
         style: {
@@ -6055,42 +6055,42 @@ function ic(t) {
           color: "var(--app-text-secondary, inherit)",
           fontFamily: "SF Mono,Monaco,Consolas,monospace"
         }
-      }, Q ? Z ? Z + `
+      }, V ? Z ? Z + `
 
-` + jn(b) : `已跳过本次问卷。
+` + Fn(b) : `已跳过本次问卷。
 
-` + jn(b) : Z || N || k || `本条问卷的回答已不在插件缓存中（插件可能已重启）。
+` + Fn(b) : Z || N || k || `本条问卷的回答已不在插件缓存中（插件可能已重启）。
 完整内容可在会话记录/历史中查看。
 
-` + jn(b)),
-      Q && Oe ? e.createElement(
+` + Fn(b)),
+      V && Oe ? e.createElement(
         "div",
-        { style: Da },
+        { style: Wa },
         e.createElement("button", {
           type: "button",
-          style: Fr,
-          onClick: () => Xe(!1)
+          style: Kr,
+          onClick: () => Ye(!1)
         }, "收起")
       ) : null,
       // Same escape hatch as the collapsed row: an answered card does NOT
       // guarantee the agent was unparked, so keep a manual release available.
       e.createElement(
         "div",
-        { style: { ...Da, marginTop: 8, gap: 10 } },
-        R ? e.createElement("span", {
+        { style: { ...Wa, marginTop: 8, gap: 10 } },
+        ee ? e.createElement("span", {
           style: {
             flex: 1,
             fontSize: 12,
             lineHeight: 1.5,
             color: "var(--app-text-secondary, inherit)"
           }
-        }, R) : c()
+        }, ee) : c()
       ),
       // US-010: 🔒 二次确认气泡挂卡片根。
-      xn
+      vn
     );
   }
-  const Wa = J && I === Bt, Xr = !u && !Me && To >= 0 && fn.current[re] ? e.createElement("div", {
+  const Ha = J && I === Mt, Rr = !u && !Me && Io >= 0 && hn.current[re] ? e.createElement("div", {
     key: "norec",
     className: "qm-norec-note",
     "data-qm-norec": "true",
@@ -6104,7 +6104,7 @@ function ic(t) {
       border: "1px solid var(--app-warning-border, rgba(255,166,0,0.35))",
       color: "var(--app-text-secondary, #6b6b6b)"
     }
-  }, "⚠ 本题没有可用的推荐，已标记为未作答（可手动选择后继续）") : null, Yr = Object.keys(fn.current).map((c) => Number(c)).filter((c) => fn.current[c] && Number.isFinite(c)).sort((c, p) => c - p), ri = Me && Yr.length ? e.createElement("div", {
+  }, "⚠ 本题没有可用的推荐，已标记为未作答（可手动选择后继续）") : null, es = Object.keys(hn.current).map((c) => Number(c)).filter((c) => hn.current[c] && Number.isFinite(c)).sort((c, p) => c - p), oi = Me && es.length ? e.createElement("div", {
     key: "norec-sum",
     className: "qm-norec-sum",
     "data-qm-norec-sum": "true",
@@ -6118,95 +6118,95 @@ function ic(t) {
       border: "1px solid var(--app-warning-border, rgba(255,166,0,0.35))",
       color: "var(--app-text-secondary, #6b6b6b)"
     }
-  }, "⚠ 第 " + Yr.map((c) => c + 1).join("、") + " 题没有可用推荐，已按未作答提交") : null;
-  let Sn = null;
+  }, "⚠ 第 " + es.map((c) => c + 1).join("、") + " 题没有可用推荐，已按未作答提交") : null;
+  let Nn = null;
   if (Me)
-    Sn = e.createElement(
+    Nn = e.createElement(
       "div",
       null,
-      e.createElement("div", { style: ja }, "其他意见（可选）"),
-      ri,
+      e.createElement("div", { style: Fa }, "其他意见（可选）"),
+      oi,
       e.createElement(o, {
         rows: 2,
         placeholder: "补充意见（可选，可粘贴图片/文件）",
         value: Ae,
-        style: Hr,
-        onChange: (c) => te(c.target.value),
-        onPaste: (c) => Aa(c, "final", "final")
+        style: Gr,
+        onChange: (c) => ne(c.target.value),
+        onPaste: (c) => $a(c, "final", "final")
       }),
-      er({
+      nr({
         R: e,
-        files: ae,
-        disabled: u || D,
-        uploading: Ca,
-        error: za,
-        onPick: () => Ia("final", "final"),
-        onRemove: (c) => Ee((p) => p.filter((h, m) => m !== c))
+        files: Q,
+        disabled: u || F,
+        uploading: za,
+        error: Aa,
+        onPick: () => Oa("final", "final"),
+        onRemove: (c) => ve((p) => p.filter((h, m) => m !== c))
       })
     );
   else if (_e && le(_e) === "text")
-    Sn = e.createElement(
+    Nn = e.createElement(
       "div",
       null,
-      e.createElement("div", { style: { ...ja, fontSize: 13, color: "var(--app-text, inherit)" } }, Hn(_e, re)),
-      Xr,
+      e.createElement("div", { style: { ...Fa, fontSize: 13, color: "var(--app-text, inherit)" } }, Gn(_e, re)),
+      Rr,
       e.createElement(o, {
         rows: 2,
         placeholder: "请输入...（可直接粘贴图片/文件）",
         value: typeof G.value == "string" ? G.value : "",
-        style: Hr,
-        onChange: (c) => Et({ ...G, value: c.target.value, other: "" }),
-        onPaste: (c) => Aa(c, "q", qt)
+        style: Gr,
+        onChange: (c) => St({ ...G, value: c.target.value, other: "" }),
+        onPaste: (c) => $a(c, "q", Et)
       }),
-      er({
+      nr({
         R: e,
         files: G.attachments || [],
-        disabled: u || D,
-        uploading: Ca,
-        error: za,
-        onPick: () => Ia("q", qt),
-        onRemove: (c) => Et({
+        disabled: u || F,
+        uploading: za,
+        error: Aa,
+        onPick: () => Oa("q", Et),
+        onRemove: (c) => St({
           ...G,
           attachments: (G.attachments || []).filter((p, h) => h !== c)
         })
       })
     );
   else if (_e) {
-    const c = gs(_e), p = hs(cn, re), h = c.length ? c : p ? [p] : c, m = (_e.options || []).map((w, z) => Vr(
-      De(w),
-      Ur(w),
-      () => Jr(w),
+    const c = bs(_e), p = ys(pn, re), h = c.length ? c : p ? [p] : c, m = (_e.options || []).map((w, z) => Yr(
+      Fe(w),
+      Jr(w),
+      () => Qr(w),
       "o" + z,
-      Sl(_e, w, h),
+      Nl(_e, w, h),
       z + 1
     ));
-    m.push(Vr("其他", Gr, () => Jr(ye), "other")), Gr && (m.push(e.createElement(a, {
+    m.push(Yr("其他", Zr, () => Qr(ye), "other")), Zr && (m.push(e.createElement(a, {
       key: "oi",
       placeholder: "请填写（可直接粘贴图片/文件）",
       value: G.other,
-      style: { ...Yo, marginTop: 2 },
-      onChange: (w) => Et({ ...G, other: w.target.value }),
-      onPaste: (w) => Aa(w, "q", qt)
-    })), m.push(er({
+      style: { ...ei, marginTop: 2 },
+      onChange: (w) => St({ ...G, other: w.target.value }),
+      onPaste: (w) => $a(w, "q", Et)
+    })), m.push(nr({
       R: e,
       files: G.attachments || [],
-      disabled: u || D,
-      uploading: Ca,
-      error: za,
-      onPick: () => Ia("q", qt),
-      onRemove: (w) => Et({
+      disabled: u || F,
+      uploading: za,
+      error: Aa,
+      onPick: () => Oa("q", Et),
+      onRemove: (w) => St({
         ...G,
         attachments: (G.attachments || []).filter((z, C) => C !== w)
       })
-    }))), Sn = e.createElement(
+    }))), Nn = e.createElement(
       "div",
       null,
-      e.createElement("div", { style: { ...ja, fontSize: 13, color: "var(--app-text, inherit)" } }, Hn(_e, re)),
-      Xr,
-      e.createElement("div", { style: { ...Vo, marginTop: 8 } }, m)
+      e.createElement("div", { style: { ...Fa, fontSize: 13, color: "var(--app-text, inherit)" } }, Gn(_e, re)),
+      Rr,
+      e.createElement("div", { style: { ...Yo, marginTop: 8 } }, m)
     );
   }
-  const Ka = at + 1, si = Me ? Ka + "/" + Ka : E + 1 + "/" + Ka, Rr = (c, p, h, m, w) => e.createElement("button", {
+  const Ua = rt + 1, ii = Me ? Ua + "/" + Ua : E + 1 + "/" + Ua, ts = (c, p, h, m, w) => e.createElement("button", {
     type: "button",
     title: c,
     "aria-label": c,
@@ -6225,7 +6225,7 @@ function ic(t) {
       background: p ? "var(--app-surface-subtle, rgba(127,127,127,0.10))" : "transparent",
       color: "var(--app-text-secondary, inherit)"
     }
-  }, m), oi = e.createElement(
+  }, m), li = e.createElement(
     "span",
     {
       style: { display: "inline-flex", alignItems: "center", gap: 3 }
@@ -6234,7 +6234,7 @@ function ic(t) {
     e.createElement("span", {
       style: { fontSize: 10, color: "var(--app-text-tertiary, inherit)" }
     }, "▾")
-  ), ii = e.createElement(
+  ), ci = e.createElement(
     "svg",
     {
       width: 14,
@@ -6250,7 +6250,7 @@ function ic(t) {
     e.createElement("circle", { cx: 12, cy: 12, r: 10 }),
     e.createElement("path", { d: "M12 16v-4" }),
     e.createElement("path", { d: "M12 8h.01" })
-  ), _n = {
+  ), Cn = {
     position: "absolute",
     top: 30,
     right: 0,
@@ -6260,7 +6260,7 @@ function ic(t) {
     border: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
     borderRadius: 10,
     boxShadow: "0 8px 24px rgba(0,0,0,0.16)"
-  }, Nn = {
+  }, Tn = {
     position: "absolute",
     top: -5,
     right: 9,
@@ -6270,7 +6270,7 @@ function ic(t) {
     background: "var(--app-surface-raised, #fff)",
     borderLeft: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))",
     borderTop: "1px solid var(--app-border-strong, rgba(127,127,127,0.45))"
-  }, Cn = (c, p) => e.createElement(
+  }, zn = (c, p) => e.createElement(
     "button",
     {
       type: "button",
@@ -6316,55 +6316,55 @@ function ic(t) {
         color: "var(--app-text-tertiary, inherit)"
       }
     }, "›") : null
-  ), es = (ka || []).find((c) => c.id === Ze), li = es ? es.name : "默认模板", ci = e.createElement(
+  ), ns = (wa || []).find((c) => c.id === Qe), di = ns ? ns.name : "默认模板", pi = e.createElement(
     "div",
-    { style: _n, role: "menu", className: "qm-hdr-pop" },
-    e.createElement("div", { style: Nn }),
-    Cn("选择模板（当前：" + li + "）", {
-      disabled: u || D,
+    { style: Cn, role: "menu", className: "qm-hdr-pop" },
+    e.createElement("div", { style: Tn }),
+    zn("选择模板（当前：" + di + "）", {
+      disabled: u || F,
       onClick: () => {
-        Pe(!1), ht(!1), yt(!1), Ke(!1), He(!1), Qe(!0);
+        Pe(!1), bt(!1), xt(!1), He(!1), Ue(!1), Ve(!0);
       }
     }),
     // US-004: 跳过类菜单项接通——复用原底部按钮的 skipCurrent/submit/skipAll
     // 逻辑，只改触发入口；语义（allowEmpty / 空答卷闸门 / busy 防重复）不变。
-    Cn("跳过本题", {
+    zn("跳过本题", {
       // 与原底部按钮对齐：busy 防重复；末页（其他意见页）没有当前题可跳，
       // skipCurrent 无意义 → 置灰（原按钮此时文案变「跳过并提交」）。
-      disabled: u || D || Me,
+      disabled: u || F || Me,
       onClick: () => {
-        Pe(!1), Jo();
+        Pe(!1), Qo();
       }
     }),
-    Cn("跳过并提交", {
+    zn("跳过并提交", {
       // 与原底部按钮的 whole/末页分支等价：明确的提交意图，
       // 不套空答卷闸门（allowEmpty=true），空白按跳过表态一并提交。
-      disabled: u || D,
+      disabled: u || F,
       onClick: () => {
-        Pe(!1), Pa(void 0, !0);
+        Pe(!1), Ma(void 0, !0);
       }
     }),
-    Cn("跳过问卷 ⚠", {
+    zn("跳过问卷 ⚠", {
       // US-004: 不可逆动作不再直接执行——收起菜单，弹二次确认气泡，
       // 确认后才调用原 skipAll。title 保留原按钮的不可恢复警示语义。
-      disabled: u || D,
+      disabled: u || F,
       title: "跳过后本次问卷立即结束，未答题目不再收集，不可恢复",
       onClick: () => {
-        Pe(!1), Ke(!0), He(!1);
+        Pe(!1), He(!0), Ue(!1);
       }
     })
-  ), di = e.createElement(
+  ), mi = e.createElement(
     "div",
     {
       // US-012: 面板挂 qm-actions 行容器（demo v5 参照系）；ref 供外部点击
       // 关闭判定（点面板内部不关闭）。width 固有宽 + maxWidth 视口-44px 防溢出。
-      ref: ga,
+      ref: ba,
       role: "dialog",
       "aria-label": "查看上下文",
       className: "qm-hdr-pop",
-      style: { ..._n, width: "300px", maxWidth: "calc(100vw - 44px)", padding: "10px 12px", fontSize: 12 }
+      style: { ...Cn, width: "300px", maxWidth: "calc(100vw - 44px)", padding: "10px 12px", fontSize: 12 }
     },
-    e.createElement("div", { style: Nn }),
+    e.createElement("div", { style: Tn }),
     e.createElement("div", {
       style: {
         fontWeight: 600,
@@ -6397,38 +6397,38 @@ function ic(t) {
     e.createElement("div", {
       style: { marginTop: 8, fontSize: 11, color: "var(--app-text-tertiary, inherit)" }
     }, "来自本次问卷创建时的会话快照 · 仅本会话可见")
-  ), pi = e.createElement(
+  ), ui = e.createElement(
     "div",
     {
       // US-012: 面板挂 qm-actions 行容器（demo v5 参照系）；ref 供外部点击
       // 关闭判定。width 248px（内容 240+padding 8）+ maxWidth 视口-44px，不溢出。
-      ref: ha,
+      ref: ya,
       role: "dialog",
       "aria-label": "选择模板",
       className: "qm-hdr-pop",
-      style: { ..._n, padding: 4, width: "248px", maxWidth: "calc(100vw - 44px)" }
+      style: { ...Cn, padding: 4, width: "248px", maxWidth: "calc(100vw - 44px)" }
     },
-    e.createElement("div", { style: Nn }),
-    rc({
+    e.createElement("div", { style: Tn }),
+    oc({
       R: e,
-      templates: ka,
-      value: Ze,
+      templates: wa,
+      value: Qe,
       onSelect: (c) => {
-        Or(c), Qe(!1);
+        Pr(c), Ve(!1);
       },
       onManage: () => {
-        Qe(!1), Tr(!0);
+        Ve(!1), Ir(!0);
       }
     })
-  ), mi = e.createElement(
+  ), fi = e.createElement(
     "div",
     {
       role: "dialog",
       "aria-label": "确认跳过问卷",
       className: "qm-hdr-pop",
-      style: { ..._n, width: 260, padding: "12px 14px" }
+      style: { ...Cn, width: 260, padding: "12px 14px" }
     },
-    e.createElement("div", { style: Nn }),
+    e.createElement("div", { style: Tn }),
     e.createElement("div", {
       style: { fontWeight: 600, fontSize: 13, marginBottom: 6 }
     }, "确定跳过整份问卷吗？"),
@@ -6457,32 +6457,32 @@ function ic(t) {
           background: "transparent",
           color: "var(--app-text-secondary, inherit)"
         },
-        onClick: () => Ke(!1)
+        onClick: () => He(!1)
       }, "取消"),
       e.createElement("button", {
         type: "button",
-        disabled: D,
+        disabled: F,
         style: {
           padding: "4px 12px",
           fontSize: 12,
-          cursor: D ? "default" : "pointer",
+          cursor: F ? "default" : "pointer",
           border: "none",
           borderRadius: 6,
-          opacity: D ? 0.5 : 1,
+          opacity: F ? 0.5 : 1,
           background: "#d92d20",
           color: "#fff",
           fontWeight: 500
         },
         onClick: () => {
-          Ke(!1), Qo();
+          He(!1), Xo();
         }
       }, "确定")
     )
-  ), ui = e.createElement(
+  ), gi = e.createElement(
     "div",
     {
       key: "qm-hdr-pop",
-      ref: bt,
+      ref: yt,
       style: {
         position: "relative",
         display: "inline-flex",
@@ -6491,19 +6491,19 @@ function ic(t) {
         flex: "none"
       }
     },
-    Rr("更多操作", dn, () => {
-      Pe((c) => !c), ht(!1), yt(!1), Qe(!1), Ke(!1), He(!1);
-    }, oi, { text: !0 }),
-    Rr("查看上下文", pn, () => {
-      ht((c) => !c), Pe(!1), yt(!1), Qe(!1), Ke(!1), He(!1);
-    }, ii),
-    dn ? ci : null,
+    ts("更多操作", mn, () => {
+      Pe((c) => !c), bt(!1), xt(!1), Ve(!1), He(!1), Ue(!1);
+    }, li, { text: !0 }),
+    ts("查看上下文", un, () => {
+      bt((c) => !c), Pe(!1), xt(!1), Ve(!1), He(!1), Ue(!1);
+    }, ci),
+    mn ? pi : null,
     // US-012: 上下文气泡与模板选择面板（宽面板）不再挂本触发器小容器，
     // 改挂 qm-actions 行容器直下（见 qm-actions children 末尾）——移动端
     // 防错位/溢出（demo v5 参照系）。更多菜单/跳过确认气泡仍挂本容器。
-    Ea ? mi : null
-  ), ts = {
-    ...En,
+    _a ? fi : null
+  ), as = {
+    ..._n,
     minWidth: 0,
     height: 32,
     padding: "0 14px",
@@ -6515,15 +6515,15 @@ function ic(t) {
   };
   return e.createElement(
     "div",
-    { style: wn, className: "qm-card", "data-qm-card": "true", "data-qm-card-id": i },
+    { style: En, className: "qm-card", "data-qm-card": "true", "data-qm-card-id": i },
     e.createElement(
       "div",
-      { style: Ba, className: "qm-header" },
+      { style: La, className: "qm-header" },
       e.createElement(
         "div",
-        { style: Ma },
-        Ga(e),
-        e.createElement("span", { style: qn, className: "qm-title" }, v)
+        { style: ja },
+        Za(e),
+        e.createElement("span", { style: Sn, className: "qm-title" }, v)
       ),
       // Analysis controls, right of the progress counter: capsule model
       // picker + AI/manual switch + 「查看分析」bubble.
@@ -6539,57 +6539,57 @@ function ic(t) {
         // 与「更多」⋮ 之间隔开整排控件，避免容器误触（boss 反馈 2）。
         // 出现条件不变（题级 slowActive / stuck 故障兜底）；点击走二次确认
         // → 基线 rescue（converge 收尾 + toast，语义与 334ad7b 逐字一致）。
-        Wa || Nt && !x ? yn(Br, "qm-release-lock") : null,
-        nc({
+        Ha || Ct && !x ? kn(Lr, "qm-release-lock") : null,
+        rc({
           R: e,
-          providers: yo,
-          modelId: _r,
-          disabled: u || D,
+          providers: ko,
+          modelId: Cr,
+          disabled: u || F,
           // 服务端标记：此值来自「跟随当前对话模型」
-          open: vo,
-          onOpenChange: wo,
-          tab: qo,
-          onTabChange: Eo,
+          open: qo,
+          onOpenChange: Eo,
+          tab: So,
+          onTabChange: _o,
           onChange: (c) => {
-            bn({ modelId: c }), gt(null), Je.current = {}, Fe.current = {}, kt((p) => p + 1);
+            xn({ modelId: c }), ht(null), Ze.current = {}, We.current = {}, vt((p) => p + 1);
           }
         }),
         // US-003: 常驻「默认模板」胶囊已从 header 移除；模板选择收进「更多」
         // 菜单的「选择模板」弹层（TemplatePickList）。选择逻辑（selectTemplate）
         // 与管理入口（TemplateManager）原样保留，功能不丢失。
-        ac({
+        sc({
           R: e,
-          mode: ee,
-          disabled: u || D,
-          open: ba,
+          mode: te,
+          disabled: u || F,
+          open: xa,
           onOpenChange: (c) => {
-            yt(c), c && (Pe(!1), ht(!1), Qe(!1), Ke(!1), He(!1));
+            xt(c), c && (Pe(!1), bt(!1), Ve(!1), He(!1), Ue(!1));
           },
-          popRef: ya,
-          panelRef: xa,
+          popRef: ka,
+          panelRef: va,
           // US-012: 面板独立锚点（面板挂 qm-actions 行容器）
           onChange: (c) => {
-            bn({ mode: c }), c === "ai" && (Fe.current = {}), c === "ai" || c === "recommend" ? (gn.current = {}, tt.current = {}, vt.current = !1, kt((p) => p + 1)) : wt();
+            xn({ mode: c }), c === "ai" && (We.current = {}), c === "ai" || c === "recommend" ? (bn.current = {}, nt.current = {}, wt.current = !1, vt((p) => p + 1)) : qt();
           }
         }),
-        oc({
+        lc({
           R: e,
-          busy: Nr,
-          result: cn,
-          error: ko,
-          mode: ee,
-          disabled: u || D,
-          open: It,
-          onOpenChange: ma,
-          popRef: ua,
-          panelRef: fa,
+          busy: Tr,
+          result: pn,
+          error: wo,
+          mode: te,
+          disabled: u || F,
+          open: At,
+          onOpenChange: fa,
+          popRef: ga,
+          panelRef: ha,
           // US-013: 触发器/面板双 ref（外部点击关闭）
           onRun: () => {
-            Na("manual");
+            Ta("manual");
           },
-          onRerun: Mo,
-          onApply: Do,
-          onCancel: Lo,
+          onRerun: jo,
+          onApply: Wo,
+          onCancel: Do,
           // The bubble footer carries the two analysis options (the user asked
           // for the context switch to live "in the button").  Passed inside the
           // props object — a direct function call has no positional children.
@@ -6603,8 +6603,8 @@ function ic(t) {
               },
               e.createElement("input", {
                 type: "checkbox",
-                checked: ia,
-                onChange: (c) => bn({ withContext: !!c.target.checked })
+                checked: ca,
+                onChange: (c) => xn({ withContext: !!c.target.checked })
               }),
               "携带上下文"
             ),
@@ -6617,21 +6617,21 @@ function ic(t) {
               },
               e.createElement("input", {
                 type: "checkbox",
-                checked: ca,
-                onChange: (c) => bn({ parallel: !!c.target.checked })
+                checked: pa,
+                onChange: (c) => xn({ parallel: !!c.target.checked })
               }),
               "并行分析"
             )
           ]
         }),
         // #4 takeover latch — only in AI mode, never on a finished card.
-        (ee === "ai" || ee === "recommend") && !u ? e.createElement("button", {
+        (te === "ai" || te === "recommend") && !u ? e.createElement("button", {
           type: "button",
           key: "qm-auto",
-          disabled: D,
-          onClick: jo,
+          disabled: F,
+          onClick: Fo,
           style: {
-            ...ts,
+            ...as,
             height: 24,
             padding: "0 10px",
             fontSize: 12,
@@ -6645,20 +6645,20 @@ function ic(t) {
         }, Be ? "▶ 继续" : "⏸ 停止") : null,
         // US-001: 「更多」(⋮) 与「查看上下文」(ⓘ) 两个 icon 微按钮 + 弹出层，
         // 纯增量插在现有控件之后、进度 pill 之前（demo v5 形态）。
-        ui,
+        gi,
         // US-012: 宽弹出层（上下文气泡/模板选择面板）上移到 qm-actions 行容器
         // 直下——移动端 qm-actions 换行后触发器小容器横向位置不定，挂行容器
         // right:0 对齐整行右缘（≈卡片右缘），修复错位/溢出/被裁（demo v5 口径）。
         // 模式下拉面板由 ModeSwitch 返回数组同步上移；互斥与外部点击关闭逻辑不变。
-        pn ? di : null,
-        wa ? pi : null,
+        un ? mi : null,
+        Ea ? ui : null,
         // #1 the progress counter now lives in the SAME flex row, so it can no
         // longer crowd the controls; #2 the permanent completion chip is gone
         // (replaced by the one-shot toast in runAnalysis).
-        e.createElement("span", { style: La, key: "qm-step" }, si)
+        e.createElement("span", { style: Da, key: "qm-step" }, ii)
       )
     ),
-    e.createElement("div", { style: Dr }, Sn),
+    e.createElement("div", { style: Wr }, Nn),
     // 阶段 1（2026-11-07）：删除「只读视图」横幅。
     //
     // 它属于旧的前端互斥方案（租约）：抢不到租约的标签页被降级成只读。
@@ -6666,19 +6666,19 @@ function ic(t) {
     // 所以「只读」这个中间态不存在了 —— 留着它反而会让用户以为不能操作。
     // Template library manager (REQ-003/005): a global overlay panel.  Rendered
     // from the card so its open/draft state lives in the parent (hook-free).
-    sc({
+    ic({
       R: e,
-      open: _o,
-      templates: ka,
-      value: Ze,
-      edit: No,
-      onEditChange: qa,
+      open: Co,
+      templates: wa,
+      value: Qe,
+      edit: To,
+      onEditChange: Sa,
       onClose: () => {
-        Tr(!1), qa(null);
+        Ir(!1), Sa(null);
       },
-      onSelect: (c) => Or(c),
-      onSave: Po,
-      onDelete: Bo
+      onSelect: (c) => Pr(c),
+      onSave: Mo,
+      onDelete: Lo
     }),
     // ── escape hatch: a survey blocks the whole chat while it is open ──
     // Shown after STUCK_AFTER_MS regardless of whether the card is healthy:
@@ -6697,7 +6697,7 @@ function ic(t) {
     // 计时可依赖，必须保留唯一逃生口——这不是计时提示，而是故障提示。
     //
     // 秒数仍全部去掉（六次裁定 q2）：原横幅每次渲染用 Date.now() 现算，重挂会跳数。
-    (Wa || Nt && !x) && !u ? e.createElement(
+    (Ha || Ct && !x) && !u ? e.createElement(
       "div",
       {
         className: "qm-block-banner",
@@ -6729,14 +6729,14 @@ function ic(t) {
         // 阈值必须来自生效配置：这里原先把 60 写死在文案里，
         // 用户把「题级计时提示」改成 5 秒后，提示仍说「已超过 60s」
         // ——文案与真实判据不符，等于对用户说谎。
-        (Wa ? "⚠️ 本题已超过 " + Ho + "s，可直接跳过或继续作答，" : "⚠️ 无法取得本次问卷的会话句柄，") + "阻塞期间发新消息会报「A task is already running」；若你不想继续作答，点右上角 🔒 释放阻塞。"
+        (Ha ? "⚠️ 本题已超过 " + Go + "s，可直接跳过或继续作答，" : "⚠️ 无法取得本次问卷的会话句柄，") + "阻塞期间发新消息会报「A task is already running」；若你不想继续作答，点右上角 🔒 释放阻塞。"
       )
     ) : null,
     // Persistent gate-rejection banner (red).  Doubles as proof-of-bundle:
     // the BUNDLE_TAG it prints can only come from a build that actually
     // contains the strict gate — so if a「没被拦」report shows no such line,
     // the browser is running a stale pre-gate bundle, not a logic bug.
-    Ye && !u ? e.createElement("div", {
+    Re && !u ? e.createElement("div", {
       style: {
         margin: "0 0 10px",
         padding: "10px 12px",
@@ -6752,15 +6752,15 @@ function ic(t) {
       "data-qm-gate": "true",
       // Forensic bundle tag — invisible to the user, still queryable so a
       // "the gate didn't fire" report can be told apart from a stale bundle.
-      "data-qm-bundle": ds
-    }, Ye) : null,
+      "data-qm-bundle": ms
+    }, Re) : null,
     e.createElement(
       "div",
-      { style: Da, className: "qm-footer" },
+      { style: Wa, className: "qm-footer" },
       e.createElement("button", {
         type: "button",
-        disabled: E === 0 || D,
-        style: { ...ts, marginRight: "auto", opacity: E === 0 ? 0.5 : 1 },
+        disabled: E === 0 || F,
+        style: { ...as, marginRight: "auto", opacity: E === 0 ? 0.5 : 1 },
         onClick: () => $((c) => c - 1)
       }, "上一步"),
       // US-004: 底部操作行只保留导航/提交语义按钮。跳过类动作（跳过本题 /
@@ -6770,17 +6770,17 @@ function ic(t) {
       // submit(allowEmpty) / skipAll）与原按钮完全一致，仅触发入口变化。
       e.createElement("button", {
         type: "button",
-        disabled: D,
-        style: Xo,
-        onClick: Zo
+        disabled: F,
+        style: Ro,
+        onClick: Vo
       }, Me ? "提交" : "下一步")
     ),
     // US-010: 🔒 二次确认气泡统一挂卡片根（四处 🔒 共用一个气泡实例）。
-    xn
+    vn
   );
 }
-const vs = 12;
-let ws = 0;
+const qs = 12;
+let Es = 0;
 const l = {
   visible: !1,
   tab: "answer",
@@ -6852,8 +6852,8 @@ const l = {
     confirmKind: ""
   }
 };
-let Gt = null;
-async function mt(t, e) {
+let Jt = null;
+async function ut(t, e) {
   try {
     const n = {
       method: e && e.method || "GET",
@@ -6870,21 +6870,28 @@ async function mt(t, e) {
     return l.libs.msg = "请求失败：" + (n && n.message ? n.message : String(n)), l.libs.msgKind = "error", q(), null;
   }
 }
-async function $n(t, e, n) {
+let Zt = null;
+function Le(t, e) {
+  const n = l.cfgBackup;
+  n.msg = t, n.msgKind = e, Zt && (clearTimeout(Zt), Zt = null), t && (Zt = setTimeout(() => {
+    l.cfgBackup.msg === t && (l.cfgBackup.msg = "", q()), Zt = null;
+  }, 6e3));
+}
+async function Bn(t, e, n) {
   const a = l.cfgBackup;
   a.busy = !0;
   try {
     const r = { method: e, headers: L() };
     n !== void 0 && (r.body = JSON.stringify(n));
     const o = await fetch(M("/question-modal/config" + t), r), s = await o.json().catch(() => ({}));
-    return !o.ok || s && s.ok === !1 ? (a.msg = String(s && (s.error || s.detail) || "HTTP " + o.status), a.msgKind = "error", null) : (a.msg = "", a.msgKind = "info", s);
+    return !o.ok || s && s.ok === !1 ? (Le(String(s && (s.error || s.detail) || "HTTP " + o.status), "error"), null) : s;
   } catch (r) {
-    return a.msg = "请求失败：" + (r && r.message ? r.message : String(r)), a.msgKind = "error", null;
+    return Le("请求失败：" + (r && r.message ? r.message : String(r)), "error"), null;
   } finally {
     a.busy = !1;
   }
 }
-async function Dn(t) {
+async function Wn(t) {
   if (!(!t && l.cfgBackup.loaded || l.cfgBackup.busy)) {
     l.cfgBackup.busy = !0;
     try {
@@ -6892,15 +6899,15 @@ async function Dn(t) {
         method: "GET",
         headers: L()
       }), n = await e.json().catch(() => ({}));
-      e.ok ? (l.cfgBackup.items = n.items || [], l.cfgBackup.dataDir = n.data_dir || "", l.cfgBackup.loaded = !0) : (l.cfgBackup.msg = String(n.detail || "HTTP " + e.status), l.cfgBackup.msgKind = "error", l.cfgBackup.loaded = !0);
+      e.ok ? (l.cfgBackup.items = n.items || [], l.cfgBackup.dataDir = n.data_dir || "", l.cfgBackup.loaded = !0) : (Le(String(n.detail || "HTTP " + e.status), "error"), l.cfgBackup.loaded = !0);
     } catch (e) {
-      l.cfgBackup.msg = "加载备份列表失败：" + (e && e.message ? e.message : String(e)), l.cfgBackup.msgKind = "error", l.cfgBackup.loaded = !0;
+      Le("加载备份列表失败：" + (e && e.message ? e.message : String(e)), "error"), l.cfgBackup.loaded = !0;
     } finally {
       l.cfgBackup.busy = !1, q();
     }
   }
 }
-function lc(t) {
+function dc(t) {
   const e = l.cfgBackup, n = [], a = "配置保存在插件安装目录之外：" + (e.dataDir || "读取中…") + "。商店更新插件不会清除这里的配置。";
   return n.push(t.createElement("div", {
     key: "note",
@@ -6978,12 +6985,12 @@ function lc(t) {
           disabled: e.busy,
           onClick: () => {
             (async () => {
-              const d = e.confirmKind === "delete", i = await $n(
+              const d = e.confirmKind === "delete", i = await Bn(
                 d ? "/backup" : "/restore",
                 d ? "DELETE" : "POST",
                 { name: s }
               );
-              i && (e.msg = d ? "已删除备份：" + s : "已恢复 " + (i.restored || []).length + " 个配置文件", e.msgKind = "ok"), e.confirmName = "", e.confirmKind = "", await Dn(!0);
+              i && Le(d ? "已删除备份：" + s : "已恢复 " + (i.restored || []).length + " 个配置文件", "ok"), e.confirmName = "", e.confirmKind = "", await Wn(!0);
             })();
           }
         }, e.confirmKind === "delete" ? "确认删除" : "确认恢复"),
@@ -7013,8 +7020,8 @@ function lc(t) {
       disabled: e.busy,
       onClick: () => {
         (async () => {
-          const r = "手动备份 " + (/* @__PURE__ */ new Date()).toLocaleString(), o = await $n("/backup", "POST", { label: r });
-          o && (e.msg = "备份已创建：" + o.name, e.msgKind = "ok"), await Dn(!0);
+          const r = "手动备份 " + (/* @__PURE__ */ new Date()).toLocaleString(), o = await Bn("/backup", "POST", { label: r });
+          o && Le("备份已创建：" + o.name, "ok"), await Wn(!0);
         })();
       }
     }, "＋ 立即备份"),
@@ -7026,7 +7033,7 @@ function lc(t) {
       disabled: e.busy,
       onClick: () => {
         (async () => {
-          const r = await $n("/export", "GET");
+          const r = await Bn("/export", "GET");
           if (!r) return;
           const o = new Blob(
             [JSON.stringify(r.payload, null, 2)],
@@ -7037,7 +7044,7 @@ function lc(t) {
             URL.revokeObjectURL(s.href);
           } catch {
           }
-          e.msg = "配置已导出到本地文件", e.msgKind = "ok", q();
+          Le("配置已导出到本地文件", "ok"), q();
         })();
       }
     }, "导出到文件"),
@@ -7062,11 +7069,11 @@ function lc(t) {
             try {
               s = JSON.parse(await o.text());
             } catch {
-              e.msg = "文件不是合法 JSON", e.msgKind = "error", q();
+              Le("文件不是合法 JSON", "error"), q();
               return;
             }
-            const d = await $n("/import", "POST", { payload: s });
-            d && (e.msg = "导入成功，已恢复 " + (d.restored || []).length + " 个配置文件", e.msgKind = "ok"), await Dn(!0);
+            const d = await Bn("/import", "POST", { payload: s });
+            d && Le("导入成功，已恢复 " + (d.restored || []).length + " 个配置文件", "ok"), await Wn(!0);
           })();
         }
       })
@@ -7077,58 +7084,58 @@ function lc(t) {
     "data-qm-backup-msg": "1"
   }, e.msg)), n;
 }
-async function _t() {
-  const t = await mt("/question-modal/libs");
+async function Nt() {
+  const t = await ut("/question-modal/libs");
   if (!t) return !1;
   const e = t.libraries || t;
   return l.libs.paramSets = Array.isArray(e.param_sets) ? e.param_sets : [], l.libs.notifyProfiles = Array.isArray(e.notify_profiles) ? e.notify_profiles : [], l.libs.schedules = Array.isArray(e.schedules) ? e.schedules : [], t.active_id !== void 0 ? l.libs.activeId = t.active_id || null : t.schedule !== void 0 && (l.libs.activeId = t.schedule && t.schedule.id || null), q(), !0;
 }
-async function cc(t) {
+async function pc(t) {
   l.libs.busy = !0, q();
-  const e = await mt(
+  const e = await ut(
     "/question-modal/param-sets",
     { method: "POST", body: t }
   );
-  return l.libs.busy = !1, e ? (await _t(), !0) : !1;
+  return l.libs.busy = !1, e ? (await Nt(), !0) : !1;
 }
-async function dc(t, e) {
+async function mc(t, e) {
   l.libs.busy = !0, q();
-  const n = "?id=" + encodeURIComponent(t), a = await mt("/question-modal/param-sets" + n, { method: "DELETE" });
-  return l.libs.busy = !1, a ? (l.libs.msg = a.cleared_in && a.cleared_in.length ? "已删除，同时清空了 " + a.cleared_in.length + " 条策略对该参数组的引用" : "", await _t(), !0) : !1;
+  const n = "?id=" + encodeURIComponent(t), a = await ut("/question-modal/param-sets" + n, { method: "DELETE" });
+  return l.libs.busy = !1, a ? (l.libs.msg = a.cleared_in && a.cleared_in.length ? "已删除，同时清空了 " + a.cleared_in.length + " 条策略对该参数组的引用" : "", await Nt(), !0) : !1;
 }
-async function qs(t) {
+async function Ss(t) {
   l.libs.busy = !0, q();
-  const e = await mt(
+  const e = await ut(
     "/question-modal/notify-profiles",
     { method: "POST", body: t }
   );
-  return l.libs.busy = !1, e ? (await _t(), !0) : !1;
+  return l.libs.busy = !1, e ? (await Nt(), !0) : !1;
 }
-async function pc(t, e) {
+async function uc(t, e) {
   l.libs.busy = !0, q();
-  const n = "?id=" + encodeURIComponent(t), a = await mt("/question-modal/notify-profiles" + n, { method: "DELETE" });
-  return l.libs.busy = !1, a ? (l.libs.msg = a.cleared_in && a.cleared_in.length ? "已删除，同时清空了 " + a.cleared_in.length + " 条策略对该通知配置的引用" : "", await _t(), !0) : !1;
+  const n = "?id=" + encodeURIComponent(t), a = await ut("/question-modal/notify-profiles" + n, { method: "DELETE" });
+  return l.libs.busy = !1, a ? (l.libs.msg = a.cleared_in && a.cleared_in.length ? "已删除，同时清空了 " + a.cleared_in.length + " 条策略对该通知配置的引用" : "", await Nt(), !0) : !1;
 }
-async function Es(t) {
+async function _s(t) {
   l.libs.busy = !0, q();
-  const e = await mt(
+  const e = await ut(
     "/question-modal/schedules",
     { method: "POST", body: t }
   );
-  return l.libs.busy = !1, e ? (l.schedEdit = "", l.schedDraft = null, await _t(), !0) : !1;
+  return l.libs.busy = !1, e ? (l.schedEdit = "", l.schedDraft = null, await Nt(), !0) : !1;
 }
-async function mc(t) {
+async function fc(t) {
   l.libs.busy = !0, q();
-  const e = await mt(
+  const e = await ut(
     "/question-modal/schedules?id=" + encodeURIComponent(t),
     { method: "DELETE" }
   );
-  return l.libs.busy = !1, e ? (await _t(), !0) : !1;
+  return l.libs.busy = !1, e ? (await Nt(), !0) : !1;
 }
-function ea(t, e, n) {
+function na(t, e, n) {
   l.delConfirm = { kind: t, id: e, name: n }, q();
 }
-async function uc() {
+async function gc() {
   const t = l.delConfirm;
   if (l.delConfirm = null, !t) {
     q();
@@ -7136,20 +7143,20 @@ async function uc() {
   }
   const e = t.id;
   if (t.kind === "ts")
-    await mc(e);
+    await fc(e);
   else if (t.kind === "ps") {
     const n = l.libs.paramSets.filter((o) => String(o.id) === e)[0], a = (n && n.used_by || []).length;
-    !await dc(e) && a && (l.libs.msg += "（如需强制删除，请先在时间策略里解除引用）");
+    !await mc(e) && a && (l.libs.msg += "（如需强制删除，请先在时间策略里解除引用）");
   } else if (t.kind === "np") {
     const n = l.libs.notifyProfiles.filter((o) => String(o.id) === e)[0], a = (n && n.used_by || []).length;
-    !await pc(e) && a && (l.libs.msg += "（如需强制删除，请先在时间策略里解除引用）");
+    !await uc(e) && a && (l.libs.msg += "（如需强制删除，请先在时间策略里解除引用）");
   } else if (t.kind === "tpl") {
-    const n = await Zs(e);
-    n && n.ok === !1 ? l.saveMsg = String(n.error || n.detail || "删除失败（内置模板不可删除）") : (l.saveMsg = "模板已删除", io());
+    const n = await Vs(e);
+    n && n.ok === !1 ? l.saveMsg = String(n.error || n.detail || "删除失败（内置模板不可删除）") : (l.saveMsg = "模板已删除", co());
   }
   q();
 }
-function lt(t, e, n) {
+function ct(t, e, n) {
   if (t in l.draft) return l.draft[t];
   if (n === "global") {
     const o = l.cfg && l.cfg.globalConfig || l.globalCfg;
@@ -7163,7 +7170,7 @@ function lt(t, e, n) {
   }
   return a && t in a && l.cfg && l.cfg.has_session === !0 ? a[t] : (a && t in a && !(l.cfg && l.cfg.has_session), e);
 }
-function tr(t) {
+function ar(t) {
   const e = l.cfg && l.cfg.config;
   if (!e) return !1;
   const n = e.__sources__, a = e[t];
@@ -7191,17 +7198,17 @@ function xe(t, e) {
   }
   n === e ? delete l.draft[t] : l.draft[t] = e, l.saveMsg = "", q();
 }
-function Ss() {
+function Ns() {
   return Object.keys(l.draft).length;
 }
-async function qr() {
+async function Sr() {
   try {
     const t = await fetch(M("/question-modal/prefs"), { headers: L() });
     if (!t.ok) return;
     const e = await t.json(), n = e && e.prefs || {};
     l.globalCfg = n && typeof n == "object" ? n : {};
     try {
-      Ac(l.globalCfg);
+      $c(l.globalCfg);
     } catch {
     }
     try {
@@ -7211,7 +7218,7 @@ async function qr() {
   } catch {
   }
 }
-async function fc() {
+async function hc() {
   try {
     const t = await fetch(M("/question-modal/notify/channels"), {
       headers: L()
@@ -7226,7 +7233,7 @@ async function fc() {
   } catch {
   }
 }
-async function gc(t) {
+async function bc(t) {
   if (!(!t || t === "off"))
     try {
       const e = await fetch(
@@ -7246,7 +7253,7 @@ async function gc(t) {
     } catch {
     }
 }
-async function so() {
+async function io() {
   if (l.saving) return;
   const t = Object.keys(l.draft), e = l.scope === "session", n = {};
   if (t.forEach((a) => {
@@ -7275,7 +7282,7 @@ async function so() {
       l.saveMsg = "部分设置未生效 —— " + f, q();
       return;
     }
-    l.saving = !1, l.draft = {}, Gs();
+    l.saving = !1, l.draft = {}, Zs();
     const i = Array.isArray(s && s.conflicts) ? s.conflicts : [];
     if (l.conflictNote = "", i.length) {
       const f = (b) => {
@@ -7296,7 +7303,7 @@ async function so() {
       f && typeof f == "object" && (l.keyTs = Object.assign({}, l.keyTs, f));
     } catch {
     }
-    e || qr(), l.saveMsg = "已保存", tn(
+    e || Sr(), l.saveMsg = "已保存", an(
       l.chatId,
       !0,
       l.sessionId,
@@ -7317,11 +7324,11 @@ async function so() {
   } catch {
   }
 }
-function oo() {
+function lo() {
   l.draft = {}, l.saveMsg = "";
 }
-function io() {
-  kr().then((t) => {
+function co() {
+  wr().then((t) => {
     l.templates = (t && t.items || []).filter((e) => e && e.id), l.templateOptions = l.templates.map((e) => e.id);
     try {
       q();
@@ -7330,7 +7337,7 @@ function io() {
   }).catch(() => {
   });
 }
-function hc() {
+function yc() {
   l.tplEdit = {
     id: "",
     name: "",
@@ -7338,7 +7345,7 @@ function hc() {
     user_prompt: ""
   }, l.saveMsg = "", q();
 }
-function bc(t) {
+function xc(t) {
   const e = l.templates.filter((n) => n.id === t)[0];
   e && (l.tplEdit = {
     id: String(e.id),
@@ -7347,17 +7354,17 @@ function bc(t) {
     user_prompt: String(e.user || e.user_prompt || "")
   }, l.saveMsg = "", q());
 }
-function _s(t, e) {
+function Cs(t, e) {
   try {
     window.__qmDbg = (window.__qmDbg || []).concat([t + "=" + String(e).slice(0, 12)]);
   } catch {
   }
   l.tplEdit && (l.tplEdit[t] = e, q());
 }
-function yc() {
+function kc() {
   l.tplEdit = null, q();
 }
-async function xc() {
+async function vc() {
   const t = l.tplEdit;
   if (!t || l.tplBusy) return;
   try {
@@ -7379,42 +7386,42 @@ async function xc() {
     name: e,
     system: t.system_prompt,
     user: t.user_prompt
-  }, a = await Js(n);
+  }, a = await Qs(n);
   if (l.tplBusy = !1, a && a.ok === !1) {
     l.saveMsg = String(a.error || a.detail || "保存失败"), q();
     return;
   }
-  l.tplEdit = null, l.saveMsg = t.id ? "模板「" + e + "」已更新" : "模板「" + e + "」已创建", io(), q();
+  l.tplEdit = null, l.saveMsg = t.id ? "模板「" + e + "」已更新" : "模板「" + e + "」已创建", co(), q();
 }
-function kc(t) {
+function wc(t) {
   const e = l.templates.filter((n) => n.id === t)[0];
-  ea("tpl", t, String(e && e.name || t));
+  na("tpl", t, String(e && e.name || t));
 }
-function vc() {
-  l.visible = !0, l.chatId = "", l.sessionId = rn(), l.cfg = null, l.cfgError = "", qc(), l.agentId = Vn || (() => {
+function qc() {
+  l.visible = !0, l.chatId = "", l.sessionId = on(), l.cfg = null, l.cfgError = "", Sc(), l.agentId = Yn || (() => {
     try {
       return ze().getSelectedAgentId ? ze().getSelectedAgentId() : "";
     } catch {
       return "";
     }
-  })(), Gs();
-  const t = ++ws;
-  l.scopeChoice = "", l.tab = "", l.scope = "global", l.draft = {}, l.saveMsg = "", l.conflictNote = "", q(), lo(() => {
-    t === ws && (l.scopeChoice = "global", l.tab = "schedule", l.scope = "global", l.draft = {}, l.saveMsg = "", l.keyTs = Object.assign(
+  })(), Zs();
+  const t = ++Es;
+  l.scopeChoice = "", l.tab = "", l.scope = "global", l.draft = {}, l.saveMsg = "", l.conflictNote = "", q(), po(() => {
+    t === Es && (l.scopeChoice = "global", l.tab = "schedule", l.scope = "global", l.draft = {}, l.saveMsg = "", l.keyTs = Object.assign(
       {},
       l.cfg && l.cfg.keyTs || {}
-    ), l.conflictNote = "", q(), qr(), fc().then(() => {
+    ), l.conflictNote = "", q(), Sr(), hc().then(() => {
       const e = String(l.notifyCurrent || "off");
-      e && e !== "off" && gc(e);
+      e && e !== "off" && bc(e);
     }));
   });
 }
-let nr = !1;
-async function wc() {
-  if (!nr) {
-    nr = !0;
+let rr = !1;
+async function Ec() {
+  if (!rr) {
+    rr = !0;
     try {
-      const t = await tn(
+      const t = await an(
         "",
         !0,
         l.sessionId,
@@ -7424,7 +7431,7 @@ async function wc() {
     } catch {
       l.stale.threshold = null;
     } finally {
-      nr = !1;
+      rr = !1;
       try {
         q();
       } catch {
@@ -7432,10 +7439,10 @@ async function wc() {
     }
   }
 }
-let Pn = !1;
-function qc() {
-  Pn || (Pn = !0, Promise.all([Qs(), kr()]).then((t) => {
-    Pn = !1;
+let Mn = !1;
+function Sc() {
+  Mn || (Mn = !0, Promise.all([Xs(), wr()]).then((t) => {
+    Mn = !1;
     const e = t[0] || [], n = t[1] || {};
     l.providerGroups = e.map((a) => {
       const r = String(a && (a.id || a.provider_id) || ""), s = (a && a.models || []).concat(a && a.extra_models || []).filter(Boolean).map((d) => {
@@ -7453,31 +7460,31 @@ function qc() {
     } catch {
     }
   }).catch(() => {
-    Pn = !1;
+    Mn = !1;
   }));
 }
-function Ec(t) {
+function _c(t) {
   const e = String(t || ""), n = e.indexOf(":");
   return n <= 0 ? { provider: "", model: e } : { provider: e.slice(0, n), model: e.slice(n + 1) };
 }
-let ar = !1, Bn = "";
-const rr = [];
-function lo(t) {
+let sr = !1, Ln = "";
+const or = [];
+function po(t) {
   const e = l.chatId, n = (e || "") + "|" + (l.sessionId || "");
-  if (ar && Bn === n) {
-    t && rr.push(t);
+  if (sr && Ln === n) {
+    t && or.push(t);
     return;
   }
-  ar = !0, Bn = n;
+  sr = !0, Ln = n;
   const a = () => {
-    Bn === n && (ar = !1, Bn = "");
-    const r = rr.splice(0);
+    Ln === n && (sr = !1, Ln = "");
+    const r = or.splice(0);
     try {
       r.forEach((o) => o());
     } catch {
     }
   };
-  t && rr.push(t), tn(
+  t && or.push(t), an(
     e,
     !0,
     l.sessionId,
@@ -7520,7 +7527,7 @@ function q() {
     if (!e || typeof e.render != "function") {
       if (l.visible) {
         try {
-          const n = Ve();
+          const n = Xe();
           n && n.Modal && typeof n.Modal.info == "function" && n.Modal.info({
             title: "问卷设置",
             centered: !0,
@@ -7534,19 +7541,19 @@ function q() {
       }
       return;
     }
-    Gt || (Gt = document.createElement("div"), Gt.id = "qm-settings-root", document.body.appendChild(Gt)), e.render(t.createElement(Jc, {
+    Jt || (Jt = document.createElement("div"), Jt.id = "qm-settings-root", document.body.appendChild(Jt)), e.render(t.createElement(Qc, {
       R: t,
       open: l.visible,
       onClose: () => {
-        if (Ss() > 0) {
+        if (Ns() > 0) {
           if (!(typeof window < "u" && typeof window.confirm == "function" ? window.confirm("有未保存的修改，确定关闭并丢弃吗？") : !1)) return;
-          oo();
+          lo();
         }
-        l.visible = !1, l.saveMsg = "", q();
+        l.visible = !1, l.saveMsg = "", Le("", "info"), q();
       },
       tab: l.tab,
       onTabChange: (n) => {
-        l.tab = n, (n === "session" || n === "default") && (l.scopeChoice = n), l.scope = co(n) ? "session" : "global", l.saveMsg = "", l.draft = {}, q(), lo(), (n === "global" || n === "default") && qr(), n === "stale" && wc();
+        l.tab = n, (n === "session" || n === "default") && (l.scopeChoice = n), l.scope = mo(n) ? "session" : "global", l.saveMsg = "", l.draft = {}, q(), po(), (n === "global" || n === "default") && Sr(), n === "stale" && Ec();
       },
       scope: l.scope,
       scopeChoice: l.scopeChoice,
@@ -7554,7 +7561,7 @@ function q() {
       cfg: l.cfg,
       cfgError: l.cfgError,
       chatId: l.chatId,
-      dirtyCount: Ss(),
+      dirtyCount: Ns(),
       saving: l.saving,
       saveMsg: l.saveMsg,
       conflictNote: l.conflictNote,
@@ -7567,11 +7574,11 @@ function q() {
       // ★ 漏传这一行 = 挂起清理页签永远空白（2026-11-15 实测缺陷）：
       //   组件读的是 props.stale，只更新 settingsState 不会触发可见变化。
       stale: l.stale
-    }), Gt);
+    }), Jt);
   }
 }
-function Sc(t) {
-  const { R: e, onOpen: n } = t, a = Ve(), r = a && a.Button, o = "问卷设置", s = { fontSize: 12, padding: "2px 6px", height: 28 }, d = { title: o, "aria-label": o }, i = {
+function Nc(t) {
+  const { R: e, onOpen: n } = t, a = Xe(), r = a && a.Button, o = "问卷设置", s = { fontSize: 12, padding: "2px 6px", height: 28 }, d = { title: o, "aria-label": o }, i = {
     width: 16,
     height: 16,
     viewBox: "0 0 24 24",
@@ -7622,7 +7629,7 @@ function Sc(t) {
     o
   );
 }
-const sr = [
+const ir = [
   // 2026-11-23 架构重构（boss 裁定）：「会话模式 / 默认模式」两个页签合并。
   //
   // boss 原话：「不再采用会话模式或者默认模式，全部采用统一的配置，所有的
@@ -7641,7 +7648,7 @@ const sr = [
   { key: "schedule", label: "时间策略", hint: "" },
   { key: "run", label: "运行参数", hint: "" },
   { key: "stale", label: "问卷清理", hint: "" }
-], _c = [
+], Cc = [
   { key: "default", label: "默认参数" },
   { key: "param-sets", label: "问卷参数组" },
   { key: "notify-profiles", label: "通知配置" },
@@ -7650,24 +7657,24 @@ const sr = [
   { key: "prompt", label: "提示词" },
   // 2026-11-25 boss 需求 2：配置备份/恢复入口（外置目录，更新不丢）
   { key: "backup", label: "备份恢复" }
-], Nc = {
+], Tc = {
   model: "behavior"
-}, co = (t) => t === "session";
-function Cc(t, e, n) {
+}, mo = (t) => t === "session";
+function zc(t, e, n) {
   return n !== "readonly" ? null : t.createElement("span", {
     className: "qm-set-scopetag qm-set-scopero",
     key: e,
     title: "只读信息"
   }, "只读");
 }
-function Tc(t, e) {
+function Ic(t, e) {
   return e === "readonly" ? !0 : t === "session" && e === "global";
 }
-function Rt(t, e, n, a, r, o, s, d, i) {
-  const f = o || "global", g = Tc(s || "global", f), k = [
+function tn(t, e, n, a, r, o, s, d, i) {
+  const f = o || "global", g = Ic(s || "global", f), k = [
     t.createElement("span", { className: "qm-set-rowtitle", key: "t" }, [
       t.createElement("span", { key: "tt" }, n),
-      Cc(t, "sc", f),
+      zc(t, "sc", f),
       g && f === "global" ? t.createElement("span", {
         className: "qm-set-lockhint",
         key: "lk",
@@ -7689,7 +7696,7 @@ function Rt(t, e, n, a, r, o, s, d, i) {
     "data-qm-rowblock": "0"
   }, b);
 }
-function zc(t, e, n, a, r) {
+function Ac(t, e, n, a, r) {
   return t.createElement(
     "div",
     { className: "qm-set-seg", key: e },
@@ -7707,7 +7714,7 @@ function zc(t, e, n, a, r) {
     ]))
   );
 }
-function Ic(t, e, n, a) {
+function Oc(t, e, n, a) {
   return t.createElement("div", {
     key: e,
     className: "qm-set-switch" + (n ? " qm-set-switch-on" : "") + (a ? "" : " qm-set-ctrldis"),
@@ -7730,7 +7737,7 @@ function Ic(t, e, n, a) {
     t.createElement("span", { key: "k", className: "qm-set-knob" })
   ]);
 }
-function en(t, e, n, a, r) {
+function nn(t, e, n, a, r) {
   if (a && a.length && r) {
     const o = a.map((s, d) => s && typeof s == "object" ? { value: String(s.value), label: String(s.label || s.value) } : { value: String(s), label: String(s) });
     return t.createElement("div", { className: "qm-set-select qm-set-selectlive", key: e }, [
@@ -7747,8 +7754,8 @@ function en(t, e, n, a, r) {
     t.createElement("span", { key: "a", className: "qm-set-selectarrow" }, "▾")
   ]);
 }
-function po(t, e, n, a, r) {
-  const o = Ec(n), d = a.map((v) => v.id).indexOf(o.provider) >= 0 ? o.provider : "", i = d ? (a.filter((v) => v.id === d)[0] || { models: [] }).models : [], f = i.indexOf(o.model) >= 0 ? o.model : "", g = (v, y) => {
+function uo(t, e, n, a, r) {
+  const o = _c(n), d = a.map((v) => v.id).indexOf(o.provider) >= 0 ? o.provider : "", i = d ? (a.filter((v) => v.id === d)[0] || { models: [] }).models : [], f = i.indexOf(o.model) >= 0 ? o.model : "", g = (v, y) => {
     r && r(v ? v + ":" + y : "");
   }, k = t.createElement("select", {
     key: "p",
@@ -7786,7 +7793,7 @@ function po(t, e, n, a, r) {
     b
   ]);
 }
-let A = {
+let O = {
   enabled: !1,
   url: "",
   method: "post_json",
@@ -7796,10 +7803,10 @@ let A = {
   mode: "basic",
   params: [],
   bodyTpl: ""
-}, it = null;
-function Jt() {
+}, lt = null;
+function Qt() {
   try {
-    xe("custom_api_params", A.params.map((t) => ({
+    xe("custom_api_params", O.params.map((t) => ({
       key: String(t.key || ""),
       value: String(t.value || ""),
       required: !!t.required
@@ -7807,51 +7814,51 @@ function Jt() {
   } catch {
   }
 }
-function Ac(t) {
+function $c(t) {
   if (!t || typeof t != "object") return;
   const e = (r, o) => {
     if (r in l.draft) return String(l.draft[r]);
     const s = t[r];
     return s == null ? o : String(s);
   };
-  A.enabled = "custom_api_enabled" in l.draft ? !!l.draft.custom_api_enabled : !!t.custom_api_enabled, A.url = e("custom_api_url", ""), A.method = e("custom_api_method", "post_json"), A.tokenPos = e("custom_api_token_pos", "none"), A.mode = e("custom_api_mode", "basic"), A.bodyTpl = e("custom_api_body", ""), A.token = "", A.tokenSet = !!t.custom_api_token_set;
+  O.enabled = "custom_api_enabled" in l.draft ? !!l.draft.custom_api_enabled : !!t.custom_api_enabled, O.url = e("custom_api_url", ""), O.method = e("custom_api_method", "post_json"), O.tokenPos = e("custom_api_token_pos", "none"), O.mode = e("custom_api_mode", "basic"), O.bodyTpl = e("custom_api_body", ""), O.token = "", O.tokenSet = !!t.custom_api_token_set;
   const n = l.draft.custom_api_params, a = Array.isArray(n) ? n : Array.isArray(t.custom_api_params) ? t.custom_api_params : [];
-  A.params = a.filter((r) => r && typeof r == "object").map((r) => ({
+  O.params = a.filter((r) => r && typeof r == "object").map((r) => ({
     key: String(r.key || ""),
     value: String(r.value || ""),
     required: !!r.required
   }));
 }
-function Oc() {
+function Pc() {
   const t = [];
-  return String(A.url || "").trim() || t.push("请求地址"), A.mode === "advanced" ? String(A.bodyTpl || "").trim() || t.push("body 模板") : A.params.forEach((e) => {
+  return String(O.url || "").trim() || t.push("请求地址"), O.mode === "advanced" ? String(O.bodyTpl || "").trim() || t.push("body 模板") : O.params.forEach((e) => {
     e.required && !String(e.value || "").trim() && t.push(String(e.key || "").trim() || "未命名参数");
   }), t;
 }
-function $c() {
+function Bc() {
   const t = {}, e = /* @__PURE__ */ new Set();
-  return A.params.forEach((n, a) => {
+  return O.params.forEach((n, a) => {
     const r = String(n.key || "").trim();
     r && (t[r] !== void 0 ? (e.add(a), e.add(t[r])) : t[r] = a);
   }), e;
 }
-function Pc(t) {
+function Mc(t) {
   return /^[A-Za-z_][A-Za-z0-9_.\-]*$/.test(t);
 }
-function or(t, e) {
+function lr(t, e) {
   let n = String(t || "");
   return ["title", "content", "count", "stamp", "token"].forEach((a) => {
     n = n.split("{{" + a + "}}").join(e[a] || "");
   }), n;
 }
-const Zt = {
+const Vt = {
   title: "（问卷标题）",
   content: "「（问卷标题）」有 3 道题等你作答",
   count: "3",
   stamp: "来自智能体-2026-01-01 00:00:00",
-  token: A.tokenSet || A.token ? "（已设置的 Token）" : "（未设置 Token）"
+  token: O.tokenSet || O.token ? "（已设置的 Token）" : "（未设置 Token）"
 };
-function mo(t) {
+function fo(t) {
   return [
     {
       id: t.ids.mode,
@@ -7910,7 +7917,7 @@ function mo(t) {
     }
   ];
 }
-const Bc = mo({
+const Lc = fo({
   ids: { mode: "s1", model: "s2", tpl: "s3", ctx: "s4", parallel: "s5" },
   readScope: "session",
   itemScope: { mode: "session", model: "session", tpl: "session", ctx: "session", parallel: "session" },
@@ -7918,7 +7925,7 @@ const Bc = mo({
   // 模型行说明是动态的（三态来源），这里放占位，渲染时由 renderSettingRow 覆盖
   modelNote: "",
   switchKeys: { ctx: "s4sw", parallel: "s5sw" }
-}), Ns = mo({
+}), Ts = fo({
   ids: { mode: "a1", model: "b1", tpl: "b2", ctx: "b3", parallel: "b4" },
   readScope: "global",
   itemScope: { mode: "both", model: "both", tpl: "both", ctx: "both", parallel: "global" },
@@ -7928,14 +7935,14 @@ const Bc = mo({
   modelWide: !0,
   pairSwitches: !0
 });
-function Mc(t, e) {
-  return lt(t.cfgKey, e, t.readScope);
+function jc(t, e) {
+  return ct(t.cfgKey, e, t.readScope);
 }
-function ir(t, e, n) {
-  const a = Mc(e, e.cfgKey === "mode" ? "manual" : e.kind === "switch" ? !1 : "");
+function cr(t, e, n) {
+  const a = jc(e, e.cfgKey === "mode" ? "manual" : e.kind === "switch" ? !1 : "");
   let r;
   if (e.kind === "seg")
-    r = zc(
+    r = Ac(
       t,
       "g1",
       e.segItems || [],
@@ -7943,7 +7950,7 @@ function ir(t, e, n) {
       (s) => n.edit(e.cfgKey, n.modeByLabel[s] || "manual")
     );
   else if (e.kind === "model")
-    r = po(
+    r = uo(
       t,
       "sel2",
       String(a || ""),
@@ -7953,7 +7960,7 @@ function ir(t, e, n) {
   else if (e.kind === "select")
     if (n.tplChoices.length) {
       const s = String(a || "") || n.tplChoices[0] && n.tplChoices[0].value || "";
-      r = en(
+      r = nn(
         t,
         "sel3",
         s,
@@ -7961,18 +7968,18 @@ function ir(t, e, n) {
         (d) => n.edit(e.cfgKey, d)
       );
     } else
-      r = en(t, "sel3", "默认六步思维链");
+      r = nn(t, "sel3", "默认六步思维链");
   else
-    r = Ic(
+    r = Oc(
       t,
       e.switchKey || e.id + "sw",
       !!a,
       (s) => n.edit(e.cfgKey, s)
     );
   let o = e.note;
-  return e.kind === "model" && e.readScope === "session" && (o = n.explicitEmptyModel ? "已显式设为空（本会话不指定模型）" : "自动读取当前对话模型；改动即自动切换"), e.kind === "select" && !n.tplChoices.length && (o = "模板库未加载，暂不可选"), Rt(t, e.id, e.label, r, o, e.itemScope, n.scope, e.wide);
+  return e.kind === "model" && e.readScope === "session" && (o = n.explicitEmptyModel ? "已显式设为空（本会话不指定模型）" : "自动读取当前对话模型；改动即自动切换"), e.kind === "select" && !n.tplChoices.length && (o = "模板库未加载，暂不可选"), tn(t, e.id, e.label, r, o, e.itemScope, n.scope, e.wide);
 }
-function lr(t, e, n) {
+function dr(t, e, n) {
   const a = e.filter((o) => !o.hideWhenRecommend || n.currentMode !== "recommend"), r = [];
   for (let o = 0; o < a.length; o++) {
     const s = a[o], d = a[o + 1];
@@ -7981,23 +7988,23 @@ function lr(t, e, n) {
       className: "qm-set-rowpair",
       "data-qm-rowpair": "1"
     }, [
-      ir(t, s, n),
-      ir(t, d, n)
-    ])), o++) : r.push(ir(t, s, n));
+      cr(t, s, n),
+      cr(t, d, n)
+    ])), o++) : r.push(cr(t, s, n));
   }
   return r;
 }
-function Lc(t, e, n) {
+function Dc(t, e, n) {
   const a = String(e || ""), r = String(n || ""), o = !!a && !!r && a !== r && a > r, s = [t.createElement("span", { key: "t" }, a + " → " + r)];
   return o && s.push(t.createElement("span", { key: "nt", className: "nt" }, "次日")), t.createElement("span", { className: "qm-set-tstime" }, s);
 }
-function Cs(t, e, n) {
+function zs(t, e, n) {
   const a = String(e || "");
   if (!a) return n;
   const r = t.filter((o) => String(o && o.id) === a)[0];
   return r ? String(r.name || r.id || a) : a + "（已删除）";
 }
-function jc(t, e) {
+function Fc(t, e) {
   const n = e || {}, a = {
     ai: "自动分析",
     recommend: "只用推荐",
@@ -8020,7 +8027,7 @@ function jc(t, e) {
   ]);
   return r.push(o("with_context", "携带上下文")), r.push(o("parallel", "并行分析")), r;
 }
-function Ts(t, e, n, a) {
+function Is(t, e, n, a) {
   const r = String(e.id || ""), o = !!a.activeId && a.activeId === r, s = "qm-set-tscard" + (o ? " qm-set-tshit" : "") + (a.editing ? " qm-set-tsedit" : "");
   if (a.editing && a.draft) {
     const g = a.draft, k = (u, _) => {
@@ -8147,7 +8154,7 @@ function Ts(t, e, n, a) {
               param_set_id: String(g.param_set_id || ""),
               notify_profile_id: String(g.notify_profile_id || "")
             };
-            g.id ? Es(Object.assign({ id: String(g.id) }, u)) : Es(u);
+            g.id ? _s(Object.assign({ id: String(g.id) }, u)) : _s(u);
           }
         }, a.busy ? "保存中…" : "完成")
       ])
@@ -8170,7 +8177,7 @@ function Ts(t, e, n, a) {
       t.createElement(
         "span",
         { key: "t", style: { display: "contents" } },
-        Lc(t, e.start, e.end)
+        Dc(t, e.start, e.end)
       ),
       t.createElement("span", { key: "s", className: "qm-set-tssp" }),
       t.createElement("div", { key: "a", className: "qm-set-tsacts" }, [
@@ -8198,7 +8205,7 @@ function Ts(t, e, n, a) {
           title: "删除这条策略",
           disabled: !!a.busy,
           onClick: () => {
-            ea("ts", r, String(e.name || "未命名策略"));
+            na("ts", r, String(e.name || "未命名策略"));
           }
         }, "✕")
       ])
@@ -8209,7 +8216,7 @@ function Ts(t, e, n, a) {
       t.createElement(
         "span",
         { key: "v1" },
-        Cs(a.paramSets, d, "未引用（不覆盖参数）")
+        zs(a.paramSets, d, "未引用（不覆盖参数）")
       ),
       t.createElement("span", { key: "s2", className: "sep" }, "|"),
       t.createElement("span", { key: "l2", className: "v" }, "通知"),
@@ -8217,17 +8224,17 @@ function Ts(t, e, n, a) {
       t.createElement(
         "span",
         { key: "v2" },
-        Cs(a.notifyProfiles, i, "未引用（不覆盖通知）")
+        zs(a.notifyProfiles, i, "未引用（不覆盖通知）")
       )
     ]),
     f ? t.createElement(
       "div",
       { className: "qm-set-tschips", key: "chips" },
-      jc(t, f.params)
+      Fc(t, f.params)
     ) : null
   ]);
 }
-function Dc(t) {
+function Wc(t) {
   const e = l.libs, n = [], a = e.schedules.filter(
     (r) => e.activeId && String(r.id) === String(e.activeId)
   )[0];
@@ -8283,7 +8290,7 @@ function Dc(t) {
       "如需按时间段自动切换（如夜间全自动、白天人工），添加一条即可。"
     ]));
   else {
-    const r = e.schedules.map((o, s) => Ts(t, o, s, {
+    const r = e.schedules.map((o, s) => Is(t, o, s, {
       activeId: e.activeId,
       editing: l.schedEdit === String(o.id),
       draft: l.schedDraft,
@@ -8291,7 +8298,7 @@ function Dc(t) {
       notifyProfiles: e.notifyProfiles,
       busy: e.busy
     }));
-    l.schedEdit === "__new__" && l.schedDraft && r.push(Ts(t, {}, e.schedules.length, {
+    l.schedEdit === "__new__" && l.schedDraft && r.push(Is(t, {}, e.schedules.length, {
       activeId: e.activeId,
       editing: !0,
       draft: l.schedDraft,
@@ -8321,7 +8328,7 @@ function Dc(t) {
   }, (e.schedules.length, "＋ 添加时间策略"))), n;
 }
 let be = null, ge = null;
-function zs(t, e, n) {
+function As(t, e, n) {
   const a = [
     { v: "ai", l: "自动分析" },
     { v: "recommend", l: "只用推荐" },
@@ -8391,7 +8398,7 @@ function zs(t, e, n) {
       ]),
       t.createElement("div", { className: "qm-set-pitem full", key: "model" }, [
         t.createElement("label", { key: "l" }, "默认模型"),
-        t.createElement("div", { key: "c" }, po(
+        t.createElement("div", { key: "c" }, uo(
           t,
           "psmodel",
           String(e.model_id || ""),
@@ -8439,13 +8446,13 @@ function zs(t, e, n) {
               parallel: e.parallel
             }
           };
-          e.id && (i.id = e.id), (async () => await cc(i) && (be = null, q()))();
+          e.id && (i.id = e.id), (async () => await pc(i) && (be = null, q()))();
         }
       }, l.libs.busy ? "保存中…" : "保存")
     ])
   ]);
 }
-function Fc(t, e) {
+function Kc(t, e) {
   const n = l.libs, a = [];
   a.push(t.createElement("div", {
     className: "qm-set-schednote",
@@ -8475,7 +8482,7 @@ function Fc(t, e) {
   ])), n.paramSets.forEach((s, d) => {
     const i = String(s.id || ""), f = (s.used_by || []).map((v) => String(v.name || v.id));
     if (be && r === i) {
-      o.push(zs(t, be, {
+      o.push(As(t, be, {
         groups: e.groups,
         tplChoices: e.tplChoices,
         usedBy: f
@@ -8529,7 +8536,7 @@ function Fc(t, e) {
           disabled: !!n.busy,
           title: f.length ? "被策略引用，需先解除引用（或确认后强制删除）" : "删除该参数组",
           onClick: () => {
-            ea("ps", i, String(s.name || "未命名参数组"));
+            na("ps", i, String(s.name || "未命名参数组"));
           }
         }, "✕")
       ]),
@@ -8564,7 +8571,7 @@ function Fc(t, e) {
         ])
       ])
     ]));
-  }), be && r === "__new__" && o.push(zs(t, be, {
+  }), be && r === "__new__" && o.push(As(t, be, {
     groups: e.groups,
     tplChoices: e.tplChoices,
     usedBy: []
@@ -8587,7 +8594,7 @@ function Fc(t, e) {
     }
   }, "＋ 新建问卷参数组")), a;
 }
-function Wc(t) {
+function Hc(t) {
   const e = l.libs, n = [];
   n.push(t.createElement("div", {
     className: "qm-set-schednote",
@@ -8683,7 +8690,7 @@ function Wc(t) {
                 name: String(b.name || "").trim() || "未命名通知配置",
                 channels: { pc: b.pc || "off", bg: b.bg || "off" }
               };
-              b.id && (u.id = b.id), (async () => await qs(u) && (ge = null, q()))();
+              b.id && (u.id = b.id), (async () => await Ss(u) && (ge = null, q()))();
             }
           }, e.busy ? "保存中…" : "保存")
         ])
@@ -8732,7 +8739,7 @@ function Wc(t) {
           "data-qm-np-del": i,
           disabled: !!e.busy,
           onClick: () => {
-            ea("np", i, String(s.name || "未命名通知配置"));
+            na("np", i, String(s.name || "未命名通知配置"));
           }
         }, "✕")
       ]),
@@ -8813,7 +8820,7 @@ function Wc(t) {
               name: String(s.name || "").trim() || "未命名通知配置",
               channels: { pc: s.pc || "off", bg: s.bg || "off" }
             };
-            (async () => await qs(f) && (ge = null, q()))();
+            (async () => await Ss(f) && (ge = null, q()))();
           }
         }, e.busy ? "保存中…" : "保存")
       ])
@@ -8830,7 +8837,7 @@ function Wc(t) {
     }
   }, "＋ 新建通知配置")), n;
 }
-function Kc(t, e, n, a) {
+function Uc(t, e, n, a) {
   return t.createElement("div", {
     className: "qm-set-schednote",
     key: "note-" + e,
@@ -8840,9 +8847,9 @@ function Kc(t, e, n, a) {
     t.createElement("div", { key: "d", className: "qm-set-schednotedesc" }, a)
   ]);
 }
-function Hc(t, e) {
+function Gc(t, e) {
   const n = [];
-  n.push(Kc(
+  n.push(Uc(
     t,
     "behavior",
     "这些是全局行为参数，不随时段变化",
@@ -8875,28 +8882,28 @@ function Hc(t, e) {
     300: "300 秒",
     600: "600 秒"
   };
-  n.push(Rt(
+  n.push(tn(
     t,
     "e6",
     "单题分析超时",
-    en(
+    nn(
       t,
       "sel4",
-      r[Number(lt("model_timeout_sec", 120, "global"))] || "120 秒（默认）",
+      r[Number(ct("model_timeout_sec", 120, "global"))] || "120 秒（默认）",
       ["30 秒", "60 秒", "120 秒（默认）", "300 秒", "600 秒"],
       (k) => xe("model_timeout_sec", a[k] ?? 120)
     ),
     "超时后该题按未给出推荐处理（后端保护下限 30 秒）",
     "global",
     e
-  )), n.push(Rt(
+  )), n.push(tn(
     t,
     "d4",
     "等待提示阈值",
-    en(
+    nn(
       t,
       "sel5",
-      s[Number(lt("wait_hint_sec", 180, "global"))] || "180 秒（默认）",
+      s[Number(ct("wait_hint_sec", 180, "global"))] || "180 秒（默认）",
       ["30 秒", "60 秒", "120 秒", "180 秒（默认）", "300 秒", "600 秒"],
       (k) => xe("wait_hint_sec", o[k] ?? 180)
     ),
@@ -8916,12 +8923,12 @@ function Hc(t, e) {
     200: "最近 200 条（默认）",
     500: "最近 500 条",
     1e3: "最近 1000 条"
-  }, g = Number(lt("gate_log_limit", 200, "global"));
-  return n.push(Rt(
+  }, g = Number(ct("gate_log_limit", 200, "global"));
+  return n.push(tn(
     t,
     "d5",
     "拦截记录",
-    en(
+    nn(
       t,
       "sel6",
       f[g] || "最近 200 条（默认）",
@@ -8933,8 +8940,8 @@ function Hc(t, e) {
     e
   )), n;
 }
-function Uc(t, e, n) {
-  const a = [], r = Oc(), o = $c(), s = (x, T, E, $) => t.createElement("div", { className: "qm-set-schedfield", key: x }, [
+function Jc(t, e, n) {
+  const a = [], r = Pc(), o = Bc(), s = (x, T, E, $) => t.createElement("div", { className: "qm-set-schedfield", key: x }, [
     t.createElement(
       "span",
       { className: "qm-set-schedfieldlabel", key: "l" },
@@ -8963,8 +8970,8 @@ function Uc(t, e, n) {
       },
       "另有 {{count}} 题数、{{stamp}} 时间戳、{{token}} 可在参数值中引用。"
     )
-  ]), f = A.params.map((x, T) => {
-    const E = !!String(x.key || "").trim() && (!Pc(x.key) || o.has(T)), $ = x.required && !String(x.value || "").trim();
+  ]), f = O.params.map((x, T) => {
+    const E = !!String(x.key || "").trim() && (!Mc(x.key) || o.has(T)), $ = x.required && !String(x.value || "").trim();
     return t.createElement("div", {
       key: "prow-" + T,
       className: "qm-apiparamrow" + ($ ? " miss" : ""),
@@ -8979,7 +8986,7 @@ function Uc(t, e, n) {
         "data-qm-api-paramkey": String(T),
         title: o.has(T) ? "参数名重复" : E ? "参数名只能包含字母、数字、下划线、点、连字符" : "对方 API 要求的参数名",
         onChange: (S) => {
-          A.params[T].key = S && S.target ? String(S.target.value) : "", Jt(), q();
+          O.params[T].key = S && S.target ? String(S.target.value) : "", Qt(), q();
         }
       }),
       t.createElement("input", {
@@ -8991,7 +8998,7 @@ function Uc(t, e, n) {
         "data-qm-api-paramvalue": String(T),
         title: $ ? "必传参数不能为空" : "支持 {{title}} {{content}} {{count}} {{stamp}} {{token}}",
         onChange: (S) => {
-          A.params[T].value = S && S.target ? String(S.target.value) : "", Jt(), q();
+          O.params[T].value = S && S.target ? String(S.target.value) : "", Qt(), q();
         }
       }),
       t.createElement("label", {
@@ -9005,7 +9012,7 @@ function Uc(t, e, n) {
           checked: !!x.required,
           "data-qm-api-paramreq": String(T),
           onChange: (S) => {
-            A.params[T].required = !!(S && S.target && S.target.checked), Jt(), q();
+            O.params[T].required = !!(S && S.target && S.target.checked), Qt(), q();
           }
         }),
         "必填"
@@ -9017,7 +9024,7 @@ function Uc(t, e, n) {
         title: "删除此行",
         "data-qm-api-paramdel": String(T),
         onClick: () => {
-          A.params.splice(T, 1), Jt(), q();
+          O.params.splice(T, 1), Qt(), q();
         }
       }, "✕")
     ]);
@@ -9036,27 +9043,27 @@ function Uc(t, e, n) {
       "data-qm-api-paramadd": "1",
       title: "新增一行自定义参数",
       onClick: () => {
-        if (A.params.length >= 20) {
-          F("warning", "最多 20 个自定义参数");
+        if (O.params.length >= 20) {
+          D("warning", "最多 20 个自定义参数");
           return;
         }
-        A.params.push({ key: "", value: "", required: !1 }), Jt(), q();
+        O.params.push({ key: "", value: "", required: !1 }), Qt(), q();
       }
     }, "+ 新增参数行")
-  ]), k = String(A.url || "").trim(), b = k ? or(k, Object.fromEntries(
-    Object.entries(Zt).map(([x, T]) => [x, encodeURIComponent(String(T))])
+  ]), k = String(O.url || "").trim(), b = k ? lr(k, Object.fromEntries(
+    Object.entries(Vt).map(([x, T]) => [x, encodeURIComponent(String(T))])
   )) : "（未填请求地址）", v = /\{\{\s*(title|content|count|stamp|token)\s*\}\}/.test(k);
   let y = "";
-  if (A.mode === "advanced")
-    y = or(String(A.bodyTpl || ""), Zt) || "（高级模式未填写 body 模板）";
+  if (O.mode === "advanced")
+    y = lr(String(O.bodyTpl || ""), Vt) || "（高级模式未填写 body 模板）";
   else {
     const x = {
-      title: Zt.title,
-      content: Zt.content
+      title: Vt.title,
+      content: Vt.content
     };
-    A.params.forEach((T) => {
+    O.params.forEach((T) => {
       const E = String(T.key || "").trim();
-      E && (x[E] = or(String(T.value || ""), Zt));
+      E && (x[E] = lr(String(T.value || ""), Vt));
     }), y = JSON.stringify(x, null, 2);
   }
   const u = t.createElement("div", { key: "preview" }, [
@@ -9068,7 +9075,7 @@ function Uc(t, e, n) {
         className: "qm-apipreview",
         "data-qm-api-preview": "url"
       },
-      (String(A.method) === "get_query" ? "GET " : "POST ") + b
+      (String(O.method) === "get_query" ? "GET " : "POST ") + b
     ),
     // URL 支持占位符插值时的说明（GET/POST 都适用，boss 需求 2）
     v ? t.createElement(
@@ -9081,7 +9088,7 @@ function Uc(t, e, n) {
       },
       "地址中的占位符已按示例值替换；实际发送时用真实标题/正文（自动 URL 编码）。"
     ) : null,
-    String(A.method) === "get_query" ? null : t.createElement("pre", {
+    String(O.method) === "get_query" ? null : t.createElement("pre", {
       key: "b",
       className: "qm-apipreview",
       "data-qm-api-preview": "body"
@@ -9097,7 +9104,7 @@ function Uc(t, e, n) {
       { key: "t" },
       r.length ? "还缺 " + r.length + " 项必传参数：" + r.join("、") : "必传项已填齐，可以测试发送"
     )
-  ]), N = r.length === 0 && !!String(A.url || "").trim(), P = t.createElement("div", {
+  ]), N = r.length === 0 && !!String(O.url || "").trim(), P = t.createElement("div", {
     key: "foot",
     className: "qm-set-apifoot",
     style: { flexDirection: "column", alignItems: "stretch", gap: 6 }
@@ -9115,29 +9122,29 @@ function Uc(t, e, n) {
         style: N ? void 0 : { opacity: 0.45, cursor: "not-allowed" },
         title: N ? "按当前配置真实发送一次" : "还缺：" + r.join("、"),
         onClick: () => {
-          N && (it = { ok: !0, text: "正在发送…" }, q(), (async () => {
+          N && (lt = { ok: !0, text: "正在发送…" }, q(), (async () => {
             try {
-              await so();
+              await io();
               const T = await (await fetch(M("/question-modal/notify/test"), {
                 method: "POST",
                 headers: L(),
                 body: JSON.stringify({ channel: "custom_api" })
               })).json(), E = !!(T && (T.ok || T.delivered));
               let $ = "";
-              E ? $ = "发送成功" + (T && T.http ? "（HTTP " + T.http + "）" : "") + (T && T.elapsed_ms !== void 0 ? " · " + T.elapsed_ms + "ms" : "") : $ = "发送失败：" + (T && (T.reason || T.error) || "未知原因"), it = { ok: E, text: $ };
+              E ? $ = "发送成功" + (T && T.http ? "（HTTP " + T.http + "）" : "") + (T && T.elapsed_ms !== void 0 ? " · " + T.elapsed_ms + "ms" : "") : $ = "发送失败：" + (T && (T.reason || T.error) || "未知原因"), lt = { ok: E, text: $ };
             } catch (x) {
-              it = { ok: !1, text: "发送失败：" + (x && x.message || x) };
+              lt = { ok: !1, text: "发送失败：" + (x && x.message || x) };
             }
             q();
           })());
         }
       }, "发送测试")
     ]),
-    it ? t.createElement("div", {
+    lt ? t.createElement("div", {
       key: "res",
-      className: "qm-apitestres " + (it.ok ? "ok" : "err"),
-      "data-qm-api-testresult": it.ok ? "ok" : "err"
-    }, it.text) : null
+      className: "qm-apitestres " + (lt.ok ? "ok" : "err"),
+      "data-qm-api-testresult": lt.ok ? "ok" : "err"
+    }, lt.text) : null
   ]);
   return a.push(t.createElement("div", {
     className: "qm-set-schedcard qm-set-apicard",
@@ -9156,12 +9163,12 @@ function Uc(t, e, n) {
         type: "button",
         key: "sw",
         role: "switch",
-        className: "qm-set-apiswitch" + (A.enabled ? " on" : ""),
+        className: "qm-set-apiswitch" + (O.enabled ? " on" : ""),
         "data-qm-api-switch": "1",
-        "aria-checked": A.enabled ? "true" : "false",
-        title: A.enabled ? "已启用" : "已停用",
+        "aria-checked": O.enabled ? "true" : "false",
+        title: O.enabled ? "已启用" : "已停用",
         onClick: () => {
-          A.enabled = !A.enabled, xe("custom_api_enabled", A.enabled), q();
+          O.enabled = !O.enabled, xe("custom_api_enabled", O.enabled), q();
         }
       }, t.createElement("span", { className: "qm-set-apiswitchdot", key: "dot" }))
     ]),
@@ -9183,12 +9190,12 @@ function Uc(t, e, n) {
       key: "url",
       type: "text",
       className: "qm-set-input",
-      value: A.url,
+      value: O.url,
       // 提示可写占位符：GET/POST 都支持（boss 2026-11-23 需求 2）
       placeholder: "https://api.example.com/hook 或 …/{{title}}/{{content}}",
       "data-qm-api-url": "1",
       onChange: (x) => {
-        A.url = x && x.target ? String(x.target.value) : "", xe("custom_api_url", A.url), q();
+        O.url = x && x.target ? String(x.target.value) : "", xe("custom_api_url", O.url), q();
       }
     }), !0),
     // 请求方法 + Token 位置
@@ -9196,10 +9203,10 @@ function Uc(t, e, n) {
       s("fmethod", "请求方法", t.createElement("select", {
         key: "method",
         className: "qm-set-native",
-        value: A.method,
+        value: O.method,
         "data-qm-api-method": "1",
         onChange: (x) => {
-          A.method = x && x.target ? String(x.target.value) : "post_json", xe("custom_api_method", A.method), q();
+          O.method = x && x.target ? String(x.target.value) : "post_json", xe("custom_api_method", O.method), q();
         }
       }, [
         t.createElement("option", { key: "p", value: "post_json" }, "POST（JSON）"),
@@ -9208,10 +9215,10 @@ function Uc(t, e, n) {
       s("ftpos", "Token 位置（可选）", t.createElement("select", {
         key: "tp",
         className: "qm-set-native",
-        value: A.tokenPos,
+        value: O.tokenPos,
         "data-qm-api-tokenpos": "1",
         onChange: (x) => {
-          A.tokenPos = x && x.target ? String(x.target.value) : "none", xe("custom_api_token_pos", A.tokenPos), q();
+          O.tokenPos = x && x.target ? String(x.target.value) : "none", xe("custom_api_token_pos", O.tokenPos), q();
         }
       }, [
         t.createElement("option", { key: "n", value: "none" }, "不携带 token"),
@@ -9222,16 +9229,16 @@ function Uc(t, e, n) {
     // Token
     s(
       "ftoken",
-      A.tokenSet ? "Token（已设置，留空则不修改）" : "Token（可选）",
+      O.tokenSet ? "Token（已设置，留空则不修改）" : "Token（可选）",
       t.createElement("input", {
         key: "tk",
         type: "password",
         className: "qm-set-input",
-        value: A.token,
-        placeholder: A.tokenSet ? "已保存，留空则不修改" : "选填",
+        value: O.token,
+        placeholder: O.tokenSet ? "已保存，留空则不修改" : "选填",
         "data-qm-api-token": "1",
         onChange: (x) => {
-          A.token = x && x.target ? String(x.target.value) : "", A.token && xe("custom_api_token", A.token), q();
+          O.token = x && x.target ? String(x.target.value) : "", O.token && xe("custom_api_token", O.token), q();
         }
       })
     ),
@@ -9246,33 +9253,33 @@ function Uc(t, e, n) {
         t.createElement("input", {
           key: "c",
           type: "checkbox",
-          checked: A.mode === "advanced",
+          checked: O.mode === "advanced",
           "data-qm-api-advmode": "1",
           onChange: (x) => {
-            A.mode = x && x.target && x.target.checked ? "advanced" : "basic", xe("custom_api_mode", A.mode), q();
+            O.mode = x && x.target && x.target.checked ? "advanced" : "basic", xe("custom_api_mode", O.mode), q();
           }
         }),
         "高级模式（自己写完整 body 模板）"
       ])
     ]),
-    A.mode === "advanced" ? s("fbody", "body 模板", t.createElement("textarea", {
+    O.mode === "advanced" ? s("fbody", "body 模板", t.createElement("textarea", {
       key: "bd",
       className: "qm-apibody" + (r.indexOf("body 模板") >= 0 ? " bad" : ""),
-      value: A.bodyTpl,
+      value: O.bodyTpl,
       placeholder: '{"msgtype":"text","text":{"content":"{{content}}"}}',
       "data-qm-api-body": "1",
       onChange: (x) => {
-        A.bodyTpl = x && x.target ? String(x.target.value) : "", xe("custom_api_body", A.bodyTpl), q();
+        O.bodyTpl = x && x.target ? String(x.target.value) : "", xe("custom_api_body", O.bodyTpl), q();
       }
     }), !0) : null,
     // 系统字段（锁） + 自定义参数行（仅基础模式显示参数表）
     i,
-    A.mode === "advanced" ? null : g,
+    O.mode === "advanced" ? null : g,
     u,
     P
   ])), a;
 }
-function Gc(t, e, n, a, r) {
+function Zc(t, e, n, a, r) {
   let o = e;
   const s = [], d = n === "session" ? "session" : "global", i = {
     自动分析: "ai",
@@ -9287,12 +9294,12 @@ function Gc(t, e, n, a, r) {
   const k = r && r.providerGroups || [], b = g.map((u) => {
     const _ = l.templates.filter((N) => String(N.id) === String(u))[0];
     return { value: u, label: _ && (_.name || _.id) || u };
-  }), v = l.runSub || "default", y = Nc[v] || v;
+  }), v = l.runSub || "default", y = Tc[v] || v;
   if ((o === "session" || o === "default" || o === "global" || o === "prompt") && (o = "run"), o === "run" && s.push(t.createElement("div", {
     className: "qm-set-subtabs",
     key: "subtabs",
     "data-qm-runs-sub": y
-  }, _c.map((u, _) => {
+  }, Cc.map((u, _) => {
     const N = u.key === "param-sets" ? l.libs.paramSets.length : u.key === "notify-profiles" ? l.libs.notifyProfiles.length : u.key === "prompt" ? l.templates.length : 0, P = [u.label];
     return N && P.push(t.createElement("span", { key: "n", className: "n" }, String(N))), t.createElement("button", {
       key: "st" + _,
@@ -9304,11 +9311,11 @@ function Gc(t, e, n, a, r) {
       }
     }, P);
   }))), o === "schedule")
-    return s.push(...Dc(t)), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
-  if (o === "run" && y === "param-sets")
-    return s.push(...Fc(t, { groups: k, tplChoices: b })), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
-  if (o === "run" && y === "notify-profiles")
     return s.push(...Wc(t)), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
+  if (o === "run" && y === "param-sets")
+    return s.push(...Kc(t, { groups: k, tplChoices: b })), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
+  if (o === "run" && y === "notify-profiles")
+    return s.push(...Hc(t)), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
   if (o === "run" && y === "default") {
     s.push(t.createElement("div", {
       className: "qm-set-schednote",
@@ -9326,8 +9333,8 @@ function Gc(t, e, n, a, r) {
         "所有时间策略都未命中时使用这份参数。它是全局唯一的一份配置，对全部会话生效（不再区分会话级与默认级）。"
       )
     ]));
-    const u = String(lt("mode", "manual", "global"));
-    return s.push(...lr(t, Ns, {
+    const u = String(ct("mode", "manual", "global"));
+    return s.push(...dr(t, Ts, {
       scope: d,
       currentMode: u,
       modeLabel: f,
@@ -9335,21 +9342,21 @@ function Gc(t, e, n, a, r) {
       groups: k,
       tplChoices: b,
       tplOpts: g,
-      explicitEmptyModel: tr("model_id"),
+      explicitEmptyModel: ar("model_id"),
       edit: xe
     })), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
   }
   if (o === "run" && y === "backup")
     return !l.cfgBackup.loaded && !l.cfgBackup.busy && setTimeout(() => {
-      Dn();
-    }, 0), s.push(...lc(t)), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
+      Wn();
+    }, 0), s.push(...dc(t)), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
   if (o === "run" && y === "custom-api")
-    return s.push(...Uc(t)), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
+    return s.push(...Jc(t)), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
   if (o === "run" && y === "behavior")
-    return s.push(...Hc(t, d)), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
+    return s.push(...Gc(t, d)), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
   if (o === "run" && y === "prompt" && (o = "prompt"), o === "session") {
-    const u = String(lt("mode", "manual"));
-    s.push(...lr(t, Bc, {
+    const u = String(ct("mode", "manual"));
+    s.push(...dr(t, Lc, {
       scope: d,
       currentMode: u,
       modeLabel: f,
@@ -9357,13 +9364,13 @@ function Gc(t, e, n, a, r) {
       groups: k,
       tplChoices: b,
       tplOpts: g,
-      explicitEmptyModel: tr("model_id"),
+      explicitEmptyModel: ar("model_id"),
       edit: xe
     }));
   } else if (o === "global" || o === "default") {
     if (o === "default") {
-      const _ = String(lt("mode", "manual", "global"));
-      s.push(...lr(t, Ns, {
+      const _ = String(ct("mode", "manual", "global"));
+      s.push(...dr(t, Ts, {
         scope: d,
         currentMode: _,
         modeLabel: f,
@@ -9371,13 +9378,13 @@ function Gc(t, e, n, a, r) {
         groups: k,
         tplChoices: b,
         tplOpts: g,
-        explicitEmptyModel: tr("model_id"),
+        explicitEmptyModel: ar("model_id"),
         edit: xe
       }));
     }
   } else if (o === "prompt") {
     const u = l.templates, _ = l.tplEdit;
-    if (s.push(Rt(
+    if (s.push(tn(
       t,
       "p0",
       "模板库共享范围",
@@ -9410,7 +9417,7 @@ function Gc(t, e, n, a, r) {
               key: "ed",
               "data-qm-tpl-edit": String(N.id),
               onClick: () => {
-                bc(String(N.id));
+                xc(String(N.id));
               }
             }, "编辑"),
             t.createElement("button", {
@@ -9421,7 +9428,7 @@ function Gc(t, e, n, a, r) {
               disabled: x,
               title: x ? "内置模板不可删除（可编辑覆盖，删除后恢复出厂）" : "删除模板",
               onClick: () => {
-                x || kc(String(N.id));
+                x || wc(String(N.id));
               }
             }, "删除")
           ]),
@@ -9439,7 +9446,7 @@ function Gc(t, e, n, a, r) {
         key: "new",
         "data-qm-tpl-new": "1",
         onClick: () => {
-          hc();
+          yc();
         }
       }, "＋ 新建模板")
     ])), _) {
@@ -9454,14 +9461,14 @@ function Gc(t, e, n, a, r) {
             "data-qm-tpl-field": x,
             placeholder: $,
             value: String(((S = l.tplEdit) == null ? void 0 : S[x]) || ""),
-            onChange: (I) => _s(x, I && I.target ? I.target.value : "")
+            onChange: (I) => Cs(x, I && I.target ? I.target.value : "")
           }) : t.createElement("input", {
             key: "c",
             className: "qm-set-input",
             "data-qm-tpl-field": x,
             placeholder: $,
             value: String(((B = l.tplEdit) == null ? void 0 : B[x]) || ""),
-            onChange: (I) => _s(x, I && I.target ? I.target.value : "")
+            onChange: (I) => Cs(x, I && I.target ? I.target.value : "")
           })
         ]);
       };
@@ -9497,7 +9504,7 @@ function Gc(t, e, n, a, r) {
             "data-qm-tpl-save": "1",
             disabled: !!l.tplBusy,
             onClick: () => {
-              xc();
+              vc();
             }
           }, l.tplBusy ? "保存中…" : "保存"),
           t.createElement("button", {
@@ -9506,7 +9513,7 @@ function Gc(t, e, n, a, r) {
             key: "cancel",
             "data-qm-tpl-cancel": "1",
             onClick: () => {
-              yc();
+              kc();
             }
           }, "取消")
         ])
@@ -9515,9 +9522,9 @@ function Gc(t, e, n, a, r) {
   } else if (o === "stale") {
     const u = l.stale, _ = u && u.rows || [], N = u && u.exceeded || [], P = u && u.within || [], x = (u && u.blocking || []).length ? u.blocking : _.filter((J) => J && J.nature === "blocking"), T = (u && u.residual || []).length ? u.residual : _.filter((J) => J && J.nature !== "blocking"), E = x.filter(
       (J) => J && N.some(
-        (Y) => Y.tool_call_id === J.tool_call_id
+        (R) => R.tool_call_id === J.tool_call_id
       )
-    ), $ = u ? u.threshold : null, S = pr($), B = $ !== null && $ <= 0, I = !!(u && (u.busy || u.thrBusy)) || E.length === 0 || B, me = !!(u && (u.busy || u.thrBusy)) || T.length === 0;
+    ), $ = u ? u.threshold : null, S = ur($), B = $ !== null && $ <= 0, I = !!(u && (u.busy || u.thrBusy)) || E.length === 0 || B, me = !!(u && (u.busy || u.thrBusy)) || T.length === 0;
     if (s.push(t.createElement("div", {
       className: "qm-set-stalehead",
       key: "sh"
@@ -9557,8 +9564,8 @@ function Gc(t, e, n, a, r) {
             disabled: !!(u && u.thrBusy),
             value: $ === null ? "" : String($),
             onChange: (J) => {
-              const Y = Number(J.target.value);
-              l.draft.release_after_sec = Y, l.stale.threshold = Y, l.stale.msgKind = "", l.stale.msg = "已选择「" + pr(Y) + "」，点下方「保存」后生效", q();
+              const R = Number(J.target.value);
+              l.draft.release_after_sec = R, l.stale.threshold = R, l.stale.msgKind = "", l.stale.msg = "已选择「" + ur(R) + "」，点下方「保存」后生效", q();
             }
           }, [
             // 未取到时不渲染任何具体档位，避免默认高亮误导
@@ -9604,7 +9611,7 @@ function Gc(t, e, n, a, r) {
           "data-qm-stale-scan": "1",
           disabled: !!(u && u.busy),
           onClick: () => {
-            kl();
+            wl();
           }
         }, u && u.busy ? "扫描中…" : "扫描"),
         t.createElement("button", {
@@ -9617,7 +9624,7 @@ function Gc(t, e, n, a, r) {
           disabled: I,
           title: B ? "自动释放已关闭，请逐条释放" : E.length ? `释放全部 ${E.length} 条已超阈值的阻塞问卷（观察期内 ${P.length} 条不参与）` : "当前没有已超阈值的阻塞问卷",
           onClick: () => {
-            vl();
+            ql();
           }
         }, E.length ? `全部释放（阻塞·已超阈值 ${E.length} 条）` : "全部释放"),
         t.createElement("button", {
@@ -9629,7 +9636,7 @@ function Gc(t, e, n, a, r) {
           disabled: me,
           title: T.length ? `清理全部 ${T.length} 条残留问卷（仅收尾状态，无副作用）` : "当前没有可清理的残留问卷",
           onClick: () => {
-            wl();
+            El();
           }
         }, T.length ? `全部清理（残留 ${T.length} 条）` : "全部清理")
       ])
@@ -9646,135 +9653,155 @@ function Gc(t, e, n, a, r) {
       key: "sn",
       "data-qm-stale-idle": "1"
     }, "点「扫描」列出挂起的问卷。"))), _.length) {
-      const Y = {};
-      N.forEach((O) => {
-        Y[O.tool_call_id] = !0;
+      const R = {};
+      N.forEach((A) => {
+        R[A.tool_call_id] = !0;
       });
-      const H = (O, R) => {
-        if (!O) return;
+      const H = (A, ee) => {
+        if (!A) return;
         const ke = () => {
-          l.stale.copied = R, q(), setTimeout(() => {
-            l.stale.copied === R && (l.stale.copied = "", q());
+          l.stale.copied = ee, q(), setTimeout(() => {
+            l.stale.copied === ee && (l.stale.copied = "", q());
           }, 1600);
         };
         try {
           const Z = typeof navigator < "u" ? navigator : null;
           if (Z && Z.clipboard && Z.clipboard.writeText)
-            Z.clipboard.writeText(O).then(ke, ke);
+            Z.clipboard.writeText(A).then(ke, ke);
           else {
             const ce = document.createElement("textarea");
-            ce.value = O, document.body.appendChild(ce), ce.select(), document.execCommand("copy"), document.body.removeChild(ce), ke();
+            ce.value = A, document.body.appendChild(ce), ce.select(), document.execCommand("copy"), document.body.removeChild(ce), ke();
           }
         } catch {
           ke();
         }
-      }, Ie = (O, R) => {
-        const ke = !!O.terminable, Z = !!Y[O.tool_call_id], ce = R === "blocking", Q = () => {
+      }, Ie = (A, ee) => {
+        const ke = !!A.terminable, Z = !!R[A.tool_call_id], ce = ee === "blocking", V = () => {
           if (typeof window > "u" || typeof window.confirm != "function") return;
-          const ae = O.has_live_subscriber ? "，且**正在被其他页面作答**" : "";
+          const Q = A.has_live_subscriber ? "，且**正在被其他页面作答**" : "";
           window.confirm(
-            `该问卷仍在观察期内（已挂起 ${O.idle_text}，阈值 ${S}）${ae}。
+            `该问卷仍在观察期内（已挂起 ${A.idle_text}，阈值 ${S}）${Q}。
 
 强制释放等于替用户交卷，其正在填写的内容将丢失。确定继续？`
-          ) && Va([O.tool_call_id]);
-        }, V = !!(u && u.copied) && u.copied === O.tool_call_id, qe = (ae) => {
-          const Ee = Number(ae);
-          if (!ae || !isFinite(Ee) || Ee <= 0) return "-";
+          ) && Ya([A.tool_call_id]);
+        }, X = !!(u && u.copied) && u.copied === A.tool_call_id, Ee = (Q) => {
+          const ve = Number(Q);
+          if (!Q || !isFinite(ve) || ve <= 0) return "-";
           try {
-            return new Date(Ee * 1e3).toLocaleString();
+            return new Date(ve * 1e3).toLocaleString();
           } catch {
             return "-";
           }
-        }, ne = (ae, Ee, Oe, Xe) => t.createElement("div", { className: "qm-set-stalemetaitem", key: ae }, [
+        }, ae = (Q, ve, Oe, Ye) => t.createElement("div", { className: "qm-set-stalemetaitem", key: Q }, [
           t.createElement("span", {
             className: "qm-set-stalemetalabel",
             key: "l"
-          }, Ee),
+          }, ve),
           t.createElement("span", {
             className: "qm-set-stalemetavalue",
             key: "v",
-            ...Xe || {}
+            ...Ye || {}
           }, Oe)
         ]);
         return t.createElement("div", {
           className: "qm-set-stalecard",
-          key: O.tool_call_id + ":" + R,
-          "data-qm-stale-row": O.tool_call_id,
-          "data-qm-stale-nature": R,
+          key: A.tool_call_id + ":" + ee,
+          "data-qm-stale-row": A.tool_call_id,
+          "data-qm-stale-nature": ee,
           "data-qm-stale-group": Z ? "exceeded" : "within"
         }, [
           t.createElement("div", { className: "qm-set-stalecardhead", key: "h" }, [
             t.createElement(
               "span",
               { className: "qm-set-stalecardtitle", key: "t" },
-              O.title || "(无标题)"
+              A.title || "(无标题)"
             ),
             // 把「它是什么性质/为什么没被自动释放」直接写在卡上，省得翻日志。
             t.createElement(
               "span",
               { className: "qm-set-staletag", key: "g" },
-              O.reason_code === "orphan-no-pending" ? "孤儿·无待答记录" : O.reason_code === "orphan-future-dead" ? "孤儿·唤醒已失效" : O.reason_code === "no-future" ? "无唤醒句柄" : O.reason_code === "future-done" ? "已结束未收尾" : Z ? "已超阈值" : "观察期内"
+              A.reason_code === "orphan-no-pending" ? "孤儿·无待答记录" : A.reason_code === "orphan-future-dead" ? "孤儿·唤醒已失效" : A.reason_code === "no-future" ? "无唤醒句柄" : A.reason_code === "future-done" ? "已结束未收尾" : Z ? "已超阈值" : "观察期内"
             ),
             // 正在被作答 —— 这是"不能批量释放"的直接依据，必须可见。
-            O.has_live_subscriber ? t.createElement("span", {
+            A.has_live_subscriber ? t.createElement("span", {
               className: "qm-set-staletag",
               key: "sub",
               "data-qm-stale-live": "1",
               style: { color: "#e67e22" }
             }, "正在作答") : null,
-            O.in_flight ? t.createElement("span", {
+            A.in_flight ? t.createElement("span", {
               className: "qm-set-staletag",
               key: "fl"
             }, "模型分析中") : null
           ]),
           t.createElement("div", { className: "qm-set-stalecardmeta", key: "m" }, [
-            ne("agent", "归属", O.agent_id || "-"),
+            ae("agent", "归属", A.agent_id || "-"),
             // 会话 ID：卡片有空间，完整展示（不再截断），点击复制交互保留。
-            ne(
+            ae(
               "sid",
               "会话 ID",
-              V ? "✓ 会话 ID 已复制" : O.session_id || "-",
+              X ? "✓ 会话 ID 已复制" : A.session_id || "-",
               {
-                title: V ? "已复制到剪贴板" : O.session_id ? "点击复制完整会话 ID：" + O.session_id : "",
-                style: O.session_id ? {
+                title: X ? "已复制到剪贴板" : A.session_id ? "点击复制完整会话 ID：" + A.session_id : "",
+                style: A.session_id ? {
                   cursor: "pointer",
                   textDecoration: "underline dotted",
-                  color: V ? "#16a34a" : void 0
+                  color: X ? "#16a34a" : void 0
                 } : void 0,
-                "data-qm-stale-copy": O.tool_call_id,
+                "data-qm-stale-copy": A.tool_call_id,
                 onClick: () => {
-                  H(String(O.session_id || ""), O.tool_call_id);
+                  H(String(A.session_id || ""), A.tool_call_id);
                 }
               }
             ),
-            ne("tcid", "问卷 ID", O.tool_call_id || "-"),
-            ne("idle", "挂起时长", O.idle_text || "-"),
-            ne("created", "发起时间", qe(O.created_at)),
-            ne("mode", "作答模式", O.mode || "-")
+            ae("tcid", "问卷 ID", A.tool_call_id || "-"),
+            ae("idle", "挂起时长", A.idle_text || "-"),
+            ae("created", "发起时间", Ee(A.created_at)),
+            ae("mode", "作答模式", A.mode || "-")
           ]),
           t.createElement("div", { className: "qm-set-stalecardfoot", key: "f" }, [
+            // 2026-11-25 boss 需求：新标签页打开该阻塞会话页面。
+            // 后端扫描行已带 chat_id（session_id+agent_id 解析出的 chat UUID，
+            // 宿主会话页 URL = /chat/<uuid>）。解析不到时置灰并说明，绝不瞎猜 URL。
+            t.createElement("button", {
+              type: "button",
+              className: "qm-set-mini",
+              key: "openchat",
+              "data-qm-stale-openchat": A.tool_call_id,
+              disabled: !A.chat_id,
+              title: A.chat_id ? "在新标签页打开该会话（/chat/" + A.chat_id + "）" : "该记录解析不到会话 UUID，无法打开会话页",
+              onClick: () => {
+                if (A.chat_id)
+                  try {
+                    const Q = location.origin + "/chat/" + encodeURIComponent(A.chat_id);
+                    window.open(Q, "_blank", "noopener,noreferrer") || D("warning", "浏览器拦截了新标签页，请允许弹窗后重试");
+                  } catch (Q) {
+                    D("error", "打开会话失败：" + (Q && Q.message ? Q.message : String(Q)));
+                  }
+              }
+            }, "打开会话"),
             ...ce ? [
               t.createElement("button", {
                 type: "button",
                 className: "qm-set-mini",
                 key: "rel",
-                "data-qm-stale-release": O.tool_call_id,
+                "data-qm-stale-release": A.tool_call_id,
                 disabled: !!(u && u.busy),
                 title: Z ? "释放该问卷（唤醒对应会话）" : "仍在观察期内，点击需二次确认",
                 onClick: () => {
-                  Z ? Va([O.tool_call_id]) : Q();
+                  Z ? Ya([A.tool_call_id]) : V();
                 }
               }, Z ? "释放" : "强制释放"),
               t.createElement("button", {
                 type: "button",
                 className: "qm-set-mini",
                 key: "term",
-                "data-qm-stale-terminate": O.tool_call_id,
+                "data-qm-stale-terminate": A.tool_call_id,
                 // 置灰而不是隐藏：让用户知道这个动作存在、以及为什么此刻不能用。
                 disabled: !!(u && u.busy) || !ke,
                 title: ke ? "终止该会话并取消其前台工具调用" : "该问卷已无活跃等待，对应会话通常也已不存在，无需终止",
                 onClick: () => {
-                  ql([O.tool_call_id]);
+                  Sl([A.tool_call_id]);
                 }
               }, "终止会话")
             ] : [
@@ -9782,35 +9809,35 @@ function Gc(t, e, n, a, r) {
                 type: "button",
                 className: "qm-set-mini",
                 key: "clean",
-                "data-qm-stale-cleanup": O.tool_call_id,
+                "data-qm-stale-cleanup": A.tool_call_id,
                 disabled: !!(u && u.busy),
                 title: "清理该残留记录（仅收尾状态，无副作用）",
                 onClick: () => {
-                  Va([O.tool_call_id], "清理");
+                  Ya([A.tool_call_id], "清理");
                 }
               }, "清理残留")
             ]
           ])
         ]);
-      }, Ae = (O, R, ke, Z, ce) => {
+      }, Ae = (A, ee, ke, Z, ce) => {
         if (!Z || !Z.length) return null;
-        const Q = Math.max(1, Math.ceil(Z.length / 5)), V = Math.min(
+        const V = Math.max(1, Math.ceil(Z.length / 5)), X = Math.min(
           Math.max(0, Number(u[ce]) || 0),
-          Q - 1
-        ), qe = Z.slice(
-          V * 5,
-          V * 5 + 5
-        ), ne = [
+          V - 1
+        ), Ee = Z.slice(
+          X * 5,
+          X * 5 + 5
+        ), ae = [
           t.createElement("div", {
             className: "qm-set-stalesect",
             key: "sec",
-            "data-qm-stale-section": O
+            "data-qm-stale-section": A
           }, [
             t.createElement("span", {
               className: "qm-set-stalesecttitle",
               key: "t",
-              "data-qm-stale-secttitle": O
-            }, R),
+              "data-qm-stale-secttitle": A
+            }, ee),
             t.createElement("span", {
               className: "qm-set-stalesecthint",
               key: "h"
@@ -9819,73 +9846,73 @@ function Gc(t, e, n, a, r) {
           t.createElement("div", {
             className: "qm-set-stalecards",
             key: "cards",
-            "data-qm-stale-cards": O
-          }, qe.map((ae) => Ie(ae, O)))
+            "data-qm-stale-cards": A
+          }, Ee.map((Q) => Ie(Q, A)))
         ];
-        if (Q > 1) {
-          const ae = (Oe) => {
+        if (V > 1) {
+          const Q = (Oe) => {
             l.stale[ce] = Oe, q();
-          }, Ee = (Oe, Xe, Nt, ut) => t.createElement("button", {
+          }, ve = (Oe, Ye, Ct, ft) => t.createElement("button", {
             type: "button",
             className: "qm-set-mini",
-            key: ut,
-            "data-qm-stale-page": String(Xe),
-            disabled: Nt,
+            key: ft,
+            "data-qm-stale-page": String(Ye),
+            disabled: Ct,
             onClick: () => {
-              ae(Xe);
+              Q(Ye);
             }
           }, Oe);
-          ne.push(t.createElement("div", {
+          ae.push(t.createElement("div", {
             className: "qm-set-stalepager",
             key: "pg",
-            "data-qm-stale-pager": O
+            "data-qm-stale-pager": A
           }, [
-            Ee("上一页", V - 1, V <= 0, "prev"),
+            ve("上一页", X - 1, X <= 0, "prev"),
             t.createElement("span", {
               className: "qm-set-stalepageinfo",
               key: "info",
-              "data-qm-stale-pageinfo": String(V + 1)
-            }, `第 ${V + 1} / ${Q} 页（共 ${Z.length} 条，每页 5 条）`),
-            Ee("下一页", V + 1, V >= Q - 1, "next")
+              "data-qm-stale-pageinfo": String(X + 1)
+            }, `第 ${X + 1} / ${V} 页（共 ${Z.length} 条，每页 5 条）`),
+            ve("下一页", X + 1, X >= V - 1, "next")
           ]));
         }
-        return ne;
-      }, te = Ae(
+        return ae;
+      }, ne = Ae(
         "blocking",
         `🔴 正在阻塞会话（${x.length} 条）`,
         "agent 正在等待这些问卷的作答结果；「释放」会唤醒对应会话继续运行。",
         x,
         "page"
-      ), D = Ae(
+      ), F = Ae(
         "residual",
         `⚪ 异常残留（${T.length} 条）`,
         "对应会话已不在等待（历史孤儿 / 已结束未收尾）；「清理残留」仅收尾状态，无副作用。",
         T,
         "resPage"
       );
-      te && s.push(...te), D && s.push(...D);
+      ne && s.push(...ne), F && s.push(...F);
     }
   }
   return t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
 }
-function Jc(t) {
+function Qc(t) {
   const { R: e, open: n, onClose: a } = t;
   if (!n) return null;
-  const r = Ve(), o = r && r.Modal, s = !t.tab, d = t.tab || "", i = co(d) ? "session" : "global", f = e.createElement(
+  const r = Xe(), o = r && r.Modal, s = !t.tab, d = t.tab || "", i = mo(d) ? "session" : "global", f = e.createElement(
     "div",
     { className: "qm-set-tabs", key: "tabs" },
-    sr.map((te) => e.createElement("button", {
-      key: te.key,
+    ir.map((ne) => e.createElement("button", {
+      key: ne.key,
       type: "button",
-      className: "qm-set-tab" + (!s && te.key === d ? " qm-set-tabon" : ""),
+      className: "qm-set-tab" + (!s && ne.key === d ? " qm-set-tabon" : ""),
       onClick: () => {
         try {
-          t.onTabChange && t.onTabChange(te.key);
+          t.onTabChange && t.onTabChange(ne.key);
         } catch {
         }
       }
-    }, te.label))
-  ), g = sr.filter((te) => te.key === d)[0] || sr[0], k = t.cfg && t.cfg.schedule || null, b = k && k.name ? String(k.name) : "默认参数", v = k ? "schedule" : "default", y = e.createElement("div", {
+    }, ne.label))
+  ), g = ir.filter((ne) => ne.key === d)[0] || ir[0], k = t.cfg && t.cfg.schedule || null, b = k && k.name ? String(k.name) : "默认参数", v = k ? "schedule" : "default", y = e.createElement("div", {
     className: "qm-set-runtime-wrap",
     key: "rtw",
     "data-qm-runtime-wrap": "1",
@@ -9930,17 +9957,17 @@ function Jc(t) {
     "data-qm-skeleton": "1",
     key: "skel",
     style: { padding: "8px 24px 20px" }
-  }, [0, 1, 2].map((te) => e.createElement("div", {
-    key: "sk" + te,
+  }, [0, 1, 2].map((ne) => e.createElement("div", {
+    key: "sk" + ne,
     style: {
       height: 44,
       marginBottom: 10,
       borderRadius: 8,
       background: "var(--app-fill-subtle, rgba(127,127,127,0.10))",
       animation: "qm-set-pulse 1.2s ease-in-out infinite",
-      animationDelay: te * 0.15 + "s"
+      animationDelay: ne * 0.15 + "s"
     }
-  }))) : null, T = s ? x : Gc(e, d, i, t.sessData, {
+  }))) : null, T = s ? x : Zc(e, d, i, t.sessData, {
     modelOptions: t.modelOptions,
     templateOptions: t.templateOptions,
     providerGroups: t.providerGroups
@@ -9969,7 +9996,7 @@ function Jc(t) {
         disabled: !!t.saving,
         title: "放弃未保存的修改，恢复到上一次保存的参数",
         onClick: () => {
-          oo(), q();
+          lo(), q();
         }
       }, "撤销") : null,
       // 保存按钮在「时间策略」页隐藏（2026-11-23）：
@@ -9985,7 +10012,7 @@ function Jc(t) {
         // 把当前值固化到目标作用域；只有请求进行中才禁用。
         disabled: !!t.saving,
         onClick: () => {
-          so();
+          io();
         }
       }, t.saving ? "保存中…" : "保存")
     ])
@@ -9993,7 +10020,7 @@ function Jc(t) {
     className: "qm-set-conflict",
     key: "cf",
     "data-qm-conflict": "1"
-  }, t.conflictNote) : null, Y = e.createElement("div", { className: "qm-set-scroll", key: "scroll" }, [
+  }, t.conflictNote) : null, R = e.createElement("div", { className: "qm-set-scroll", key: "scroll" }, [
     P,
     N,
     T,
@@ -10032,14 +10059,14 @@ function Jc(t) {
         className: "qm-set-btn qm-set-dcok",
         "data-qm-delconfirm-ok": "1",
         onClick: () => {
-          uc();
+          gc();
         }
       }, "确定删除")
     ])
   ]) : null, Ae = e.createElement("div", { className: "qm-set-wrap" }, [
     _,
     f,
-    Y,
+    R,
     I,
     Ie
   ]);
@@ -10097,7 +10124,7 @@ function Jc(t) {
     Ae
   ]);
 }
-function Zc(t) {
+function Vc(t) {
   try {
     const e = t && t.sender, n = ze().React;
     if (!n) return;
@@ -10105,31 +10132,31 @@ function Zc(t) {
       console.log("[question-modal] chat.sender.addPrefix unavailable — settings entry skipped");
       return;
     }
-    const a = n.createElement(Sc, {
+    const a = n.createElement(Nc, {
       R: n,
       onOpen: () => {
-        vc();
+        qc();
       }
     });
-    e.addPrefix(Ws, a, {
+    e.addPrefix(Hs, a, {
       id: "question-modal.settings-btn",
-      order: vs
-    }), console.log("[question-modal] settings entry registered (order " + vs + ")");
+      order: qs
+    }), console.log("[question-modal] settings entry registered (order " + qs + ")");
   } catch (e) {
     console.error("[question-modal] settings entry failed:", e);
   }
 }
-function Qc() {
-  const t = Yi();
+function Xc() {
+  const t = el();
   if (!t || typeof t.toolRender != "function") return !1;
   try {
-    return tl(), t.toolRender(Ws, cs, ic), console.log("[question-modal] registered via chat.toolRender for", cs), Zc(t), !0;
+    return al(), t.toolRender(Hs, ps, cc), console.log("[question-modal] registered via chat.toolRender for", ps), Vc(t), !0;
   } catch (e) {
     return console.error("[question-modal] toolRender failed:", e), !1;
   }
 }
 (function t(e) {
-  if (!Qc()) {
+  if (!Xc()) {
     if (e > 40) {
       console.warn("[question-modal] chat.toolRender never available");
       return;

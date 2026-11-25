@@ -3954,6 +3954,13 @@ def build_router() -> APIRouter:
                 "request_id": str(getattr(st, "request_id", "") or ""),
                 "session_id": str(getattr(st, "session_id", "") or ""),
                 "agent_id": str(getattr(st, "agent_id", "") or ""),
+                # 2026-11-25 boss 需求：清理卡片「打开会话」要在新标签页打开
+                # 宿主会话页 /chat/<chat UUID>。前端只有 session_id（非 UUID、
+                # 跨 agent 可能重复），这里用既有只读桥接解析出 chat UUID 一并返回；
+                # 解析不到留空，前端据此禁用按钮，绝不猜 URL。
+                "chat_id": _resolve_chat_id(
+                    "", str(getattr(st, "session_id", "") or ""),
+                    str(getattr(st, "agent_id", "") or "")),
                 "title": str(getattr(st, "title", "") or ""),
                 "mode": str(getattr(st, "mode", "") or ""),
                 # `idle_sec` 参与分组判定，必须是**未取整**的原值；

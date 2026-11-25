@@ -8203,6 +8203,25 @@ async function libRequest(
  *  为什么不复用 loadEffectiveConfigIntoSettings：那会把整份 config 重拉一遍， *  连带重置 draft 之外的一堆状态（keyTs/conflictNote 等），而这里只想刷新
  *  库列表。窄口径刷新不会误伤编辑中的草稿。
  */
+// 备份页瞬时提示：2026-11-25 boss 反馈「备份已创建…一直不消失，关 UI 也没用」。
+// 根因是提示写在模块级 cfgBackup.msg 里、是面板常驻行，没有任何清除路径。
+// 统一走这个 setter：写值 + 6 秒后自动清；关闭面板时也清（见 onClose）。
+let cfgBackupMsgTimer: any = null;
+function cfgBackupSetMsg(msg: string, kind: string): void {
+  const B = settingsState.cfgBackup;
+  B.msg = msg; B.msgKind = kind;
+  if (cfgBackupMsgTimer) { clearTimeout(cfgBackupMsgTimer); cfgBackupMsgTimer = null; }
+  if (msg) {
+    cfgBackupMsgTimer = setTimeout(() => {
+      if (settingsState.cfgBackup.msg === msg) {
+        settingsState.cfgBackup.msg = "";
+        settingsRenderPanel();
+      }
+      cfgBackupMsgTimer = null;
+    }, 6000);
+  }
+}
+
 // ═══════════════════ 配置备份 / 恢复（2026-11-25）═══════════════════
 async function cfgBackupRequest(
   path: string, method: string, body?: any,
@@ -8217,15 +8236,14 @@ async function cfgBackupRequest(
     const resp = await fetch(apiUrl("/question-modal/config" + path), opts);
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || (data && data.ok === false)) {
-      B.msg = String((data && (data.error || data.detail)) || ("HTTP " + resp.status));
-      B.msgKind = "error";
+      cfgBackupSetMsg(String((data && (data.error || data.detail)) || ("HTTP " + resp.status)), "error");
       return null;
     }
-    B.msg = ""; B.msgKind = "info";
+    // 刷新列表不碰消息：成功提示由调用方在刷新完成后设置，
+    // 若这里清空会把「备份已创建」立刻抹掉（boss 实测反馈）。
     return data;
   } catch (e: any) {
-    B.msg = "请求失败：" + (e && e.message ? e.message : String(e));
-    B.msgKind = "error";
+    cfgBackupSetMsg("请求失败：" + (e && e.message ? e.message : String(e)), "error");
     return null;
   // 🔴 2026-11-25 浏览器死机根因：请求函数内**同步**调用 settingsRenderPanel()
   // （=同步 ReactDOM.render）。备份页在渲染期触发 cfgBackupRefresh()，而这里
@@ -8252,13 +8270,11 @@ async function cfgBackupRefresh(force?: boolean): Promise<void> {
       settingsState.cfgBackup.dataDir = d.data_dir || "";
       settingsState.cfgBackup.loaded = true;
     } else {
-      settingsState.cfgBackup.msg = String(d.detail || ("HTTP " + resp.status));
-      settingsState.cfgBackup.msgKind = "error";
+      cfgBackupSetMsg(String(d.detail || ("HTTP " + resp.status)), "error");
       settingsState.cfgBackup.loaded = true;   // 失败也标记，避免无限重试卡死
     }
   } catch (e: any) {
-    settingsState.cfgBackup.msg = "加载备份列表失败：" + (e && e.message ? e.message : String(e));
-    settingsState.cfgBackup.msgKind = "error";
+    cfgBackupSetMsg("加载备份列表失败：" + (e && e.message ? e.message : String(e)), "error");
     settingsState.cfgBackup.loaded = true;
   } finally {
     settingsState.cfgBackup.busy = false;
@@ -8338,9 +8354,8 @@ function cfgBackupBody(R: any): any[] {
                     isDel ? "/backup" : "/restore",
                     isDel ? "DELETE" : "POST",
                     { name: nm });
-                  if (d) { B.msg = isDel ? ("已删除备份：" + nm)
-                      : ("已恢复 " + (d.restored || []).length + " 个配置文件");
-                    B.msgKind = "ok"; }
+                  if (d) { cfgBackupSetMsg(isDel ? ("已删除备份：" + nm)
+                      : ("已恢复 " + (d.restored || []).length + " 个配置文件"), "ok"); }
                   B.confirmName = ""; B.confirmKind = "";
                   await cfgBackupRefresh(true);
                 })(); },
@@ -8364,7 +8379,7 @@ function cfgBackupBody(R: any): any[] {
       onClick: () => { void (async () => {
         const label = "手动备份 " + new Date().toLocaleString();
         const d = await cfgBackupRequest("/backup", "POST", { label });
-        if (d) { B.msg = "备份已创建：" + d.name; B.msgKind = "ok"; }
+        if (d) { cfgBackupSetMsg("备份已创建：" + d.name, "ok"); }
         await cfgBackupRefresh(true);
       })(); },
     }, "＋ 立即备份"),
@@ -8382,7 +8397,7 @@ function cfgBackupBody(R: any): any[] {
           + new Date().toISOString().slice(0, 10) + ".json";
         a.click();
         try { URL.revokeObjectURL(a.href); } catch (_) { /* ignore */ }
-        B.msg = "配置已导出到本地文件"; B.msgKind = "ok";
+        cfgBackupSetMsg("配置已导出到本地文件", "ok");
         settingsRenderPanel();
       })(); },
     }, "导出到文件"),
@@ -8400,11 +8415,11 @@ function cfgBackupBody(R: any): any[] {
           if (!f) return;
           let payload: any;
           try { payload = JSON.parse(await f.text()); }
-          catch (_) { B.msg = "文件不是合法 JSON"; B.msgKind = "error";
+          catch (_) { cfgBackupSetMsg("文件不是合法 JSON", "error");
             settingsRenderPanel(); return; }
           const d = await cfgBackupRequest("/import", "POST", { payload });
-          if (d) { B.msg = "导入成功，已恢复 " + (d.restored || []).length
-              + " 个配置文件"; B.msgKind = "ok"; }
+          if (d) { cfgBackupSetMsg("导入成功，已恢复 " + (d.restored || []).length
+              + " 个配置文件", "ok"); }
           await cfgBackupRefresh(true);
         })(); },
       }),
@@ -9421,6 +9436,9 @@ function settingsRenderPanel(): void {
       }
       settingsState.visible = false;
       settingsState.saveMsg = "";
+      // 2026-11-25：备份页瞬时提示不能跨面板生命周期残留（boss 反馈
+      // 「关 UI 也不消失」）。关闭时清消息 + 撤销自动清除定时器。
+      cfgBackupSetMsg("", "info");
       settingsRenderPanel();
     },
     tab: settingsState.tab,
@@ -12622,6 +12640,27 @@ function settingsTabBody(
             meta("mode", "作答模式", r.mode || "-"),
           ]),
           R.createElement("div", { className: "qm-set-stalecardfoot", key: "f" }, [
+            // 2026-11-25 boss 需求：新标签页打开该阻塞会话页面。
+            // 后端扫描行已带 chat_id（session_id+agent_id 解析出的 chat UUID，
+            // 宿主会话页 URL = /chat/<uuid>）。解析不到时置灰并说明，绝不瞎猜 URL。
+            R.createElement("button", {
+              type: "button", className: "qm-set-mini", key: "openchat",
+              "data-qm-stale-openchat": r.tool_call_id,
+              disabled: !r.chat_id,
+              title: r.chat_id
+                ? "在新标签页打开该会话（/chat/" + r.chat_id + "）"
+                : "该记录解析不到会话 UUID，无法打开会话页",
+              onClick: () => {
+                if (!r.chat_id) return;
+                try {
+                  const url = location.origin + "/chat/" + encodeURIComponent(r.chat_id);
+                  const w = window.open(url, "_blank", "noopener,noreferrer");
+                  if (!w) toast("warning", "浏览器拦截了新标签页，请允许弹窗后重试");
+                } catch (e: any) {
+                  toast("error", "打开会话失败：" + (e && e.message ? e.message : String(e)));
+                }
+              },
+            }, "打开会话"),
             ...(isBlocking ? [
               R.createElement("button", {
                 type: "button", className: "qm-set-mini", key: "rel",
