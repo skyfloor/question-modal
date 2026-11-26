@@ -9397,11 +9397,11 @@ function Xc(t, e, n, a, r) {
       t.createElement("div", {
         key: "t",
         className: "qm-set-schednotetitle"
-      }, "子代理问卷（由 agent 触发的子代理会话生效）"),
+      }, "子代理问卷"),
       t.createElement("div", {
         key: "d",
         className: "qm-set-schednotedesc"
-      }, "当 worker 或其它主 agent 发起子代理会话处理工作时，其中的问卷使用「只用推荐」模式，由服务端自动作答并推进，不阻塞子代理任务。此行为固定不可配置，优先级高于全局、会话与时间策略。")
+      }, "子代理会话中的问卷固定「只用推荐」，服务端自动作答，不阻塞任务、不可配置。")
     ])), t.createElement("div", { className: "qm-set-tabbody", key: "tb" }, s);
   }
   if (o === "run" && y === "backup")
