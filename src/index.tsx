@@ -5085,6 +5085,35 @@ function AskUserCard(props: { data?: any }) {
   // callbacks can tell whether their question is still the one on screen.
   R.useEffect(() => { visStepRef.current = visStep; }, [visStep]);
 
+  /** US-004: push the capsule's model choice to THIS survey as a temporary
+   *  override, so the backend autopilot (mode=ai) drives the remaining
+   *  un-analysed questions with it instead of the run-params snapshot taken at
+   *  creation.  Card-scoped and ephemeral: writes SurveyState.model_override
+   *  only — never analysis_prefs.json, never another survey, and the next
+   *  survey still starts from the run-params model.
+   *
+   *  Returns true when the override is in effect on the backend.  On failure it
+   *  surfaces a visible toast and returns false so the caller can keep the
+   *  current question's bubble (the backend will still analyse with the OLD
+   *  model, so wiping the bubble would fork UI from what actually runs). */
+  const syncModelOverride = async (modelId: string): Promise<boolean> => {
+    try {
+      const resp = await fetch(apiUrl("/question-modal/survey-model-override"), {
+        method: "POST", headers: authHeaders(),
+        body: JSON.stringify({ tool_call_id: callId, model_id: modelId }),
+      });
+      const d = await resp.json().catch(() => ({}));
+      if (!resp.ok || !d || d.ok === false) {
+        toast("warning", "临时模型未同步，自动分析仍用原模型");
+        return false;
+      }
+      return true;
+    } catch (_) {
+      toast("warning", "临时模型未同步，自动分析仍用原模型");
+      return false;
+    }
+  };
+
   /** Ask the backend to analyse **the question currently on screen** with the
    *  chosen capsule model.
    *
@@ -7736,13 +7765,27 @@ function AskUserCard(props: { data?: any }) {
           tab: capTab, onTabChange: setCapTab,
           onChange: (id: string) => {
             applyPrefs({ modelId: id });
-            // A new model invalidates every cached recommendation: results were
-            // produced by a different model, so the card forgets them and the
-            // AI effect below re-analyses the question on screen.
-            setAnResult(null);
-            qResultsRef.current = {};
-            analysedRef.current = {};
-            setAnNonce((n: number) => n + 1);
+            // US-004: push the new model to THIS survey so the backend autopilot
+            // drives the remaining un-analysed questions with it (override beats
+            // the run-params snapshot).  Fire-and-forget: the capsule has already
+            // switched visually, so a slow/failing round-trip must not block the
+            // click — syncModelOverride toasts on failure.
+            void syncModelOverride(id).then((synced) => {
+              // A new model invalidates the recommendation ON SCREEN: it was
+              // produced by a different model, so this question re-analyses with
+              // the new one.  Only the current question is forgotten — already
+              // analysed questions keep their bubbles (boss 裁定：其余保留,
+              // 不重跑), and the AI effect below re-analyses the one on screen.
+              // On sync failure the backend still analyses with the OLD model, so
+              // we keep the current bubble too and avoid forking UI from backend.
+              if (synced) {
+                const qi = visStepRef.current;
+                delete qResultsRef.current[qi];
+                delete analysedRef.current[qi];
+                if (visStepRef.current === qi) setAnResult(null);
+                setAnNonce((n: number) => n + 1);
+              }
+            });
           },
         }),
         // US-003: 常驻「默认模板」胶囊已从 header 移除；模板选择收进「更多」
