@@ -5530,13 +5530,13 @@ class QuestionModalMiddleware(_MiddlewareBase):
                 _mode = "manual"
             # 记录「配置 mode」（覆盖前），供日志三字段对比。
             _configured_mode = _mode
-            # ★ 子代理会话：用子代理参数覆盖 mode（优先级最高，盖过时段/全局）。
-            # 只在拦截点覆盖，不进 resolve_effective —— 主代理路径零改动（R2）。
+            # ★ 子代理会话：mode 固定「只用推荐」（boss 2026-11-26 定稿：
+            #   子代理不允许其它模式）。不再读 subagent_prefs.mode —— 即使旧配置
+            #   存过 manual/ai，也一律 recommend，杜绝「UI 显示固定推荐、后端
+            #   实际按旧值跑」的分叉。其它参数（model/template/ctx/parallel）
+            #   仍从子代理参数快照读取。只在拦截点覆盖，不进 resolve_effective（R2）。
             if is_subagent:
-                _sa = _load_subagent_params()
-                _sa_mode = str(_sa.get("mode") or "recommend")
-                _mode = _sa_mode if _sa_mode in ("ai", "recommend", "manual") \
-                    else "recommend"
+                _mode = "recommend"
             # 诊断（2026-11-13；2026-11-26 补 is_subagent/配置 mode/生效 mode）：
             # 这条是"问卷秒被自动答完"与"子代理模式是否生效"两类故障的快速判据。
             # 每份问卷只打一次，不构成日志噪音。

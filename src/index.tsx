@@ -783,7 +783,7 @@ function injectStyles(): void {
       "border:1px solid var(--app-border,#e5e7eb);width:fit-content;max-width:100%}",
       ".qm-set-subtabs::-webkit-scrollbar{width:0;height:0;display:none}",
       ".qm-set-subtab{background:transparent;border:0;border-right:1px solid var(--app-border,#e5e7eb);",
-      "cursor:pointer;font-size:13px;line-height:1;padding:7px 12px;",
+      "cursor:pointer;font-size:12px;line-height:1;padding:7px 12px;",
       "color:var(--app-text-secondary,#64748b);white-space:nowrap;flex:0 0 auto;",
       "transition:all .15s}",
       ".qm-set-subtab:last-child{border-right:0}",
@@ -8405,19 +8405,15 @@ async function refreshSubagentParams(force?: boolean, keepMsg?: boolean): Promis
   try { settingsRenderPanel(); } catch (_) { /* panel closed */ }
 }
 
-/** 保存 UI 草稿的 5 个字段；按 ok / rejected 反馈，成功后回读对拍。 */
-async function saveSubagentParams(): Promise<void> {
+/** 保存子代理参数（2026-11-26 boss 裁定：不单独按钮，随外部「保存」一起触发）。
+ *  返回 null=成功；字符串=错误/拒绝信息，由 cfgSave 聚合进 saveMsg。
+ *  mode 固定只用推荐（boss 裁定：子代理不允许其它模式），不随 UI 变化。 */
+async function saveSubagentParamsWithSave(): Promise<string | null> {
   const p = settingsState.subagentParams;
-  if (!p) {
-    settingsState.subagentMsg = "参数尚未加载完成，请稍后再试";
-    settingsRenderPanel();
-    return;
-  }
-  settingsState.subagentMsg = "正在保存…";
-  settingsRenderPanel();
+  if (!p) return null;   // 未加载/未打开过该区块 → 不改子代理配置，不算失败
   try {
     const body = {
-      mode: String(p.mode || ""),
+      mode: "recommend",   // 固定只用推荐，不允许其它模式（boss 定稿）
       model_id: String(p.model_id || ""),
       template_id: String(p.template_id || ""),
       with_context: !!p.with_context,
@@ -8429,27 +8425,21 @@ async function saveSubagentParams(): Promise<void> {
     const d = await resp.json().catch(() => ({}));
     if (!resp.ok || !d || d.ok !== true) {
       const detail = (d && (d.detail || d.error)) || ("HTTP " + resp.status);
-      settingsState.subagentMsg = "保存失败：" + String(detail);
-      settingsRenderPanel();
-      return;
+      return "子代理参数保存失败：" + String(detail);
     }
-    // 后端按字段拒绝非法值：必须逐个显示，绝不静默丢掉（用户明确要求）。
     const rejected = Array.isArray(d.rejected) ? d.rejected : [];
-    let msg = "子代理参数已保存";
+    // 成功后回读，以后端落库值为准（防静默丢弃入参）。
+    await refreshSubagentParams(true, true);
     if (rejected.length) {
-      msg += "；被拒绝：" + rejected.map((r: any) =>
+      return "子代理参数被拒绝：" + rejected.map((r: any) =>
         r && typeof r === "object"
           ? (String(r.field || r.key || "?") + (r.reason ? "(" + String(r.reason) + ")" : ""))
           : String(r)).join("、");
     }
-    settingsState.subagentMsg = msg;
-    // 成功后回读：以后端落库值为准，不信任本地草稿（防静默丢弃入参）。
-    // keepMsg=true：别把上面拼好的 rejected 提示清掉（非法值必须可见）。
-    await refreshSubagentParams(true, true);
+    return null;
   } catch (e: any) {
-    settingsState.subagentMsg = "保存失败："
+    return "子代理参数保存失败："
       + (e && e.message ? e.message : String(e));
-    settingsRenderPanel();
   }
 }
 
@@ -9146,6 +9136,14 @@ async function cfgSave(): Promise<void> {
     //
     // 现在只需如实说「已保存」，具体保存到哪由 footer 的说明承担。
     settingsState.saveMsg = "已保存";
+    // 2026-11-26 boss 裁定：子代理参数并入默认参数页，随本次「保存」一起落库，
+    // 不再有独立保存按钮。失败/拒绝并入 saveMsg，用户一眼可见（不静默）。
+    void saveSubagentParamsWithSave().then((saErr) => {
+      if (saErr) {
+        settingsState.saveMsg = "已保存；" + saErr;
+        try { settingsRenderPanel(); } catch (_) {}
+      }
+    });
     void fetchEffectiveConfig(
       settingsState.chatId, true, settingsState.sessionId, settingsState.agentId,
     ).then((nd) => {
@@ -9798,10 +9796,9 @@ const SETTINGS_TABS: Array<{ key: string; label: string; hint: string }> = [
  *  否则用户升级后会落在一个不存在的分类上看到空白。
  */
 const RUN_SUBTABS: Array<{ key: string; label: string }> = [
-  { key: "default", label: "默认参数" },
-  // 2026-11-26 子代理模式：紧跟「默认参数」（boss 定稿，不得移到末尾）
-  { key: "subagent", label: "子代理" },
-  { key: "param-sets", label: "问卷参数组" },
+  // 2026-11-26 boss：子代理并入默认参数，不再单列页签；label 精简省位
+  { key: "default", label: "默认" },
+  { key: "param-sets", label: "问卷参数" },
   { key: "notify-profiles", label: "通知配置" },
   { key: "custom-api", label: "自定义 API" },
   { key: "behavior", label: "行为参数" },
@@ -9818,6 +9815,10 @@ const RUN_SUBTABS: Array<{ key: string; label: string }> = [
  */
 const RUN_SUB_ALIAS: Record<string, string> = {
   model: "behavior",
+  // 2026-11-26：子代理页签已并入默认参数，残留旧值归一回 default（防升级后空白）
+  subagent: "default",
+  // 旧 label 值（若历史草稿里存的是中文）同样归一
+  "问卷参数组": "param-sets",
 };
 
 /** Keys a per-session override may hold.
@@ -12287,48 +12288,43 @@ function settingsTabBody(
       explicitEmptyModel: cfgExplicitEmpty("model_id"),
       edit: cfgEdit,
     }));
-    return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
-  }
-  // ═══════════════════ 运行参数 › 子代理（2026-11-26）═══════════════════
-  //
-  // 子代理参数只在子代理会话生效、优先级最高（覆盖全局/会话/策略），
-  // 默认只用推荐 —— 所以这里是一份独立配置，不读 cfgValue，也不写 draft。
-  // 加载/保存都走各自端点，渲染期只用 setTimeout 脱离渲染栈触发加载。
-  if (tab === "run" && subKey === "subagent") {
+    // ═══════ 子代理参数（2026-11-26：并入默认参数，不单独页签）═══════
+    // 由 agent 触发的子代理会话（worker 或其它主 agent 发起）才生效，
+    // 优先级最高；mode 固定「只用推荐」，不允许切换（boss 定稿）。
+    // 与上面的默认参数共用面板底部的同一个「保存」按钮（cfgSave 内一并提交）。
     if (!settingsState.subagentLoaded && !settingsState.subagentParams) {
-      // 绝不在 render 期同步 fetch + render（备份页 2026-11-25 卡死根因）。
       setTimeout(() => { void refreshSubagentParams(); }, 0);
     }
     const sa = settingsState.subagentParams;
     const saSet = (k: string, v: any) => {
       if (!settingsState.subagentParams) return;
       (settingsState.subagentParams as any)[k] = v;
-      settingsState.subagentMsg = "";
       settingsRenderPanel();
     };
     bodyKids.push(R.createElement("div", {
-      key: "subagent", className: "qm-set-subagent", "data-qm-subagent-panel": "true",
+      key: "subagent-merged", className: "qm-set-subagent",
+      "data-qm-subagent-panel": "true",
+      style: { marginTop: 16, borderTop: "1px solid var(--app-border,#e5e7eb)",
+        paddingTop: 14 },
     }, [
       R.createElement("div", {
-        key: "note", className: "qm-set-schednote", "data-qm-runs-note": "subagent",
-      }, [
-        R.createElement("div", { key: "t", className: "qm-set-schednotetitle" },
-          "子代理参数"),
-        R.createElement("div", { key: "d", className: "qm-set-schednotedesc" },
-          "这些参数只在子代理会话生效，优先级高于全局、会话与时间策略配置。"
-          + "默认采用「只用推荐」，通常无需改动；改动仅影响由本插件发起的子代理会话。"),
-      ]),
+        key: "t", className: "qm-set-schednotetitle",
+      }, "子代理参数（由 agent 触发的子代理会话生效）"),
+      R.createElement("div", {
+        key: "d", className: "qm-set-schednotedesc",
+        style: { marginBottom: 10 },
+      }, "当 worker 或其它主 agent 发起子代理会话处理工作时，其中的问卷使用这份参数。"
+        + "优先级高于全局、会话与时间策略；答题模式固定「只用推荐」，服务端自动推进不阻塞子代理。"
+        + "随本页底部「保存」一并提交。"),
       setRow(R, "samode", "子代理答题模式",
-        R.createElement("select", {
-          key: "s", className: "qm-set-native", value: sa ? sa.mode : "recommend",
-          disabled: !sa, "data-qm-subagent-mode": "1",
-          onChange: (e: any) => saSet("mode", e && e.target ? e.target.value : "recommend"),
-        }, [
-          R.createElement("option", { key: "ai", value: "ai" }, "AI 自动分析"),
-          R.createElement("option", { key: "rec", value: "recommend" }, "只用推荐"),
-          R.createElement("option", { key: "man", value: "manual" }, "人工"),
-        ]),
-        "ai / recommend / manual；非法值会被后端拒绝并提示", "global", "global"),
+        R.createElement("span", {
+          key: "fixed", className: "qm-set-native",
+          "data-qm-subagent-mode": "1",
+          style: { display: "inline-block", padding: "6px 10px",
+            border: "1px solid var(--app-border,#e5e7eb)", borderRadius: 8,
+            color: "var(--app-text-secondary,#64748b)" },
+        }, "只用推荐（固定）"),
+        "子代理模式固定为只用推荐，不允许其它模式", "global", "global"),
       setRow(R, "samodel", "子代理模型",
         R.createElement("input", {
           key: "i", type: "text", className: "qm-set-input",
@@ -12361,27 +12357,6 @@ function settingsTabBody(
           onChange: (e: any) => saSet("parallel", !!(e && e.target && e.target.checked)),
         }),
         "逐题并发调用模型：更快但更耗额度", "global", "global"),
-      R.createElement("div", {
-        key: "msg", className: "qm-set-saveMsg", "data-qm-subagent-msg": "1",
-      }, settingsState.subagentMsg || ""),
-      R.createElement("div", { key: "acts", className: "qm-set-bakacts" }, [
-        R.createElement("button", {
-          key: "save", type: "button", className: "qm-set-btn qm-set-btnprimary",
-          "data-qm-subagent-save": "1", disabled: !sa,
-          onClick: () => { void saveSubagentParams(); },
-        }, "保存子代理参数"),
-        R.createElement("button", {
-          key: "reload", type: "button", className: "qm-set-btn",
-          "data-qm-subagent-reload": "1",
-          onClick: () => {
-            settingsState.subagentLoaded = false;
-            settingsState.subagentParams = null;
-            settingsState.subagentMsg = "";
-            // 清空后由渲染期的统一入口触发加载，避免此处再 setTimeout 双触发。
-            settingsRenderPanel();
-          },
-        }, "重新读取"),
-      ]),
     ]));
     return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
   }
