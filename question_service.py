@@ -425,6 +425,10 @@ _STATE_FIELD_DEFAULTS: dict = {
     "submitted_at": None, "orphan": False, "rev": 0, "submitted_by": "",
     "progress_at": 0.0, "watchdog_reason": "", "skip_reason": "",
     "released": False, "prefs": dict,
+    # US-003（2026-11-26）：卡片模型胶囊临时覆盖。放进这张表后，`get_survey()`
+    # 会自动为跨代际旧实例补齐 ""（无覆盖），无需在每个读取点写 getattr。
+    # 注意：登记≠持久化——真持久化由 to_json/from_json 显式字段保证（三者已全改）。
+    "model_override": "",
     # P0-5（2026-11-15）：在飞分析标记。放进这张表后，
     # `get_survey()` 会自动为跨代际旧实例补齐，无需在每个读取点写 getattr。
     "inflight_at": 0.0,
@@ -490,6 +494,20 @@ class SurveyState:
     # 而 `resolve_effective` 每次都读文件、还要反查 chat UUID。存快照让推进循环
     # 与"用户当时看到的设置"严格一致 —— 用户中途改设置不该让正在跑的问卷换模型。
     prefs: dict = field(default_factory=dict)
+    # ── 卡片模型胶囊临时覆盖（US-003，2026-11-26）──────────────────
+    #
+    # 用户在卡片上切模型胶囊时，前端回写到这里，仅覆盖**当前卡片本次**的
+    # 自动分析（mode=ai 服务端推进），优先于上面的 `prefs.model_id` 快照。
+    #
+    # 为什么单独存而不是写进 prefs：prefs 是「问卷创建时的运行参数快照」，
+    # 语义是「与用户当时看到的设置一致、中途不被后台改配置扰动」；而胶囊是
+    # **用户显式、主动的临时覆盖**，二者语义不同，不该混用。写 prefs 还会
+    # 破坏「中途改设置不影响在跑问卷」的保护。
+    #
+    # 生命周期：仅当前问卷有效。新问卷的 model_override 从 "" 起算，自动回落
+    # 到 prefs.model_id 快照（下次触发卡片仍是运行参数配置的内容）。
+    # 空串 = 无覆盖。跨代际旧实例无此字段 → 读取处用 getattr 兜底（同 prefs 坑）。
+    model_override: str = ""
     # ★ 关键：Future 是否**真的**被 resolve 过。
     # 不能用 `status == "submitted"` 判幂等 —— `apply_action("submit")` 会先把
     # status 置成 submitted（前端点提交那一刻），此后 release_survey 若拿它当
@@ -538,6 +556,9 @@ class SurveyState:
             "watchdog_reason": self.watchdog_reason,
             "skip_reason": self.skip_reason,
             "released": self.released,
+            # US-003：卡片模型胶囊临时覆盖。显式序列化才真持久化
+            # （DEFAULTS 登记只负责给跨代际旧实例补默认，不等于持久化）。
+            "model_override": self.model_override,
         }
 
     @classmethod
@@ -563,6 +584,8 @@ class SurveyState:
             watchdog_reason=str(raw.get("watchdog_reason") or ""),
             skip_reason=str(raw.get("skip_reason") or ""),
             released=bool(raw.get("released")),
+            # US-003：卡片模型胶囊临时覆盖。空串 = 无覆盖，回落 prefs.model_id。
+            model_override=str(raw.get("model_override") or ""),
             orphan=True,        # 从盘恢复 ⇒ Future 已死
         )
 
@@ -1276,8 +1299,10 @@ class QuestionService:
                 # 与 plugin.py 的 `analyze-request: ... via=analyze-http` 对照：
                 # 这里是**后端 runner 自己**发起的分析。同一 tool_call_id + 同一题
                 # 若同时出现两行（via=runner 和 via=analyze-http），就是重复分析。
-                logger.info("analyze-request: tcid=%s q=%s (via=runner)",
-                            tool_call_id[:24], real_idx)
+                logger.info("analyze-request: tcid=%s q=%s model=%s (via=runner)",
+                            tool_call_id[:24], real_idx,
+                            (str(getattr(st, "model_override", "") or "")
+                             or str(_prefs.get("model_id") or "") or "default")[:24])
                 # P0-5：标记「分析在飞」。巡检看到它就知道模型正在工作，
                 # 不把慢模型误判成循环卡死（2026-11-07/08 四例事故）。
                 # 用 try 包住：跨代际旧实例可能没有该属性（见 :1130 同类坑）。
@@ -1286,10 +1311,14 @@ class QuestionService:
                 except Exception:  # noqa: BLE001
                     pass
                 try:
+                    # US-003：模型优先级 = 卡片胶囊临时覆盖 > 运行参数快照 > 空(宿主 active model)。
+                    # getattr 兜底防跨代际旧实例无 model_override 字段（同上面 prefs 的坑）。
+                    _model_id = (str(getattr(st, "model_override", "") or "")
+                                 or str(_prefs.get("model_id") or ""))
                     res = await _load_analysis_engine().analyze_survey(
                         questions=st.questions,
                         title=st.title or "",
-                        model_id=str(_prefs.get("model_id") or ""),
+                        model_id=_model_id,
                         with_context=bool(_prefs.get("with_context")),
                         session_id=st.session_id,
                         agent_id=st.agent_id,

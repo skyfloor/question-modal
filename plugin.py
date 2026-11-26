@@ -3093,6 +3093,17 @@ class TemplateBody(BaseModel):
     user: str = Field("", description="Per-question user-prompt assembly template")
 
 
+class SurveyModelOverrideBody(BaseModel):
+    """卡片模型胶囊临时覆盖（US-003）。
+
+    ``tool_call_id`` 定位当前卡片问卷；``model_id`` 为空串表示清除覆盖，
+    回落到该问卷 prefs.model_id 运行参数快照。仅写当前问卷 state，不碰
+    analysis_prefs.json / 运行参数 / 其它问卷。
+    """
+    tool_call_id: str = Field("", description="卡片唯一标识（定位 SurveyState）")
+    model_id: str = Field("", description="'<provider>:<model>'；空串=清除覆盖")
+
+
 class CancelAnalysisRequest(BaseModel):
     """Identifies the analysis to stop (tool_call_id preferred)."""
     tool_call_id: str = Field("", description="Tool call ID")
@@ -3791,6 +3802,49 @@ def build_router() -> APIRouter:
         #   · /survey-action{release} → 显式放弃，按 skip 语义释放（见上面分支）
         return {"ok": True, "accepted": True, "reason": "",
                 "state": st.to_json()}
+
+    @router.post("/survey-model-override")
+    async def post_survey_model_override(body: SurveyModelOverrideBody):
+        """Set the card's temporary model override for one running survey (US-003).
+
+        卡片切模型胶囊后前端回写到这里：仅覆盖**当前卡片本次**的自动分析
+        （mode=ai 服务端推进），优先于问卷创建时的运行参数快照
+        （`SurveyState.prefs.model_id`）。只写目标问卷 state，不碰
+        analysis_prefs.json / 运行参数 / 其它问卷。
+
+        语义（契约 v1.1）：
+          · ``model_id`` 空串 = 清除覆盖，回落 prefs.model_id 快照。
+          · 仅对**未分析的题**生效；对已在飞的那次分析调用不生效（其 model_id
+            已在调用启动时确定），也不重跑任何已分析题。
+          · 终态（submitted）问卷：定位成功、写入覆盖，但返回
+            ``accepted=false + reason='already_submitted'``（无未分析题，覆盖
+            无实际效果；与 /survey-action 终态守卫语义统一，写入仍幂等友好）。
+        """
+        tool_call_id = str(body.tool_call_id or "")
+        if not tool_call_id:
+            raise HTTPException(status_code=400, detail="tool_call_id required")
+        svc = get_question_service()
+        st = svc.get_survey(tool_call_id)
+        if st is None:
+            raise HTTPException(status_code=404, detail="Survey state not found")
+
+        override = str(body.model_id or "")
+        # 终态问卷：写入覆盖（幂等），但明确告知前端「无未分析题、覆盖无实际效果」。
+        terminal = getattr(st, "status", "") == "submitted"
+        st.model_override = override
+        svc.upsert_survey(st)
+
+        # effective_model_id 按 override 优先口径：override 非空则等于它，
+        # 否则回落该问卷 prefs.model_id 快照（prefs 亦空则空 → runner 用宿主 active model）。
+        effective = override or str(getattr(st, "prefs", None) or {}).get("model_id") or ""
+        return {
+            "ok": True,
+            "accepted": not terminal,
+            "reason": "already_submitted" if terminal else "",
+            "tool_call_id": tool_call_id,
+            "model_override": override,
+            "effective_model_id": effective,
+        }
 
     @router.post("/survey-shadow")
     async def post_survey_shadow(body: dict):
