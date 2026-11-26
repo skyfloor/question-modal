@@ -3836,7 +3836,7 @@ def build_router() -> APIRouter:
 
         # effective_model_id 按 override 优先口径：override 非空则等于它，
         # 否则回落该问卷 prefs.model_id 快照（prefs 亦空则空 → runner 用宿主 active model）。
-        effective = override or str(getattr(st, "prefs", None) or {}).get("model_id") or ""
+        effective = override or (getattr(st, "prefs", None) or {}).get("model_id") or ""
         return {
             "ok": True,
             "accepted": not terminal,
