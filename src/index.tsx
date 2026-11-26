@@ -8187,17 +8187,6 @@ const settingsState: {
     items: any[]; dataDir: string; busy: boolean; msg: string; msgKind: string;
     confirmName: string; loaded: boolean; confirmKind: string;
   };
-  /** 子代理参数（2026-11-26）：只在子代理会话生效，优先级最高。
-   *  读 GET /subagent-params、写 POST /subagent-params，两个端点都是 merge 语义。
-   *  null = 尚未取到（与内置默认 mode=recommend 的「已取到」区分）。 */
-  subagentParams: {
-    mode: string; model_id: string; template_id: string;
-    with_context: boolean; parallel: boolean;
-  } | null;
-  /** GET 是否已落地（失败也置 true，避免渲染期无限重试）。 */
-  subagentLoaded: boolean;
-  /** 保存/加载的可见反馈（含后端 rejected 的非法字段原因）。 */
-  subagentMsg: string;
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
   sessData: null, cfg: null, cfgError: "", chatId: "",
@@ -8220,7 +8209,6 @@ const settingsState: {
   delConfirm: null,
   cfgBackup: { items: [], dataDir: "", busy: false, msg: "", msgKind: "info",
     confirmName: "", loaded: false, confirmKind: "" },
-  subagentParams: null, subagentLoaded: false, subagentMsg: "",
 };
 let settingsPanelRoot: any = null;
 
@@ -8354,92 +8342,6 @@ async function cfgBackupRefresh(force?: boolean): Promise<void> {
     settingsState.cfgBackup.busy = false;
     // 数据已落地，此刻重渲染一次是安全的：loaded=true 使渲染期不再触发刷新。
     settingsRenderPanel();
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════════
-// 子代理参数（2026-11-26）
-// ══════════════════════════════════════════════════════════════════════
-//
-// 与备份页同构的「请求函数不自己重渲染」纪律：本面板在 render 期用
-// setTimeout 触发 refreshSubagentParams；若请求函数内同步 render，会再触发
-// 渲染期加载 → 无限递归 → 浏览器卡死（2026-11-25 备份页事故原样规避）。
-// 因此这两个函数只改 state + 在最后单独重渲染一次，加载触发权在调用方。
-
-/** 加载中标志（模块级，跨重绘持久）：防渲染期自动加载与 reload 按钮并发。 */
-let _subagentBusy = false;
-
-/** 渲染期之外的加载入口；force=true 时忽略 loaded（保存后回读对拍用）。
- *  keepMsg=true 时不清空提示 —— 保存后回读必须保留「rejected 字段」文案。 */
-async function refreshSubagentParams(force?: boolean, keepMsg?: boolean): Promise<void> {
-  if (_subagentBusy) return;
-  if (!force && settingsState.subagentLoaded) return;
-  _subagentBusy = true;
-  try {
-    const resp = await fetch(apiUrl("/question-modal/subagent-params"), {
-      method: "GET", headers: authHeaders(),
-    });
-    const d = await resp.json().catch(() => ({}));
-    if (resp.ok && d && d.ok === true && d.params && typeof d.params === "object") {
-      settingsState.subagentParams = {
-        mode: String(d.params.mode || "recommend"),
-        model_id: String(d.params.model_id || ""),
-        template_id: String(d.params.template_id || ""),
-        with_context: d.params.with_context === true,
-        parallel: d.params.parallel === true,
-      };
-      if (!keepMsg) settingsState.subagentMsg = "";
-    } else {
-      const detail = (d && (d.detail || d.error)) || ("HTTP " + resp.status);
-      settingsState.subagentMsg = "读取子代理参数失败：" + String(detail);
-    }
-    // 失败也置 loaded：渲染期不再自动重试，用户可点「重新读取」。
-    settingsState.subagentLoaded = true;
-  } catch (e: any) {
-    settingsState.subagentMsg = "读取子代理参数失败："
-      + (e && e.message ? e.message : String(e));
-    settingsState.subagentLoaded = true;
-  } finally {
-    _subagentBusy = false;
-  }
-  try { settingsRenderPanel(); } catch (_) { /* panel closed */ }
-}
-
-/** 保存子代理参数（2026-11-26 boss 裁定：不单独按钮，随外部「保存」一起触发）。
- *  返回 null=成功；字符串=错误/拒绝信息，由 cfgSave 聚合进 saveMsg。
- *  mode 固定只用推荐（boss 裁定：子代理不允许其它模式），不随 UI 变化。 */
-async function saveSubagentParamsWithSave(): Promise<string | null> {
-  const p = settingsState.subagentParams;
-  if (!p) return null;   // 未加载/未打开过该区块 → 不改子代理配置，不算失败
-  try {
-    const body = {
-      mode: "recommend",   // 固定只用推荐，不允许其它模式（boss 定稿）
-      model_id: String(p.model_id || ""),
-      template_id: String(p.template_id || ""),
-      with_context: !!p.with_context,
-      parallel: !!p.parallel,
-    };
-    const resp = await fetch(apiUrl("/question-modal/subagent-params"), {
-      method: "POST", headers: authHeaders(), body: JSON.stringify(body),
-    });
-    const d = await resp.json().catch(() => ({}));
-    if (!resp.ok || !d || d.ok !== true) {
-      const detail = (d && (d.detail || d.error)) || ("HTTP " + resp.status);
-      return "子代理参数保存失败：" + String(detail);
-    }
-    const rejected = Array.isArray(d.rejected) ? d.rejected : [];
-    // 成功后回读，以后端落库值为准（防静默丢弃入参）。
-    await refreshSubagentParams(true, true);
-    if (rejected.length) {
-      return "子代理参数被拒绝：" + rejected.map((r: any) =>
-        r && typeof r === "object"
-          ? (String(r.field || r.key || "?") + (r.reason ? "(" + String(r.reason) + ")" : ""))
-          : String(r)).join("、");
-    }
-    return null;
-  } catch (e: any) {
-    return "子代理参数保存失败："
-      + (e && e.message ? e.message : String(e));
   }
 }
 
@@ -9136,14 +9038,6 @@ async function cfgSave(): Promise<void> {
     //
     // 现在只需如实说「已保存」，具体保存到哪由 footer 的说明承担。
     settingsState.saveMsg = "已保存";
-    // 2026-11-26 boss 裁定：子代理参数并入默认参数页，随本次「保存」一起落库，
-    // 不再有独立保存按钮。失败/拒绝并入 saveMsg，用户一眼可见（不静默）。
-    void saveSubagentParamsWithSave().then((saErr) => {
-      if (saErr) {
-        settingsState.saveMsg = "已保存；" + saErr;
-        try { settingsRenderPanel(); } catch (_) {}
-      }
-    });
     void fetchEffectiveConfig(
       settingsState.chatId, true, settingsState.sessionId, settingsState.agentId,
     ).then((nd) => {
@@ -12288,75 +12182,24 @@ function settingsTabBody(
       explicitEmptyModel: cfgExplicitEmpty("model_id"),
       edit: cfgEdit,
     }));
-    // ═══════ 子代理参数（2026-11-26：并入默认参数，不单独页签）═══════
+    // ═══════ 子代理说明（2026-11-26：并入默认参数，不单独页签）═══════
     // 由 agent 触发的子代理会话（worker 或其它主 agent 发起）才生效，
-    // 优先级最高；mode 固定「只用推荐」，不允许切换（boss 定稿）。
-    // 与上面的默认参数共用面板底部的同一个「保存」按钮（cfgSave 内一并提交）。
-    if (!settingsState.subagentLoaded && !settingsState.subagentParams) {
-      setTimeout(() => { void refreshSubagentParams(); }, 0);
-    }
-    const sa = settingsState.subagentParams;
-    const saSet = (k: string, v: any) => {
-      if (!settingsState.subagentParams) return;
-      (settingsState.subagentParams as any)[k] = v;
-      settingsRenderPanel();
-    };
+    // 答题模式固定「只用推荐」，服务端自动推进不阻塞子代理。
+    // boss 2026-11-26 裁定：子代理不允许其它模式，故无可配置项 —— 5 项控件全部移除，
+    // 仅保留一段说明。文案待 boss 确认后定稿（当前为过渡文案）。
     bodyKids.push(R.createElement("div", {
-      key: "subagent-merged", className: "qm-set-subagent",
+      key: "subagent-note", className: "qm-set-subagent",
       "data-qm-subagent-panel": "true",
       style: { marginTop: 16, borderTop: "1px solid var(--app-border,#e5e7eb)",
         paddingTop: 14 },
     }, [
       R.createElement("div", {
         key: "t", className: "qm-set-schednotetitle",
-      }, "子代理参数（由 agent 触发的子代理会话生效）"),
+      }, "子代理问卷（由 agent 触发的子代理会话生效）"),
       R.createElement("div", {
         key: "d", className: "qm-set-schednotedesc",
-        style: { marginBottom: 10 },
-      }, "当 worker 或其它主 agent 发起子代理会话处理工作时，其中的问卷使用这份参数。"
-        + "优先级高于全局、会话与时间策略；答题模式固定「只用推荐」，服务端自动推进不阻塞子代理。"
-        + "随本页底部「保存」一并提交。"),
-      setRow(R, "samode", "子代理答题模式",
-        R.createElement("span", {
-          key: "fixed", className: "qm-set-native",
-          "data-qm-subagent-mode": "1",
-          style: { display: "inline-block", padding: "6px 10px",
-            border: "1px solid var(--app-border,#e5e7eb)", borderRadius: 8,
-            color: "var(--app-text-secondary,#64748b)" },
-        }, "只用推荐（固定）"),
-        "子代理模式固定为只用推荐，不允许其它模式", "global", "global"),
-      setRow(R, "samodel", "子代理模型",
-        R.createElement("input", {
-          key: "i", type: "text", className: "qm-set-input",
-          value: sa ? sa.model_id : "", disabled: !sa,
-          placeholder: "留空 = 跟随当前会话模型",
-          "data-qm-subagent-model": "1",
-          onChange: (e: any) => saSet("model_id", e && e.target ? e.target.value : ""),
-        }),
-        "留空时由后端自动解析子代理会话的最终模型", "global", "global"),
-      setRow(R, "satpl", "子代理模板",
-        R.createElement("input", {
-          key: "i", type: "text", className: "qm-set-input",
-          value: sa ? sa.template_id : "", disabled: !sa,
-          placeholder: "留空 = 使用默认模板",
-          "data-qm-subagent-template": "1",
-          onChange: (e: any) => saSet("template_id", e && e.target ? e.target.value : ""),
-        }),
-        "填写模板 id；留空使用默认六步思维链", "global", "global"),
-      setRow(R, "sactx", "携带上下文",
-        R.createElement("input", {
-          key: "c", type: "checkbox", checked: !!(sa && sa.with_context), disabled: !sa,
-          "data-qm-subagent-context": "1",
-          onChange: (e: any) => saSet("with_context", !!(e && e.target && e.target.checked)),
-        }),
-        "子代理执行时是否携带当前问卷上下文", "global", "global"),
-      setRow(R, "sapar", "并行处理",
-        R.createElement("input", {
-          key: "p", type: "checkbox", checked: !!(sa && sa.parallel), disabled: !sa,
-          "data-qm-subagent-parallel": "1",
-          onChange: (e: any) => saSet("parallel", !!(e && e.target && e.target.checked)),
-        }),
-        "逐题并发调用模型：更快但更耗额度", "global", "global"),
+      }, "当 worker 或其它主 agent 发起子代理会话处理工作时，其中的问卷使用「只用推荐」模式，"
+        + "由服务端自动作答并推进，不阻塞子代理任务。此行为固定不可配置，优先级高于全局、会话与时间策略。"),
     ]));
     return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
   }
