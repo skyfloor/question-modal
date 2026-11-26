@@ -12183,10 +12183,7 @@ function settingsTabBody(
       edit: cfgEdit,
     }));
     // ═══════ 子代理说明（2026-11-26：并入默认参数，不单独页签）═══════
-    // 由 agent 触发的子代理会话（worker 或其它主 agent 发起）才生效，
-    // 答题模式固定「只用推荐」，服务端自动推进不阻塞子代理。
-    // boss 2026-11-26 裁定：子代理不允许其它模式，故无可配置项 —— 5 项控件全部移除，
-    // 仅保留一段说明。文案待 boss 确认后定稿（当前为过渡文案）。
+    // 子代理不允许其它模式、无可配置项，故只保留一段说明文案。
     bodyKids.push(R.createElement("div", {
       key: "subagent-note", className: "qm-set-subagent",
       "data-qm-subagent-panel": "true",
