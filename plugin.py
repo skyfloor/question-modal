@@ -359,6 +359,73 @@ def _save_prefs_locked(patch: dict) -> dict:
     return out
 
 
+# ── 子代理模式运行参数（2026-11-26，full 档，契约 v1.2）──────────────
+# 独立文件 subagent_prefs.json（外置目录，已登记 qm_storage.DATA_FILES）。
+# 只在子代理会话生效、优先级最高；主代理会话完全不读这一层。
+_SUBAGENT_PREFS_FILE = _store.MigrationPath("subagent_prefs.json")
+_SUBAGENT_PARAM_KEYS = (
+    "mode", "model_id", "template_id", "with_context", "parallel",
+)
+_SUBAGENT_DEFAULTS: dict[str, Any] = {
+    "mode": "recommend",   # boss 定稿：只用推荐，服务端自答不卡死
+    "model_id": "",
+    "template_id": "",
+    "with_context": False,
+    "parallel": False,
+}
+
+
+def _load_subagent_params() -> dict:
+    """读子代理参数；文件缺失/损坏一律回内置默认，绝不写空值覆盖。"""
+    out = dict(_SUBAGENT_DEFAULTS)
+    try:
+        if _SUBAGENT_PREFS_FILE.is_file():
+            data = json.loads(_SUBAGENT_PREFS_FILE.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                for k in _SUBAGENT_PARAM_KEYS:
+                    if k in data:
+                        out[k] = data[k]
+    except Exception:  # noqa: BLE001 — 配置损坏不能挡住问卷
+        logger.warning("question_modal: could not read subagent params",
+                       exc_info=True)
+    return out
+
+
+def _save_subagent_params(patch: Any) -> dict:
+    """merge 写入子代理参数（参数化 save 变体，R5）。
+
+    复用 _save_prefs_locked 的同一套：sanitize_settings 校验（白名单拒绝
+    非法值）+ _PREFS_LOCK 串行 + 原子 replace + __rejected__ 回传。
+    仅目标文件从 analysis_prefs.json 换成 subagent_prefs.json。
+    """
+    with _PREFS_LOCK:
+        cur = _load_subagent_params()
+        clean, rejected = sanitize_settings(patch)
+        # 只接受子代理参数键，其它一律拒绝（sanitize 已过滤未知键，这里
+        # 再挡掉 SETTINGS_SCHEMA 中不属于子代理参数的键，避免混装）。
+        clean = {k: v for k, v in clean.items() if k in _SUBAGENT_PARAM_KEYS}
+        extra = [k for k in (patch or {})
+                 if k in SETTINGS_SCHEMA and k not in _SUBAGENT_PARAM_KEYS]
+        for k in extra:
+            rejected.append({"key": k, "reason": "not a subagent param"})
+        cur.update(clean)
+        # ★ v1.3（boss 定稿）：子代理模式固定「只用推荐」，不允许其它模式。
+        #   即使调用方传 ai/manual 也强制写 recommend，杜绝 UI/后端/存储三方分叉。
+        cur["mode"] = "recommend"
+        cur["updated_at"] = time.time()
+        try:
+            tmp = _SUBAGENT_PREFS_FILE.parent / (
+                f"{_SUBAGENT_PREFS_FILE.name}.{os.getpid()}.{time.time_ns()}.tmp")
+            tmp.write_text(json.dumps(cur, ensure_ascii=False), encoding="utf-8")
+            tmp.replace(_SUBAGENT_PREFS_FILE)
+        except Exception:  # noqa: BLE001
+            logger.warning("question_modal: could not persist subagent params",
+                           exc_info=True)
+        out = dict(cur)
+        out["__rejected__"] = rejected
+        return out
+
+
 # ── Cache files (diagnostics tab) ───────────────────────────────────────
 # The front-end bundle is injected at runtime, so seeing a new build normally
 # means Ctrl+Shift+R.  These files are the plugin-side state that survives it;
@@ -4410,6 +4477,19 @@ def build_router() -> APIRouter:
         rejected = saved.pop("__rejected__", []) or []
         return {"ok": not rejected, "prefs": saved, "rejected": rejected}
 
+    # ── 子代理模式参数（2026-11-26 full 档，契约 v1.2）────────────────
+    @router.get("/subagent-params")
+    async def get_subagent_params() -> dict:
+        """读子代理参数（独立文件 subagent_prefs.json）。"""
+        return {"ok": True, "params": _load_subagent_params()}
+
+    @router.post("/subagent-params")
+    async def post_subagent_params(body: PrefsRequest) -> dict:
+        """写子代理参数（merge）。沿用 /prefs 的 ok/rejected 语义。"""
+        saved = _save_subagent_params(_prefs_payload(body))
+        rejected = saved.pop("__rejected__", []) or []
+        return {"ok": not rejected, "params": saved, "rejected": rejected}
+
     # ── Effective settings (the ONLY read path for cards + settings UI) ──
     @router.get("/effective-config")
     async def get_effective_config(
@@ -5417,6 +5497,13 @@ class QuestionModalMiddleware(_MiddlewareBase):
         user_id = str(request_context.get("user_id", "") or "")
         channel = str(request_context.get("channel", "") or "")
 
+        # ★ 子代理会话识别（2026-11-26 full 档，契约 v1.2 §4.3 / R2）
+        # 主判据 = _spawn_subagent 显式标志（fork 路径也带，sub- 前缀会被
+        # fork_session_id 覆盖，故前缀只能兜底）；agent_id 主/子同为 default，
+        # 不做判据。判据结果在此算出，mode/prefs/source 全部据此分支。
+        _spawn_flag = request_context.get("_spawn_subagent")
+        is_subagent = (_spawn_flag is True) or session_id.startswith("sub-")
+
         svc = get_question_service()
 
         # ★ 必须把当前生效的 mode 一起传下去（2026-11-07 真机抓出的缺陷）。
@@ -5442,18 +5529,26 @@ class QuestionModalMiddleware(_MiddlewareBase):
             # 留着会让后来者以为还有会话层。直接删掉。
             _eff = resolve_effective(_chat_id).get("mode") if _chat_id else None
             _mode = str(_eff or "manual")
-            # 诊断（2026-11-13）：mode 解析结果必须可见，否则"问卷秒被自动答完"
-            # 无法区分是「配置读错」还是「配置本身如此」。
-            # 保留为 INFO：这条是"问卷被秒自动答完"类故障的唯一快速判据
-            # （2026-11-13 实测：正是靠它一眼区分"配置读错"与"配置本身如此"）。
-            # 每份问卷只打一次，不构成日志噪音。
-            logger.info(
-                "survey-mode resolve: session=%s agent=%s chat=%s eff=%r -> %s",
-                session_id[:12] or "-", agent_id or "-",
-                _chat_id[:8] or "-", _eff, _mode,
-            )
             if _mode not in ("ai", "recommend", "manual"):
                 _mode = "manual"
+            # 记录「配置 mode」（覆盖前），供日志三字段对比。
+            _configured_mode = _mode
+            # ★ 子代理会话：mode 固定「只用推荐」（boss 2026-11-26 定稿：
+            #   子代理不允许其它模式）。不再读 subagent_prefs.mode —— 即使旧配置
+            #   存过 manual/ai，也一律 recommend，杜绝「UI 显示固定推荐、后端
+            #   实际按旧值跑」的分叉。其它参数（model/template/ctx/parallel）
+            #   仍从子代理参数快照读取。只在拦截点覆盖，不进 resolve_effective（R2）。
+            if is_subagent:
+                _mode = "recommend"
+            # 诊断（2026-11-13；2026-11-26 补 is_subagent/配置 mode/生效 mode）：
+            # 这条是"问卷秒被自动答完"与"子代理模式是否生效"两类故障的快速判据。
+            # 每份问卷只打一次，不构成日志噪音。
+            logger.info(
+                "survey-mode resolve: session=%s agent=%s chat=%s "
+                "is_subagent=%s configured=%r eff=%r -> %s",
+                session_id[:12] or "-", agent_id or "-",
+                _chat_id[:8] or "-", is_subagent, _configured_mode, _eff, _mode,
+            )
         except Exception:  # noqa: BLE001 — 取不到就用保守默认，绝不阻挡问卷
             logger.warning("could not resolve survey mode", exc_info=True)
             _mode = "manual"
@@ -5466,7 +5561,9 @@ class QuestionModalMiddleware(_MiddlewareBase):
         # 会让正在跑的问卷**中途换模型** —— 一道题用一个模型，结果不可比。
         _prefs: dict = {}
         try:
-            _cfg = resolve_effective(_chat_id) if _chat_id else {}
+            # ★ 子代理会话用子代理参数组装快照（与主代理 resolve_effective 隔离）。
+            _cfg = _load_subagent_params() if is_subagent else (
+                resolve_effective(_chat_id) if _chat_id else {})
             _prefs = {
                 "model_id": str(_cfg.get("model_id") or ""),
                 "with_context": bool(_cfg.get("with_context")),
@@ -5475,6 +5572,9 @@ class QuestionModalMiddleware(_MiddlewareBase):
             }
         except Exception:  # noqa: BLE001 — 取不到就用默认，绝不阻挡问卷
             logger.warning("could not resolve survey prefs", exc_info=True)
+
+        # ★ 来源标识（R3）：子代理问卷传 source='subagent'，主代理传空串。
+        _source = "subagent" if is_subagent else ""
 
         pending = await svc.create(
             session_id=session_id,
@@ -5486,6 +5586,7 @@ class QuestionModalMiddleware(_MiddlewareBase):
             tool_call_id=str(getattr(tool_call, "id", "") or ""),
             mode=_mode,
             prefs=_prefs,
+            source=_source,
         )
 
         # Remember the question list too, so a reloaded card can address the

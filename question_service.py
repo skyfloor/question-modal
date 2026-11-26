@@ -429,6 +429,9 @@ _STATE_FIELD_DEFAULTS: dict = {
     # 会自动为跨代际旧实例补齐 ""（无覆盖），无需在每个读取点写 getattr。
     # 注意：登记≠持久化——真持久化由 to_json/from_json 显式字段保证（三者已全改）。
     "model_override": "",
+    # 2026-11-26 子代理模式：问卷来源标识。'subagent'=子代理会话发起，''=主代理。
+    # 登记≠持久化——真持久化由 to_json/from_json 显式字段保证（三者全改）。
+    "source": "",
     # P0-5（2026-11-15）：在飞分析标记。放进这张表后，
     # `get_survey()` 会自动为跨代际旧实例补齐，无需在每个读取点写 getattr。
     "inflight_at": 0.0,
@@ -508,6 +511,9 @@ class SurveyState:
     # 到 prefs.model_id 快照（下次触发卡片仍是运行参数配置的内容）。
     # 空串 = 无覆盖。跨代际旧实例无此字段 → 读取处用 getattr 兜底（同 prefs 坑）。
     model_override: str = ""
+    # 2026-11-26 子代理模式：问卷来源标识（'subagent' / ''=主代理）。
+    # 供卡片渲染「来自子代理」标识；与 model_override 同走三处持久化。
+    source: str = ""
     # ★ 关键：Future 是否**真的**被 resolve 过。
     # 不能用 `status == "submitted"` 判幂等 —— `apply_action("submit")` 会先把
     # status 置成 submitted（前端点提交那一刻），此后 release_survey 若拿它当
@@ -559,6 +565,8 @@ class SurveyState:
             # US-003：卡片模型胶囊临时覆盖。显式序列化才真持久化
             # （DEFAULTS 登记只负责给跨代际旧实例补默认，不等于持久化）。
             "model_override": self.model_override,
+            # 2026-11-26 子代理模式：来源标识（同上，显式序列化才持久化）。
+            "source": self.source,
         }
 
     @classmethod
@@ -586,6 +594,8 @@ class SurveyState:
             released=bool(raw.get("released")),
             # US-003：卡片模型胶囊临时覆盖。空串 = 无覆盖，回落 prefs.model_id。
             model_override=str(raw.get("model_override") or ""),
+            # 2026-11-26 子代理模式：来源标识。
+            source=str(raw.get("source") or ""),
             orphan=True,        # 从盘恢复 ⇒ Future 已死
         )
 
@@ -2058,6 +2068,8 @@ class QuestionService:
                 # 阶段 3：ai 推进要在无页面时调模型，必须知道用哪个模型、
                 # 要不要带上下文、超时多少。存快照保证与用户当时看到的设置一致。
                 prefs=dict(kwargs.get("prefs") or {}),
+                # 2026-11-26 子代理模式：来源标识（子代理会话='subagent'）。
+                source=str(kwargs.get("source") or ""),
             )
             st = self.get_survey(pq.tool_call_id)
             if st is not None and not st.progress_at:

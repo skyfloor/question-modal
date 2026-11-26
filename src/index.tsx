@@ -776,18 +776,22 @@ function injectStyles(): void {
       "font-size:12px;line-height:1.9}",
       ".qm-set-tsempty b{display:block;font-size:13px;color:var(--app-text-primary,#1e293b);",
       "margin-bottom:4px}",
-      // 运行参数的内嵌分类页签（避免顶层页签过多）
-      ".qm-set-subtabs{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;",
-      "scrollbar-width:none;padding-bottom:2px}",
+      // 运行参数的内嵌分类页签（2026-11-26 boss 定稿：共享边框 + 选中高亮的卡片页签）
+      // 相邻卡片共享边框连成一体（gap=0，负 margin 吃掉重叠边框），收紧间距减少浪费。
+      ".qm-set-subtabs{display:flex;gap:0;overflow-x:auto;margin:0 0 10px;",
+      "scrollbar-width:none;padding-bottom:0;border-radius:8px;",
+      "border:1px solid var(--app-border,#e5e7eb);width:fit-content;max-width:100%}",
       ".qm-set-subtabs::-webkit-scrollbar{width:0;height:0;display:none}",
-      ".qm-set-subtab{background:transparent;border:1px solid var(--app-border,#e5e7eb);",
-      "cursor:pointer;font-size:13px;line-height:1;padding:6px 12px;border-radius:999px;",
+      ".qm-set-subtab{background:transparent;border:0;border-right:1px solid var(--app-border,#e5e7eb);",
+      "cursor:pointer;font-size:12px;line-height:1;padding:7px 12px;",
       "color:var(--app-text-secondary,#64748b);white-space:nowrap;flex:0 0 auto;",
       "transition:all .15s}",
+      ".qm-set-subtab:last-child{border-right:0}",
       ".qm-set-subtab:hover{color:var(--app-text-primary,#1e293b);",
-      "border-color:var(--app-border-strong,#cbd5e1)}",
-      ".qm-set-subtabon{background:var(--app-accent, #ff7f16);color:#fff;border-color:var(--app-accent, #ff7f16);font-weight:500}",
-      ".qm-set-subtabon:hover{background:var(--app-accent, #ff7f16);color:#fff}",
+      "background:var(--app-bg-hover,rgba(0,0,0,.04))}",
+      // 选中态高亮：品牌色底 + 白字，共享边框下相邻卡片连体
+      ".qm-set-subtabon,.qm-set-subtabon:hover{background:var(--app-accent, #ff7f16);",
+      "color:#fff;font-weight:500}",
       ".qm-set-subtab .n{font-size:11px;margin-left:4px;opacity:.75}",
       // 参数组 / 通知配置卡（可复用 .qm-set-tscard 的形态）
       ".qm-set-pmcard{background:var(--app-bg-elevated,#fff);",
@@ -4564,6 +4568,9 @@ function AskUserCard(props: { data?: any }) {
   // 只由 `/effective-config` 落地。代价是多等一次 round-trip 才开始（裁定 q2）。
   const initialMode: AnMode = "manual";
   const [anMode, setAnMode] = R.useState<AnMode>(initialMode);
+  // 2026-11-26 子代理模式：问卷来源标识（'subagent' / ''），来自后端 survey-state。
+  // 仅用于卡片头部渲染「来自子代理」徽标，不参与任何驱动/作答逻辑。
+  const [cardSource, setCardSource] = R.useState<string>("");
   // 阶段 1（2026-11-07）：`isDriver` / `remoteSyncRef` / `shadowStateRef` 全部移除。
   // 三者都属于旧的前端权威方案：
   //   · isDriver     —— localStorage 租约选唯一驱动者（后端权威后不需要互斥）
@@ -6769,6 +6776,8 @@ function AskUserCard(props: { data?: any }) {
     const adopt = (st: any) => {
       if (!alive || !st) return;
       remoteApplyRef.current = true;
+      // 2026-11-26 子代理模式：采纳来源标识（后端 survey-state 的 source 字段）
+      if (typeof st.source === "string") setCardSource(st.source);
       // ★ 先置水合标志再处理字段：上报闸门只关心"快照已经到手"，
       // 不关心每个字段是否都成功写入。若把标记放在 try 末尾，任何一个
       // 字段处理抛错（touchedRef/mergeCardState 等）都会让标志永远为 false，
@@ -7742,7 +7751,17 @@ function AskUserCard(props: { data?: any }) {
     R.createElement("div", { style: header, className: "qm-header" },
       R.createElement("div", { style: titleRow },
         titleIconNode(R),
-        R.createElement("span", { style: titleStyle, className: "qm-title" }, title)),
+        R.createElement("span", { style: titleStyle, className: "qm-title" }, title),
+        // 2026-11-26 子代理模式：来自子代理的问卷显示来源徽标（boss 定稿：增加）
+        cardSource === "subagent"
+          ? R.createElement("span", {
+              key: "qm-subagent-source", className: "qm-subagent-badge",
+              "data-qm-subagent-badge": "true",
+              style: { marginLeft: 8, fontSize: 11, padding: "2px 7px",
+                borderRadius: 6, background: "var(--app-accent-soft, rgba(255,127,22,.12))",
+                color: "var(--app-accent, #ff7f16)", whiteSpace: "nowrap" },
+            }, "来自子代理")
+          : null),
       // Analysis controls, right of the progress counter: capsule model
       // picker + AI/manual switch + 「查看分析」bubble.
       R.createElement("div", {
@@ -9671,8 +9690,9 @@ const SETTINGS_TABS: Array<{ key: string; label: string; hint: string }> = [
  *  否则用户升级后会落在一个不存在的分类上看到空白。
  */
 const RUN_SUBTABS: Array<{ key: string; label: string }> = [
-  { key: "default", label: "默认参数" },
-  { key: "param-sets", label: "问卷参数组" },
+  // 2026-11-26 boss：子代理并入默认参数，不再单列页签；label 精简省位
+  { key: "default", label: "默认" },
+  { key: "param-sets", label: "问卷参数" },
   { key: "notify-profiles", label: "通知配置" },
   { key: "custom-api", label: "自定义 API" },
   { key: "behavior", label: "行为参数" },
@@ -9689,6 +9709,10 @@ const RUN_SUBTABS: Array<{ key: string; label: string }> = [
  */
 const RUN_SUB_ALIAS: Record<string, string> = {
   model: "behavior",
+  // 2026-11-26：子代理页签已并入默认参数，残留旧值归一回 default（防升级后空白）
+  subagent: "default",
+  // 旧 label 值（若历史草稿里存的是中文）同样归一
+  "问卷参数组": "param-sets",
 };
 
 /** Keys a per-session override may hold.
@@ -12158,6 +12182,21 @@ function settingsTabBody(
       explicitEmptyModel: cfgExplicitEmpty("model_id"),
       edit: cfgEdit,
     }));
+    // ═══════ 子代理说明（2026-11-26：并入默认参数，不单独页签）═══════
+    // 子代理不允许其它模式、无可配置项，故只保留一段说明文案。
+    bodyKids.push(R.createElement("div", {
+      key: "subagent-note", className: "qm-set-subagent",
+      "data-qm-subagent-panel": "true",
+      style: { marginTop: 16, borderTop: "1px solid var(--app-border,#e5e7eb)",
+        paddingTop: 14 },
+    }, [
+      R.createElement("div", {
+        key: "t", className: "qm-set-schednotetitle",
+      }, "子代理问卷"),
+      R.createElement("div", {
+        key: "d", className: "qm-set-schednotedesc",
+      }, "子代理会话中的问卷固定「只用推荐」，服务端自动作答，不阻塞任务、不可配置。"),
+    ]));
     return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
   }
   // ═══════════════════ 运行参数 › 备份恢复（2026-11-25）═══════════════════
