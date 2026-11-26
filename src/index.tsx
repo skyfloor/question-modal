@@ -776,18 +776,22 @@ function injectStyles(): void {
       "font-size:12px;line-height:1.9}",
       ".qm-set-tsempty b{display:block;font-size:13px;color:var(--app-text-primary,#1e293b);",
       "margin-bottom:4px}",
-      // 运行参数的内嵌分类页签（避免顶层页签过多）
-      ".qm-set-subtabs{display:flex;gap:6px;overflow-x:auto;margin:0 0 12px;",
-      "scrollbar-width:none;padding-bottom:2px}",
+      // 运行参数的内嵌分类页签（2026-11-26 boss 定稿：共享边框 + 选中高亮的卡片页签）
+      // 相邻卡片共享边框连成一体（gap=0，负 margin 吃掉重叠边框），收紧间距减少浪费。
+      ".qm-set-subtabs{display:flex;gap:0;overflow-x:auto;margin:0 0 10px;",
+      "scrollbar-width:none;padding-bottom:0;border-radius:8px;",
+      "border:1px solid var(--app-border,#e5e7eb);width:fit-content;max-width:100%}",
       ".qm-set-subtabs::-webkit-scrollbar{width:0;height:0;display:none}",
-      ".qm-set-subtab{background:transparent;border:1px solid var(--app-border,#e5e7eb);",
-      "cursor:pointer;font-size:13px;line-height:1;padding:6px 12px;border-radius:999px;",
+      ".qm-set-subtab{background:transparent;border:0;border-right:1px solid var(--app-border,#e5e7eb);",
+      "cursor:pointer;font-size:13px;line-height:1;padding:7px 12px;",
       "color:var(--app-text-secondary,#64748b);white-space:nowrap;flex:0 0 auto;",
       "transition:all .15s}",
+      ".qm-set-subtab:last-child{border-right:0}",
       ".qm-set-subtab:hover{color:var(--app-text-primary,#1e293b);",
-      "border-color:var(--app-border-strong,#cbd5e1)}",
-      ".qm-set-subtabon{background:var(--app-accent, #ff7f16);color:#fff;border-color:var(--app-accent, #ff7f16);font-weight:500}",
-      ".qm-set-subtabon:hover{background:var(--app-accent, #ff7f16);color:#fff}",
+      "background:var(--app-bg-hover,rgba(0,0,0,.04))}",
+      // 选中态高亮：品牌色底 + 白字，共享边框下相邻卡片连体
+      ".qm-set-subtabon,.qm-set-subtabon:hover{background:var(--app-accent, #ff7f16);",
+      "color:#fff;font-weight:500}",
       ".qm-set-subtab .n{font-size:11px;margin-left:4px;opacity:.75}",
       // 参数组 / 通知配置卡（可复用 .qm-set-tscard 的形态）
       ".qm-set-pmcard{background:var(--app-bg-elevated,#fff);",
@@ -4564,6 +4568,9 @@ function AskUserCard(props: { data?: any }) {
   // 只由 `/effective-config` 落地。代价是多等一次 round-trip 才开始（裁定 q2）。
   const initialMode: AnMode = "manual";
   const [anMode, setAnMode] = R.useState<AnMode>(initialMode);
+  // 2026-11-26 子代理模式：问卷来源标识（'subagent' / ''），来自后端 survey-state。
+  // 仅用于卡片头部渲染「来自子代理」徽标，不参与任何驱动/作答逻辑。
+  const [cardSource, setCardSource] = R.useState<string>("");
   // 阶段 1（2026-11-07）：`isDriver` / `remoteSyncRef` / `shadowStateRef` 全部移除。
   // 三者都属于旧的前端权威方案：
   //   · isDriver     —— localStorage 租约选唯一驱动者（后端权威后不需要互斥）
@@ -6769,6 +6776,8 @@ function AskUserCard(props: { data?: any }) {
     const adopt = (st: any) => {
       if (!alive || !st) return;
       remoteApplyRef.current = true;
+      // 2026-11-26 子代理模式：采纳来源标识（后端 survey-state 的 source 字段）
+      if (typeof st.source === "string") setCardSource(st.source);
       // ★ 先置水合标志再处理字段：上报闸门只关心"快照已经到手"，
       // 不关心每个字段是否都成功写入。若把标记放在 try 末尾，任何一个
       // 字段处理抛错（touchedRef/mergeCardState 等）都会让标志永远为 false，
@@ -7742,7 +7751,17 @@ function AskUserCard(props: { data?: any }) {
     R.createElement("div", { style: header, className: "qm-header" },
       R.createElement("div", { style: titleRow },
         titleIconNode(R),
-        R.createElement("span", { style: titleStyle, className: "qm-title" }, title)),
+        R.createElement("span", { style: titleStyle, className: "qm-title" }, title),
+        // 2026-11-26 子代理模式：来自子代理的问卷显示来源徽标（boss 定稿：增加）
+        cardSource === "subagent"
+          ? R.createElement("span", {
+              key: "qm-subagent-source", className: "qm-subagent-badge",
+              "data-qm-subagent-badge": "true",
+              style: { marginLeft: 8, fontSize: 11, padding: "2px 7px",
+                borderRadius: 6, background: "var(--app-accent-soft, rgba(255,127,22,.12))",
+                color: "var(--app-accent, #ff7f16)", whiteSpace: "nowrap" },
+            }, "来自子代理")
+          : null),
       // Analysis controls, right of the progress counter: capsule model
       // picker + AI/manual switch + 「查看分析」bubble.
       R.createElement("div", {
@@ -8168,6 +8187,17 @@ const settingsState: {
     items: any[]; dataDir: string; busy: boolean; msg: string; msgKind: string;
     confirmName: string; loaded: boolean; confirmKind: string;
   };
+  /** 子代理参数（2026-11-26）：只在子代理会话生效，优先级最高。
+   *  读 GET /subagent-params、写 POST /subagent-params，两个端点都是 merge 语义。
+   *  null = 尚未取到（与内置默认 mode=recommend 的「已取到」区分）。 */
+  subagentParams: {
+    mode: string; model_id: string; template_id: string;
+    with_context: boolean; parallel: boolean;
+  } | null;
+  /** GET 是否已落地（失败也置 true，避免渲染期无限重试）。 */
+  subagentLoaded: boolean;
+  /** 保存/加载的可见反馈（含后端 rejected 的非法字段原因）。 */
+  subagentMsg: string;
 } = {
   visible: false, tab: "answer", scope: "global", lastScope: "global", scopeChoice: "default",
   sessData: null, cfg: null, cfgError: "", chatId: "",
@@ -8190,6 +8220,7 @@ const settingsState: {
   delConfirm: null,
   cfgBackup: { items: [], dataDir: "", busy: false, msg: "", msgKind: "info",
     confirmName: "", loaded: false, confirmKind: "" },
+  subagentParams: null, subagentLoaded: false, subagentMsg: "",
 };
 let settingsPanelRoot: any = null;
 
@@ -8322,6 +8353,102 @@ async function cfgBackupRefresh(force?: boolean): Promise<void> {
   } finally {
     settingsState.cfgBackup.busy = false;
     // 数据已落地，此刻重渲染一次是安全的：loaded=true 使渲染期不再触发刷新。
+    settingsRenderPanel();
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// 子代理参数（2026-11-26）
+// ══════════════════════════════════════════════════════════════════════
+//
+// 与备份页同构的「请求函数不自己重渲染」纪律：本面板在 render 期用
+// setTimeout 触发 refreshSubagentParams；若请求函数内同步 render，会再触发
+// 渲染期加载 → 无限递归 → 浏览器卡死（2026-11-25 备份页事故原样规避）。
+// 因此这两个函数只改 state + 在最后单独重渲染一次，加载触发权在调用方。
+
+/** 加载中标志（模块级，跨重绘持久）：防渲染期自动加载与 reload 按钮并发。 */
+let _subagentBusy = false;
+
+/** 渲染期之外的加载入口；force=true 时忽略 loaded（保存后回读对拍用）。
+ *  keepMsg=true 时不清空提示 —— 保存后回读必须保留「rejected 字段」文案。 */
+async function refreshSubagentParams(force?: boolean, keepMsg?: boolean): Promise<void> {
+  if (_subagentBusy) return;
+  if (!force && settingsState.subagentLoaded) return;
+  _subagentBusy = true;
+  try {
+    const resp = await fetch(apiUrl("/question-modal/subagent-params"), {
+      method: "GET", headers: authHeaders(),
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (resp.ok && d && d.ok === true && d.params && typeof d.params === "object") {
+      settingsState.subagentParams = {
+        mode: String(d.params.mode || "recommend"),
+        model_id: String(d.params.model_id || ""),
+        template_id: String(d.params.template_id || ""),
+        with_context: d.params.with_context === true,
+        parallel: d.params.parallel === true,
+      };
+      if (!keepMsg) settingsState.subagentMsg = "";
+    } else {
+      const detail = (d && (d.detail || d.error)) || ("HTTP " + resp.status);
+      settingsState.subagentMsg = "读取子代理参数失败：" + String(detail);
+    }
+    // 失败也置 loaded：渲染期不再自动重试，用户可点「重新读取」。
+    settingsState.subagentLoaded = true;
+  } catch (e: any) {
+    settingsState.subagentMsg = "读取子代理参数失败："
+      + (e && e.message ? e.message : String(e));
+    settingsState.subagentLoaded = true;
+  } finally {
+    _subagentBusy = false;
+  }
+  try { settingsRenderPanel(); } catch (_) { /* panel closed */ }
+}
+
+/** 保存 UI 草稿的 5 个字段；按 ok / rejected 反馈，成功后回读对拍。 */
+async function saveSubagentParams(): Promise<void> {
+  const p = settingsState.subagentParams;
+  if (!p) {
+    settingsState.subagentMsg = "参数尚未加载完成，请稍后再试";
+    settingsRenderPanel();
+    return;
+  }
+  settingsState.subagentMsg = "正在保存…";
+  settingsRenderPanel();
+  try {
+    const body = {
+      mode: String(p.mode || ""),
+      model_id: String(p.model_id || ""),
+      template_id: String(p.template_id || ""),
+      with_context: !!p.with_context,
+      parallel: !!p.parallel,
+    };
+    const resp = await fetch(apiUrl("/question-modal/subagent-params"), {
+      method: "POST", headers: authHeaders(), body: JSON.stringify(body),
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok || !d || d.ok !== true) {
+      const detail = (d && (d.detail || d.error)) || ("HTTP " + resp.status);
+      settingsState.subagentMsg = "保存失败：" + String(detail);
+      settingsRenderPanel();
+      return;
+    }
+    // 后端按字段拒绝非法值：必须逐个显示，绝不静默丢掉（用户明确要求）。
+    const rejected = Array.isArray(d.rejected) ? d.rejected : [];
+    let msg = "子代理参数已保存";
+    if (rejected.length) {
+      msg += "；被拒绝：" + rejected.map((r: any) =>
+        r && typeof r === "object"
+          ? (String(r.field || r.key || "?") + (r.reason ? "(" + String(r.reason) + ")" : ""))
+          : String(r)).join("、");
+    }
+    settingsState.subagentMsg = msg;
+    // 成功后回读：以后端落库值为准，不信任本地草稿（防静默丢弃入参）。
+    // keepMsg=true：别把上面拼好的 rejected 提示清掉（非法值必须可见）。
+    await refreshSubagentParams(true, true);
+  } catch (e: any) {
+    settingsState.subagentMsg = "保存失败："
+      + (e && e.message ? e.message : String(e));
     settingsRenderPanel();
   }
 }
@@ -9672,6 +9799,8 @@ const SETTINGS_TABS: Array<{ key: string; label: string; hint: string }> = [
  */
 const RUN_SUBTABS: Array<{ key: string; label: string }> = [
   { key: "default", label: "默认参数" },
+  // 2026-11-26 子代理模式：紧跟「默认参数」（boss 定稿，不得移到末尾）
+  { key: "subagent", label: "子代理" },
   { key: "param-sets", label: "问卷参数组" },
   { key: "notify-profiles", label: "通知配置" },
   { key: "custom-api", label: "自定义 API" },
@@ -12158,6 +12287,102 @@ function settingsTabBody(
       explicitEmptyModel: cfgExplicitEmpty("model_id"),
       edit: cfgEdit,
     }));
+    return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
+  }
+  // ═══════════════════ 运行参数 › 子代理（2026-11-26）═══════════════════
+  //
+  // 子代理参数只在子代理会话生效、优先级最高（覆盖全局/会话/策略），
+  // 默认只用推荐 —— 所以这里是一份独立配置，不读 cfgValue，也不写 draft。
+  // 加载/保存都走各自端点，渲染期只用 setTimeout 脱离渲染栈触发加载。
+  if (tab === "run" && subKey === "subagent") {
+    if (!settingsState.subagentLoaded && !settingsState.subagentParams) {
+      // 绝不在 render 期同步 fetch + render（备份页 2026-11-25 卡死根因）。
+      setTimeout(() => { void refreshSubagentParams(); }, 0);
+    }
+    const sa = settingsState.subagentParams;
+    const saSet = (k: string, v: any) => {
+      if (!settingsState.subagentParams) return;
+      (settingsState.subagentParams as any)[k] = v;
+      settingsState.subagentMsg = "";
+      settingsRenderPanel();
+    };
+    bodyKids.push(R.createElement("div", {
+      key: "subagent", className: "qm-set-subagent", "data-qm-subagent-panel": "true",
+    }, [
+      R.createElement("div", {
+        key: "note", className: "qm-set-schednote", "data-qm-runs-note": "subagent",
+      }, [
+        R.createElement("div", { key: "t", className: "qm-set-schednotetitle" },
+          "子代理参数"),
+        R.createElement("div", { key: "d", className: "qm-set-schednotedesc" },
+          "这些参数只在子代理会话生效，优先级高于全局、会话与时间策略配置。"
+          + "默认采用「只用推荐」，通常无需改动；改动仅影响由本插件发起的子代理会话。"),
+      ]),
+      setRow(R, "samode", "子代理答题模式",
+        R.createElement("select", {
+          key: "s", className: "qm-set-native", value: sa ? sa.mode : "recommend",
+          disabled: !sa, "data-qm-subagent-mode": "1",
+          onChange: (e: any) => saSet("mode", e && e.target ? e.target.value : "recommend"),
+        }, [
+          R.createElement("option", { key: "ai", value: "ai" }, "AI 自动分析"),
+          R.createElement("option", { key: "rec", value: "recommend" }, "只用推荐"),
+          R.createElement("option", { key: "man", value: "manual" }, "人工"),
+        ]),
+        "ai / recommend / manual；非法值会被后端拒绝并提示", "global", "global"),
+      setRow(R, "samodel", "子代理模型",
+        R.createElement("input", {
+          key: "i", type: "text", className: "qm-set-input",
+          value: sa ? sa.model_id : "", disabled: !sa,
+          placeholder: "留空 = 跟随当前会话模型",
+          "data-qm-subagent-model": "1",
+          onChange: (e: any) => saSet("model_id", e && e.target ? e.target.value : ""),
+        }),
+        "留空时由后端自动解析子代理会话的最终模型", "global", "global"),
+      setRow(R, "satpl", "子代理模板",
+        R.createElement("input", {
+          key: "i", type: "text", className: "qm-set-input",
+          value: sa ? sa.template_id : "", disabled: !sa,
+          placeholder: "留空 = 使用默认模板",
+          "data-qm-subagent-template": "1",
+          onChange: (e: any) => saSet("template_id", e && e.target ? e.target.value : ""),
+        }),
+        "填写模板 id；留空使用默认六步思维链", "global", "global"),
+      setRow(R, "sactx", "携带上下文",
+        R.createElement("input", {
+          key: "c", type: "checkbox", checked: !!(sa && sa.with_context), disabled: !sa,
+          "data-qm-subagent-context": "1",
+          onChange: (e: any) => saSet("with_context", !!(e && e.target && e.target.checked)),
+        }),
+        "子代理执行时是否携带当前问卷上下文", "global", "global"),
+      setRow(R, "sapar", "并行处理",
+        R.createElement("input", {
+          key: "p", type: "checkbox", checked: !!(sa && sa.parallel), disabled: !sa,
+          "data-qm-subagent-parallel": "1",
+          onChange: (e: any) => saSet("parallel", !!(e && e.target && e.target.checked)),
+        }),
+        "逐题并发调用模型：更快但更耗额度", "global", "global"),
+      R.createElement("div", {
+        key: "msg", className: "qm-set-saveMsg", "data-qm-subagent-msg": "1",
+      }, settingsState.subagentMsg || ""),
+      R.createElement("div", { key: "acts", className: "qm-set-bakacts" }, [
+        R.createElement("button", {
+          key: "save", type: "button", className: "qm-set-btn qm-set-btnprimary",
+          "data-qm-subagent-save": "1", disabled: !sa,
+          onClick: () => { void saveSubagentParams(); },
+        }, "保存子代理参数"),
+        R.createElement("button", {
+          key: "reload", type: "button", className: "qm-set-btn",
+          "data-qm-subagent-reload": "1",
+          onClick: () => {
+            settingsState.subagentLoaded = false;
+            settingsState.subagentParams = null;
+            settingsState.subagentMsg = "";
+            // 清空后由渲染期的统一入口触发加载，避免此处再 setTimeout 双触发。
+            settingsRenderPanel();
+          },
+        }, "重新读取"),
+      ]),
+    ]));
     return R.createElement("div", { className: "qm-set-tabbody", key: "tb" }, bodyKids);
   }
   // ═══════════════════ 运行参数 › 备份恢复（2026-11-25）═══════════════════

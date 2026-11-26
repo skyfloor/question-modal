@@ -34,6 +34,7 @@ _PLUGIN_DIR = Path(__file__).parent.resolve()
 # 已知持久化文件清单（配置类 + 运行态类一并外置，避免下次更新又丢挂起问卷）。
 DATA_FILES: tuple[str, ...] = (
     "analysis_prefs.json",       # 全局偏好：模式/通知渠道/阈值
+    "subagent_prefs.json",       # 子代理模式运行参数（优先级最高的子代理专用配置）
     "session_prefs.json",        # 会话层偏好
     "parameter_sets.json",       # 问卷参数组
     "notify_profiles.json",      # 通知配置
