@@ -409,6 +409,9 @@ def _save_subagent_params(patch: Any) -> dict:
         for k in extra:
             rejected.append({"key": k, "reason": "not a subagent param"})
         cur.update(clean)
+        # ★ v1.3（boss 定稿）：子代理模式固定「只用推荐」，不允许其它模式。
+        #   即使调用方传 ai/manual 也强制写 recommend，杜绝 UI/后端/存储三方分叉。
+        cur["mode"] = "recommend"
         cur["updated_at"] = time.time()
         try:
             tmp = _SUBAGENT_PREFS_FILE.parent / (
