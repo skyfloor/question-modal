@@ -2636,14 +2636,17 @@ def _read_lib(path) -> list[dict]:
 
 
 def _write_lib(path, items: list[dict]) -> None:
-    """原子写库文件（tmp + replace），避免半截文件。"""
+    """写库文件，失败**抛错**（不静默吞）。
+
+    2026-11-27 群晖实测：旧实现用 tmp+replace 且 ``except: pass``，replace 在
+    共享文件夹上失败后接口仍报 ok，但文件没落盘（config/status 全 false）。
+    改用共享的 atomic_write_text（群晖降级 + 回读校验 + 真失败抛错），
+    让上层能向用户返回真实结果，杜绝「HTTP 200 ≠ 数据真写入」。
+    """
     payload = {"schema_version": 1, "updated_at": time.time(), "items": items}
-    try:
-        tmp = path.parent / f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp"
-        tmp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(path)
-    except Exception:  # noqa: BLE001
-        logger.warning("question_modal: could not persist lib %s", path.name, exc_info=True)
+    _store.atomic_write_text(
+        path, json.dumps(payload, ensure_ascii=False, indent=2),
+    )
 
 
 def _new_lib_id(prefix: str) -> str:
@@ -4856,12 +4859,23 @@ def build_router() -> APIRouter:
                     if "channels" in body:
                         merged["channels"] = body.get("channels")
                     items[i] = _sanitize_notify_profile(merged)
-                    save_notify_profiles(items)
+                    try:
+                        save_notify_profiles(items)
+                    except OSError as e:
+                        raise HTTPException(status_code=500, detail=f"通知配置写入失败: {e}")
+                    # 回读校验：写进去必须读得出来，杜绝假成功
+                    if not any(x["id"] == pid for x in load_notify_profiles()):
+                        raise HTTPException(status_code=500, detail="通知配置写入后回读失败，请检查数据目录权限")
                     return {"ok": True, "item": items[i]}
             raise HTTPException(status_code=404, detail=f"通知配置不存在: {pid}")
         item = _sanitize_notify_profile(body, keep_id=False)
         items.append(item)
-        save_notify_profiles(items)
+        try:
+            save_notify_profiles(items)
+        except OSError as e:
+            raise HTTPException(status_code=500, detail=f"通知配置写入失败: {e}")
+        if not any(x["id"] == item["id"] for x in load_notify_profiles()):
+            raise HTTPException(status_code=500, detail="通知配置写入后回读失败，请检查数据目录权限")
         return {"ok": True, "item": item}
 
     @router.delete("/notify-profiles")
@@ -5059,10 +5073,25 @@ def build_router() -> APIRouter:
 
     @router.get("/config/status")
     async def get_config_status():
-        """诊断：配置根目录 + 迁移状态 + 各数据文件是否就位。"""
+        """诊断：配置根目录 + 迁移状态 + 各数据文件是否就位。
+
+        2026-11-27 群晖排查增强：补 `dir_exists` / `dir_writable`，
+        区分「目录不存在」和「目录只读」两类写入失败，避免再次靠猜。
+        """
+        d = _store.data_dir()
         files = {name: _store.resolve(name).is_file() for name in _store.DATA_FILES}
-        return {"ok": True, "data_dir": str(_store.data_dir()),
-                "files": files, "migrated": _store._migrated}
+        dir_exists = d.is_dir()
+        dir_writable = False
+        try:
+            probe = d / ".diag-write-probe"
+            probe.write_text("ok", encoding="utf-8")
+            dir_writable = probe.read_text(encoding="utf-8") == "ok"
+            probe.unlink(missing_ok=True)
+        except OSError:
+            dir_writable = False
+        return {"ok": True, "data_dir": str(d), "files": files,
+                "migrated": _store._migrated, "dir_exists": dir_exists,
+                "dir_writable": dir_writable}
 
     return router
 

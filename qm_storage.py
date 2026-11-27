@@ -23,6 +23,7 @@ import logging
 import os
 import shutil
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -56,6 +57,40 @@ _lock = threading.RLock()
 _migrated = False
 
 
+def atomic_write_text(path: Path, data: str, *, encoding: str = "utf-8") -> None:
+    """原子写文本，兼容群晖共享文件夹；写后回读校验，失败一律抛错。
+
+    背景（2026-11-27 群晖实测）：部分 NAS 共享文件夹（如 ``@appshare``）
+    对 ``Path.replace()`` 的原子重命名支持不完整，会抛 OSError。旧实现用
+    ``except: pass`` 吞掉 → 接口仍返回 ``ok:true``，但文件根本没落盘
+    （``config/status`` 全 false）——典型「HTTP 200 ≠ 数据真写入」假成功。
+
+    策略：
+      1. 优先 tmp + replace（原子，避免半截文件）；
+      2. replace 失败 → 降级为直接覆写目标（群晖兼容）；
+      3. 任一步真失败 → 抛 OSError，**绝不再静默吞掉**；
+      4. 写后回读比对，内容不符也算失败。
+    调用方（各 save_* / CRUD 端点）据此可向用户返回真实失败。
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.parent / f"{path.name}.{os.getpid()}.{time.time_ns()}.tmp"
+    try:
+        tmp.write_text(data, encoding=encoding)
+        try:
+            tmp.replace(path)
+        except OSError:
+            # 群晖共享文件夹不支持原子 rename → 降级直接覆写
+            path.write_text(data, encoding=encoding)
+    finally:
+        try:
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+    # 回读校验：写进去的东西必须能读回来，否则视为失败
+    if path.read_text(encoding=encoding) != data:
+        raise OSError(f"回读校验失败：{path.name} 写入内容与期望不符")
+
+
 def data_dir() -> Path:
     """返回外置数据根目录（不创建、不迁移，纯解析）。
 
@@ -75,6 +110,11 @@ def data_dir() -> Path:
         probe = base / ".qm-probe"
         probe.touch()
         probe.unlink()
+        # 群晖等共享文件夹环境实测（2026-11-27）：base 可 touch，但数据子目录
+        # 若不存在，写入用的 tmp.write_text 会因父目录缺失静默失败。
+        # 这里直接把真正的数据目录一并创建，保证后续所有写入都有落点。
+        data_sub = base / "question-modal"
+        data_sub.mkdir(parents=True, exist_ok=True)
     except OSError:
         return _PLUGIN_DIR
     return base / "question-modal"
