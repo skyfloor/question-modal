@@ -107,7 +107,7 @@ except ImportError:  # pragma: no cover — 顶层加载（验证脚本）
 
 # Pending records must outlive the module: the host hot-reloads plugins, and
 # a reload used to wipe an open questionnaire, stranding its card forever.
-_PENDING_FILE = _store.MigrationPath("pending_questions.json")
+_PENDING_FILE = _store.resolve("pending_questions.json")
 # Phase 0（2026-11-05）：后端权威的问卷推进状态。
 #
 # 为什么需要它：当前「自动推进」（分析→采纳→翻页→提交）完全跑在前端 React
@@ -137,10 +137,10 @@ def _resolve_survey_file() -> "Path":
     override = os.environ.get("QM_SURVEY_STATE_FILE", "").strip()
     if override:
         return Path(override)
-    # 用 MigrationPath（而非纯 resolve）访问时自动触发惰性迁移
-    return _store.MigrationPath("survey_states.json")
+    # 迁移在 register() 启动时显式执行一次；此处返回普通 Path（跨版本稳定）
+    return _store.resolve("survey_states.json")
 # 影子比对差异（阶段 0 的诊断产物；接管完成后可删）。
-_SHADOW_FILE = _store.MigrationPath("shadow_diffs.json")
+_SHADOW_FILE = _store.resolve("shadow_diffs.json")
 # 阶段 1：每份问卷保留最近多少个广播事件用于重放。
 # 太小 → 刷新页面/新标签页拿不到足够历史；太大 → 内存随问卷数线性增长。
 # 问卷的语义字段有限（answers 键数 = 题数），200 条足以覆盖任何正常作答过程。

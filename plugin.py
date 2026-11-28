@@ -180,7 +180,7 @@ _ANALYSIS_TASKS: dict[str, asyncio.Task] = {}
 # the gate fires, carrying its OWN bundle tag: that lets us tell apart
 #   (a) the gate logic not running  vs
 #   (b) the browser executing a stale bundle (a reload that didn't take).
-_GATE_FILE = _store.MigrationPath("gate_blocks.json")
+_GATE_FILE = _store.resolve("gate_blocks.json")
 
 
 def _remember_gate_block(payload: dict) -> None:
@@ -262,7 +262,7 @@ def _cancel_analysis(key: str) -> bool:
 # and is written atomically (tmp + replace).
 _RESULTS: dict[str, dict] = {}
 _RESULTS_MAX = 300
-_RESULTS_FILE = _store.MigrationPath("answered_results.json")
+_RESULTS_FILE = _store.resolve("answered_results.json")
 # Serialises background writers so two submissions cannot interleave their
 # tmp-file write + replace (each already uses a unique tmp name; this just
 # keeps the number of concurrent open writes at one).
@@ -287,7 +287,7 @@ _PREFS_LOCK = threading.RLock()
 #
 # Only whitelisted keys are persisted, so the file cannot grow unbounded nor
 # be used to stash arbitrary payloads.
-_PREFS_FILE = _store.MigrationPath("analysis_prefs.json")
+_PREFS_FILE = _store.resolve("analysis_prefs.json")
 _PREFS_DEFAULTS: dict[str, Any] = {
     "mode": "manual",
     "model_id": "",
@@ -362,7 +362,7 @@ def _save_prefs_locked(patch: dict) -> dict:
 # ── 子代理模式运行参数（2026-11-26，full 档，契约 v1.2）──────────────
 # 独立文件 subagent_prefs.json（外置目录，已登记 qm_storage.DATA_FILES）。
 # 只在子代理会话生效、优先级最高；主代理会话完全不读这一层。
-_SUBAGENT_PREFS_FILE = _store.MigrationPath("subagent_prefs.json")
+_SUBAGENT_PREFS_FILE = _store.resolve("subagent_prefs.json")
 _SUBAGENT_PARAM_KEYS = (
     "mode", "model_id", "template_id", "with_context", "parallel",
 )
@@ -1907,7 +1907,7 @@ async def _do_notify_test(channel: str, text: str, agent_id: str) -> dict:
 # 每个频道保留最近 N 次测试记录（磁盘）。上限存在的理由：无上限会让
 # notify_test_log.json 无限增长，且用户实际只会看最近几条。
 _TEST_LOG_MAX = 20
-_TEST_LOG_FILE = _store.MigrationPath("notify_test_log.json")
+_TEST_LOG_FILE = _store.resolve("notify_test_log.json")
 
 
 def _load_test_log() -> dict:
@@ -2429,7 +2429,7 @@ async def notify_survey_pending(
 #
 # These helpers only persist and list overrides; reading them into the
 # effective config is a later step.
-_SESSION_PREFS_FILE = _store.MigrationPath("session_prefs.json")
+_SESSION_PREFS_FILE = _store.resolve("session_prefs.json")
 
 
 def _load_session_prefs() -> dict:
@@ -2608,9 +2608,9 @@ def _iter_agent_chats() -> list[dict]:
 #   notify_profiles.json   命名通知配置（pc + bg 两个渠道）
 #   schedules.json         时间策略（时段 + 引用参数组 + 引用通知配置）
 
-_PARAM_SETS_FILE = _store.MigrationPath("parameter_sets.json")
-_NOTIFY_PROFILES_FILE = _store.MigrationPath("notify_profiles.json")
-_SCHEDULES_FILE = _store.MigrationPath("schedules.json")
+_PARAM_SETS_FILE = _store.resolve("parameter_sets.json")
+_NOTIFY_PROFILES_FILE = _store.resolve("notify_profiles.json")
+_SCHEDULES_FILE = _store.resolve("schedules.json")
 
 # 参数组允许承载的字段（白名单）。刻意**不含**任何库级/全局类配置：
 # 参数组是「一套答题参数」，不是「另一份完整设置的副本」，否则策略就变成
@@ -2846,7 +2846,7 @@ def match_schedule(now_seconds: int | None = None) -> dict | None:
     return None
 
 
-_TEMPLATES_FILE = _store.MigrationPath("templates.json")
+_TEMPLATES_FILE = _store.resolve("templates.json")
 
 
 def _load_custom_templates() -> list[dict]:
@@ -5753,6 +5753,14 @@ class QuestionModalPlugin:
     def register(self, api: PluginApi) -> None:
         _attach_to_host_log()
         logger.info("Registering question-modal plugin (2.x port)...")
+        # 2026-11-28：数据迁移改为启动时显式执行一次（进程级 once）。
+        # 原 MigrationPath 惰性迁移在 Python 3.12 上崩（stat(follow_symlinks=...)
+        # 与 __new__ 重建实例冲突），已删除。这里在注册期同步迁移，
+        # 后续所有数据文件常量都是普通 Path，读写零特殊行为。
+        try:
+            _store.ensure_migrated()
+        except Exception:  # noqa: BLE001 — 迁移失败不阻断插件注册，读写层仍可用
+            logger.warning("could not migrate data dir", exc_info=True)
         # 清掉上一代代码遗留的 runner task（它们跑的是旧代码对象，
         # 曾导致 survey_states.json 被旧版固定 tmp 名并发写没）
         try:

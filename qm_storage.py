@@ -13,8 +13,14 @@
 3. 迁移只搬「外置不存在、旧目录存在」的文件，**绝不反向覆盖**新数据；
 4. 读取失败绝不写回空默认值 —— 由各 load 层保证，本模块只提供路径与迁移。
 
-外置目录优先级（按真实环境解析，不硬编码猜测）：
-  QM_DATA_DIR 环境变量 > <工作区根>/plugin_data/question-modal > 安装目录兜底
+数据目录优先级（2026-11-28 boss 裁定，绑定到当前智能体 workspace）：
+  QM_DATA_DIR 环境变量
+    > <WORKING_DIR>/workspaces/<当前智能体>/plugin_data/question-modal
+    > 旧全局外置目录兜底（新目录不可写时）
+
+迁移链（惰性、只搬不覆盖）：安装目录 → 旧全局外置目录 → 当前智能体数据目录。
+"当前智能体"在进程启动时解析一次并缓存（进程级单例目录），保证没有请求
+context 的后台协程（watchdog / runner）与 HTTP 请求写到同一目录。
 """
 from __future__ import annotations
 
@@ -31,6 +37,47 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 _PLUGIN_DIR = Path(__file__).parent.resolve()
+
+
+def _resolve_working_dir() -> Path:
+    """宿主 WORKING_DIR —— 与 plugin.py 同口径，不硬编码绝对路径。"""
+    try:
+        from qwenpaw.constant import WORKING_DIR  # noqa: PLC0415
+
+        return Path(str(WORKING_DIR))
+    except Exception:  # noqa: BLE001 — 导入期绝不抛，保插件可装
+        return Path.cwd()
+
+
+def _resolve_agent_workspace() -> Path:
+    """当前智能体的 workspace 目录（进程启动时解析一次，进程级单例）。
+
+    boss 2026-11-28 裁定：数据落到「当前智能体所在路径」下。插件是单进程
+    服务多 agent，而 13 个数据文件都是 import 期固定的全局单例；若按每次
+    请求身份动态换目录，没带 context 的后台 watchdog / runner 会写到错误
+    目录，且挂起问卷跨 agent 恢复会错乱。故这里只解析一次并缓存。
+
+    解析顺序：宿主 agent context（get_current_agent_id）→ 活动 agent
+    （get_active_agent_id）→ 环境变量 → default。取不到则回退 WORKING_DIR。
+    """
+    agent_id = ""
+    try:
+        from qwenpaw.app.agent_context import (  # noqa: PLC0415
+            get_active_agent_id,
+            get_current_agent_id,
+        )
+
+        agent_id = (get_current_agent_id() or get_active_agent_id() or "").strip()
+    except Exception:  # noqa: BLE001
+        pass
+    if not agent_id:
+        agent_id = os.environ.get("QWENPAW_QUESTION_MODAL_AGENT_ID", "").strip()
+    agent_id = agent_id or "default"
+    return _resolve_working_dir() / "workspaces" / agent_id
+
+
+# 进程启动时一次性解析，后续全程复用（含无请求 context 的后台协程）。
+_AGENT_WORKSPACE = _resolve_agent_workspace()
 
 # 已知持久化文件清单（配置类 + 运行态类一并外置，避免下次更新又丢挂起问卷）。
 DATA_FILES: tuple[str, ...] = (
@@ -91,33 +138,39 @@ def atomic_write_text(path: Path, data: str, *, encoding: str = "utf-8") -> None
         raise OSError(f"回读校验失败：{path.name} 写入内容与期望不符")
 
 
-def data_dir() -> Path:
-    """返回外置数据根目录（不创建、不迁移，纯解析）。
+def _global_data_dir() -> Path:
+    """旧全局外置目录（迁移来源 + 新目录不可写时的兜底）。"""
+    # 工作区根 = 安装目录的上两级（<root>/plugins/<plugin_id>/ → <root>）。
+    # 用相对定位而非硬编码宿主绝对路径，避免发布包命中路径敏感串。
+    return _PLUGIN_DIR.parent.parent / "plugin_data" / "question-modal"
 
-    优先环境变量（供测试与部署自定义），其次按安装目录相对定位到工作区
-    plugin_data/<plugin_id>（与同机其它插件一致的数据目录范式，不硬编码
-    宿主绝对路径，便于跨环境部署），最后回退安装目录（极端兜底，
-    保证在只读外置目录的环境里插件仍可用，仅失去「更新不丢配置」的保护）。
+
+def data_dir() -> Path:
+    """返回数据根目录（不创建、不迁移，纯解析）。
+
+    boss 2026-11-28 裁定：数据落在「当前智能体所在路径」下
+    ``<WORKING_DIR>/workspaces/<agent>/plugin_data/question-modal``。
+    优先级：QM_DATA_DIR 环境变量 > 当前智能体目录 > 旧全局外置目录兜底。
+    新目录若不可用（不可写），回退旧全局目录，保证插件仍可用。
     """
     override = os.environ.get("QM_DATA_DIR", "").strip()
     if override:
         return Path(override)
-    # 工作区根 = 安装目录的上两级（<root>/plugins/<plugin_id>/ → <root>）。
-    # 用相对定位而非硬编码宿主绝对路径，避免发布包命中路径敏感串。
-    base = _PLUGIN_DIR.parent.parent / "plugin_data"
+    target = _AGENT_WORKSPACE / "plugin_data" / "question-modal"
     try:
-        base.mkdir(parents=True, exist_ok=True)
-        probe = base / ".qm-probe"
-        probe.touch()
-        probe.unlink()
-        # 群晖等共享文件夹环境实测（2026-11-27）：base 可 touch，但数据子目录
-        # 若不存在，写入用的 tmp.write_text 会因父目录缺失静默失败。
-        # 这里直接把真正的数据目录一并创建，保证后续所有写入都有落点。
-        data_sub = base / "question-modal"
-        data_sub.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        return _PLUGIN_DIR
-    return base / "question-modal"
+        probe = _AGENT_WORKSPACE / "plugin_data"
+        probe.mkdir(parents=True, exist_ok=True)
+        marker = probe / ".qm-probe"
+        marker.touch()
+        marker.unlink()
+        # 群晖等共享文件夹环境实测（2026-11-27）：父目录可 touch，但数据子目录
+        # 若不存在，写入用的 tmp.write_text 会因父目录缺失静默失败，一并创建。
+        target.mkdir(parents=True, exist_ok=True)
+        return target
+    except OSError as e:
+        logger.warning("qm_storage: agent workspace data dir %s unusable (%s); "
+                       "fallback to global dir", target, e)
+        return _global_data_dir()
 
 
 def resolve(name: str) -> Path:
@@ -126,67 +179,35 @@ def resolve(name: str) -> Path:
 
 
 def legacy_path(name: str) -> Path:
-    """旧安装目录里的同名文件路径（迁移来源，仅 ensure_migrated 使用）。"""
+    """安装目录里的同名文件（最老一代迁移来源，仅 ensure_migrated 使用）。"""
     return _PLUGIN_DIR / name
 
 
-class MigrationPath(type(Path())):
-    """Path 子类：任何文件访问前先确保迁移完成（惰性 / 串行 / once）。
+def migration_sources(name: str) -> tuple[Path, ...]:
+    """按优先级返回所有迁移来源（仅 ensure_migrated 使用）。
 
-    插件各数据文件常量改用本类构造后，**所有现有 load/save 函数零改动**
-    即自动走「外置目录 + 首次访问迁移」。覆盖全部会读写文件的方法；
-    `with_name`/`with_suffix` 由 Path 保持子类类型，配合原子写临时文件。
-
-    构造期只按 data_dir() 拼路径字符串（无数据搬运），真正迁移发生在
-    第一次 is_file/read_text/write_text 等访问时的 ensure_migrated()。
+    迁移链：旧全局外置目录（v3.0.2 起，数据最全）→ 安装目录（原始源码旁）。
+    只搬「目标不存在」的文件，绝不反向覆盖，保证历史数据完整搬过去。
     """
+    return (_global_data_dir() / name, _PLUGIN_DIR / name)
 
-    def __new__(cls, name: str):
-        return super().__new__(cls, str(data_dir() / name))
 
-    def _migrate(self) -> None:
-        ensure_migrated()
-
-    def is_file(self) -> bool:
-        self._migrate(); return super().is_file()
-
-    def exists(self) -> bool:
-        self._migrate(); return super().exists()
-
-    def stat(self):
-        self._migrate(); return super().stat()
-
-    def read_text(self, *a, **k):
-        self._migrate(); return super().read_text(*a, **k)
-
-    def read_bytes(self):
-        self._migrate(); return super().read_bytes()
-
-    def write_text(self, *a, **k):
-        self._migrate(); return super().write_text(*a, **k)
-
-    def write_bytes(self, *a, **k):
-        self._migrate(); return super().write_bytes(*a, **k)
-
-    def open(self, *a, **k):
-        self._migrate(); return super().open(*a, **k)
-
-    def unlink(self, *a, **k):
-        self._migrate(); return super().unlink(*a, **k)
-
-    def touch(self, *a, **k):
-        self._migrate(); return super().touch(*a, **k)
-
-    def glob(self, *a, **k):
-        self._migrate(); return super().glob(*a, **k)
+# 2026-11-28 治本修复：删除原 MigrationPath（Path 子类）。
+# 它在 Python 3.11 正常，但 3.12 的 pathlib 会调 self.stat(follow_symlinks=...)
+# 且用 type(self)(完整路径) 重建实例，与自定义 __new__(name)/stat() 冲突，
+# 导致「保存通知配置 500」「could not persist pending_questions.json」等连锁失败。
+# 数据文件常量一律用 resolve() 返回**普通 Path**（跨版本稳定），
+# 迁移改为 register() 启动时显式调用 ensure_migrated() 一次（进程级）。
 
 
 def ensure_migrated() -> None:
-    """惰性迁移：把旧目录里存在而外置缺失的文件搬到外置目录。
+    """惰性迁移：把旧目录里存在而新目录缺失的文件搬到当前智能体数据目录。
 
     · 锁内串行 + once 标志，避免并发重复搬运；
-    · 只搬「外置不存在」的文件，绝不覆盖用户在新位置已改过的配置；
+    · 迁移链 = 旧全局外置目录 → 安装目录（见 migration_sources）；
+    · 只搬「目标不存在」的文件，绝不覆盖用户在新位置已改过的配置；
     · 用「临时文件 + 原子 replace」保证搬运中途失败不留半截文件；
+      replace 失败（群晖共享文件夹）降级为直接覆写，与 atomic_write_text 同口径；
     · 迁移前不创建任何空文件（避免把空默认误当成用户数据）。
     """
     global _migrated
@@ -202,22 +223,30 @@ def ensure_migrated() -> None:
             logger.warning("qm_storage: cannot create data dir %s: %s", dst_dir, e)
             return                      # 迁移失败：保持未迁移，绝不写空数据
         for name in DATA_FILES:
-            src = legacy_path(name)
             dst = dst_dir / name
-            if dst.exists() or not src.is_file():
-                continue
-            tmp = dst.with_name(name + ".mig-tmp")
-            try:
-                shutil.copy2(src, tmp)
-                tmp.replace(dst)        # 原子落位
-                logger.warning("qm_storage: migrated %s -> %s", src.name, dst)
-            except OSError as e:
+            if dst.exists():
+                continue                # 目标已有，绝不覆盖新位置数据
+            for src in migration_sources(name):
+                if not src.is_file():
+                    continue
+                tmp = dst.with_name(name + ".mig-tmp")
                 try:
-                    if tmp.exists():
-                        tmp.unlink()
-                except OSError:
-                    pass
-                logger.warning("qm_storage: migrate %s failed: %s", name, e)
+                    shutil.copy2(src, tmp)
+                    try:
+                        tmp.replace(dst)        # 原子落位
+                    except OSError:
+                        dst.write_bytes(tmp.read_bytes())  # 群晖降级
+                    logger.warning("qm_storage: migrated %s -> %s", src, dst)
+                    break                   # 已搬到，不再看更低优先级来源
+                except OSError as e:
+                    logger.warning("qm_storage: migrate %s from %s failed: %s",
+                                   name, src, e)
+                finally:
+                    try:
+                        if tmp.exists():
+                            tmp.unlink()
+                    except OSError:
+                        pass
         _migrated = True
 
 
